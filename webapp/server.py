@@ -751,7 +751,7 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
         lectures = lecture_picker.pick(await get_subject_lecture_context(subject), query)
     elif not subject and query.strip():
         lectures = await asyncio.to_thread(lecture_picker.pick, await get_all_lecture_context(), query,
-                                           lecture_picker.AUTO_BUDGET, lecture_picker.AUTO_MIN_SCORE)
+                                           lecture_picker.AUTO_BUDGET, lecture_picker.AUTO_MIN_SCORE, True)
     context = await build_group_context(user["id"])
 
     try:
