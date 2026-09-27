@@ -32,11 +32,12 @@ function fileIcon(name) {
 
 function fileCard(f, withPlace) {
   const sub = withPlace ? (f.subject || "Без предмета") + " · " + f.category_label : (f.file_name || "");
-  return '<div class="file-card">' +
+  return '<div class="file-card" id="fc-' + f.id + '">' +
     '<span class="ic">' + fileIcon(f.file_name) + '</span>' +
     '<div style="min-width:0"><div class="ft">' + escapeHtml(f.title) + (f.has_text ? '\u2060<span class="badge">📖</span>' : '') + '</div>' +
     '<div class="fs">' + escapeHtml(sub) + '</div></div>' +
-    '<button onclick="openFile(' + f.id + ', this)">Открыть</button>' +
+    '<button class="dl" onclick="downloadFile(' + f.id + ', this)" aria-label="Скачать">📥</button>' +
+    '<button onclick="openFile(' + f.id + ', this)">В чат</button>' +
     (f.can_edit ? '<button class="edit" onclick="openFileSheet(' + f.id + ')" aria-label="Изменить">✏️</button>' : '') +
   '</div>';
 }
@@ -237,4 +238,47 @@ async function submitFileEdit() {
 
 function openFile(id, btn) {
   sendToChat("/api/files/" + id + "/send", "file_" + id, btn);
+}
+
+// «📥 Скачать»: системное окно Telegram «Скачать файл?» → на iPhone меню
+// «Сохранить в Файлы / Поделиться», на Android — в Загрузки. Без сворачивания
+// WebApp и пересылки из чата. Старый Telegram (до 8.0) или файл больше 20 МБ —
+// шлём в чат, как «В чат».
+async function downloadFile(id, btn) {
+  if (!(tg && tg.downloadFile && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) {
+    showToast("Telegram старый для скачивания — отправляю в чат");
+    return openFile(id, btn);
+  }
+  btn.disabled = true; btn.classList.add("sending");
+  let link = null;
+  try {
+    link = await api("/api/files/" + id + "/link", { method: "POST" });
+  } catch (e) {
+    btn.disabled = false; btn.classList.remove("sending");
+    showToast("Файл большой для скачивания — отправляю в чат");
+    return openFile(id, btn);
+  }
+  btn.disabled = false; btn.classList.remove("sending");
+  try {
+    tg.downloadFile({ url: link.url, file_name: link.file_name }, ok => { if (ok) haptic("success"); });
+  } catch (e) {
+    openFile(id, btn);
+  }
+}
+
+// Ссылка из бота «Открыть в WebApp» (?file=<id>): сразу папка предмета и
+// подсвеченный файл.
+async function openFileFromLink(id) {
+  switchTab("files");
+  await loadFiles();
+  const f = fileIndex[id];
+  if (!f) { showToast("Файл не найден — возможно, его удалили"); return; }
+  fileSubject = f.subject; fileCat = "";
+  renderFiles();
+  const card = document.getElementById("fc-" + id);
+  if (card) {
+    card.scrollIntoView({ block: "center" });
+    card.classList.add("hl");
+    setTimeout(() => card.classList.remove("hl"), 2500);
+  }
 }
