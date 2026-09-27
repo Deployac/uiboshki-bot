@@ -553,6 +553,14 @@ async def get_file_sources() -> set[str]:
         return {r[0] for r in await cursor.fetchall()}
 
 
+async def get_file_by_id(fid: int) -> dict | None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM files WHERE id=?", (fid,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
 async def get_sdo_file_subjects() -> dict[str, tuple[int, str]]:
     """source → (id, предмет) у файлов из СДО: чтобы переложить их, если
     курс раньше сопоставился не с тем предметом."""

@@ -22,13 +22,13 @@ import logging
 import re
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from config import BOT_TOKEN, STAROSTA_ID
+from config import BOT_TOKEN, STAROSTA_ID, WEBAPP_URL
 from webapp.auth import InitDataError, validate_init_data
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -451,6 +451,95 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
         })
     return {"items": out, "categories": [{"key": k, "label": v} for k, v in CATEGORIES],
             "can_delete": not STAROSTA_ID or user["id"] == STAROSTA_ID}
+
+
+_tg_bot = None
+
+
+def tg_bot():
+    """Свой экземпляр Bot для отправки файлов из WebApp (тот же токен)."""
+    global _tg_bot
+    if _tg_bot is None:
+        from aiogram import Bot
+        _tg_bot = Bot(BOT_TOKEN)
+    return _tg_bot
+
+
+@app.post("/api/files/{file_id}/send")
+async def api_send_file(file_id: int, user: dict = CurrentUser):
+    """Кнопка «Открыть»: бот шлёт файл в личку. Раньше фронт открывал
+    диплинк t.me/<бот>?start=file_<id>, и в чате копились «/start file_…»."""
+    from handlers.start import send_file_to
+    if not await send_file_to(tg_bot(), user["id"], file_id):
+        raise HTTPException(404, "Файл не найден")
+    return {"ok": True}
+
+
+# «📥 Скачать»: Telegram.WebApp.downloadFile качает по обычной ссылке без
+# initData, поэтому ссылка подписана (HMAC от токена бота) и живёт 10 минут.
+# Сам файл бот берёт у Telegram по file_id — Bot API отдаёт до 20 МБ, файлы
+# больше фронт отправляет в чат, как «В чат».
+DL_TTL = 600
+
+
+def _dl_sig(file_id: int, exp: int) -> str:
+    import hashlib
+    import hmac
+    return hmac.new(BOT_TOKEN.encode(), f"dl:{file_id}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def _download_name(f: dict, file_path: str = "") -> str:
+    name = (f.get("file_name") or "").strip()
+    if name:
+        return name
+    ext = Path(file_path).suffix if file_path else ""
+    return re.sub(r'[\\/:*?"<>|]+', " ", f.get("title") or "file").strip()[:100] + ext
+
+
+@app.post("/api/files/{file_id}/link")
+async def api_file_link(file_id: int, request: Request, user: dict = CurrentUser):
+    import time
+    from urllib.parse import quote
+    from database import get_file_by_id
+    f = await get_file_by_id(file_id)
+    if not f:
+        raise HTTPException(404, "Файл не найден")
+    try:
+        tf = await tg_bot().get_file(f["file_id"])
+    except Exception as e:
+        logger.info(f"файл {file_id} не скачать через Bot API: {e}")
+        raise HTTPException(413, "Файл слишком большой для скачивания — отправлю в чат")
+    name = _download_name(f, tf.file_path or "")
+    exp = int(time.time()) + DL_TTL
+    base = (WEBAPP_URL or str(request.base_url)).rstrip("/")
+    return {"url": f"{base}/dl/{file_id}/{quote(name, safe='')}?exp={exp}&sig={_dl_sig(file_id, exp)}", "file_name": name}
+
+
+@app.get("/dl/{file_id}/{name}")
+async def download_file(file_id: int, name: str, exp: int, sig: str):
+    import hmac
+    import mimetypes
+    import time
+    from urllib.parse import quote
+    from database import get_file_by_id
+    if exp < time.time() or not hmac.compare_digest(sig, _dl_sig(file_id, exp)):
+        raise HTTPException(403, "Ссылка устарела — нажми «Скачать» ещё раз")
+    f = await get_file_by_id(file_id)
+    if not f:
+        raise HTTPException(404, "Файл не найден")
+    bot = tg_bot()
+    tf = await bot.get_file(f["file_id"])
+    data = await bot.download_file(tf.file_path)
+    return Response(data.getvalue(), media_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name, safe='')}"})
+
+
+@app.post("/api/homework/{hw_id}/send")
+async def api_send_hw(hw_id: int, user: dict = CurrentUser):
+    from handlers.start import send_hw_to
+    if not await send_hw_to(tg_bot(), user["id"], hw_id):
+        raise HTTPException(404, "Файл ДЗ не найден")
+    return {"ok": True}
 
 
 class FileIds(BaseModel):

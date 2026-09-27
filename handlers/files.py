@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
     Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton,
+    WebAppInfo,
 )
 
 from database import add_file, get_files, delete_file, search_files
@@ -740,3 +741,45 @@ async def handle_sync_json(message: Message):
         )
     except Exception as e:
         await wait.edit_text(f"❌ Ошибка: {e}")
+
+
+# ── Файл по запросу в чате ──────────────────────────────────────────────────
+# «скинь практику 3 по основам предпр деят» — зовётся из handle_plain_text
+# (handlers/solver.py) до ИИ. False — не просьба о файле, пусть решает ИИ.
+
+async def answer_file_request(message: Message) -> bool:
+    import file_request
+    from config import WEBAPP_URL
+    from handlers.start import send_file_to
+    if not file_request.is_request(message.text or ""):
+        return False
+    subjects, items = file_request.find(message.text, await get_files())
+    if not subjects:
+        return False
+    if len(subjects) > 1:
+        await message.answer("🤔 По какому предмету? Подходят:\n" + "\n".join(f"• {esc(s)}" for s in subjects[:8]) +
+                             "\n\nНапиши название чуть подробнее.", parse_mode="HTML")
+        return True
+    subject = subjects[0]
+    if not items:
+        await message.answer(f"🤷 В папке «{esc(subject)}» такого не нашёл. Все файлы предмета — /files или в приложении.",
+                             parse_mode="HTML")
+        return True
+    if len(items) == 1:
+        await send_file_to(message.bot, message.from_user.id, items[0]["id"])
+        return True
+    rows = [[InlineKeyboardButton(text=f["title"][:60], callback_data=f"frq:{f['id']}")] for f in items[:8]]
+    if WEBAPP_URL.startswith("https://"):
+        rows.append([InlineKeyboardButton(text="📂 Открыть в приложении", web_app=WebAppInfo(
+            url=WEBAPP_URL.rstrip("/") + f"/?file={items[0]['id']}"))])
+    more = f" (показал 8 из {len(items)})" if len(items) > 8 else ""
+    await message.answer(f"📁 <b>{esc(subject)}</b> — нашёл {len(items)}{more}. Какой прислать?",
+                         parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    return True
+
+
+@router.callback_query(F.data.startswith("frq:"))
+async def file_request_pick(callback: CallbackQuery):
+    from handlers.start import send_file_to
+    ok = await send_file_to(callback.bot, callback.from_user.id, callback.data.split(":", 1)[1])
+    await callback.answer("" if ok else "Файл не найден — возможно, его удалили", show_alert=not ok)

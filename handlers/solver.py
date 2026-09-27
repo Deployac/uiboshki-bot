@@ -284,6 +284,11 @@ async def handle_plain_text(message: Message, state: FSMContext):
     if await state.get_state() is not None:
         return
 
+    # «скинь практику 3 по основам предпр деят» — файл, а не вопрос к ИИ
+    from handlers.files import answer_file_request
+    if await answer_file_request(message):
+        return
+
     # Фаза 1: сначала пробуем понять намерение без команд/кнопок
     # ("когда следующая пара", "покажи дедлайны" и т.д.). Если не удалось —
     # при достаточной длине считаем это учебной задачей для решалки, как раньше.

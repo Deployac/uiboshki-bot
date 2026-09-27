@@ -4,3 +4,10 @@
 loadToday();
 renderChat();
 loadChatSubjects();
+
+(function () {
+  const q = new URLSearchParams(location.search).get("file");
+  const sp = (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) || "";
+  const id = parseInt(q || (sp.startsWith("file_") ? sp.slice(5) : ""), 10);
+  if (id) openFileFromLink(id);
+})();

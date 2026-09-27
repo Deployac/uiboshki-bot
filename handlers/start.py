@@ -10,49 +10,55 @@ from utils import esc, split_by_lines
 router = Router()
 
 
+async def send_file_to(bot, user_id: int, fid) -> bool:
+    """Файл из «Файлов» в личку: WebApp сама отдать его не может (file_id
+    живёт только у бота). False — файла нет."""
+    from database import get_files
+    target = next((f for f in await get_files() if str(f["id"]) == str(fid)), None)
+    if not target:
+        return False
+    await bot.send_document(
+        user_id, target["file_id"],
+        caption=f"📄 <b>{esc(target['title'])}</b>" + (f" ({esc(target['subject'])})" if target.get('subject') else ""),
+        parse_mode="HTML",
+    )
+    return True
+
+
+async def send_hw_to(bot, user_id: int, hw_id) -> bool:
+    """Файл ДЗ в личку (кнопка «Открыть файл» у ДЗ в WebApp)."""
+    from group_context import list_homework
+    item = next((h for h in await list_homework(500) if str(h["id"]) == str(hw_id)), None)
+    if not item or not item.get("file_id"):
+        return False
+    caption = f"📝 <b>{esc(item['subject'])}</b>" + (f"\n{esc(item['content'][:900])}" if item.get("content") else "")
+    if item.get("file_type") == "photo":
+        await bot.send_photo(user_id, item["file_id"], caption=caption, parse_mode="HTML")
+    else:
+        await bot.send_document(user_id, item["file_id"], caption=caption, parse_mode="HTML")
+    return True
+
+
 @router.message(CommandStart(deep_link=True))
 async def cmd_start_deeplink(message: Message, command: CommandObject):
-    """Диплинк с параметром — сейчас единственный кейс: t.me/bot?start=file_<id>,
-    им бьёт кнопка "Открыть в Telegram" у файла в WebApp (WebApp не может сама
-    отдать файл по file_id — это может только сам бот). Всё остальное (просто
-    /start без параметра) идёт в обычный cmd_start ниже."""
+    """Диплинк t.me/bot?start=file_<id> / hw_<id> — запасной путь кнопки
+    «Открыть» в WebApp (основной — /api/files/{id}/send, без «/start» в
+    чате). Само «/start file_…» стираем, чтобы чат не зарастал. Просто
+    /start без параметра идёт в обычный cmd_start ниже."""
     user = message.from_user
     await upsert_user(user.id, user.username or "", user.full_name or "")
     payload = command.args or ""
-    if payload.startswith("file_"):
-        from database import get_files
+    if payload.startswith(("file_", "hw_")):
+        is_file = payload.startswith("file_")
+        key = payload.split("_", 1)[1]
+        ok = await (send_file_to if is_file else send_hw_to)(message.bot, user.id, key)
+        if not ok:
+            await message.answer("❌ Файл не найден (возможно, его удалили)." if is_file
+                                 else "❌ Файл ДЗ не найден (возможно, его удалили).")
         try:
-            fid = int(payload.removeprefix("file_"))
-        except ValueError:
-            fid = None
-        target = None
-        if fid is not None:
-            for f in await get_files():
-                if f["id"] == fid:
-                    target = f
-                    break
-        if target:
-            await message.bot.send_document(
-                user.id, target["file_id"],
-                caption=f"📄 <b>{esc(target['title'])}</b>" + (f" ({esc(target['subject'])})" if target.get('subject') else ""),
-                parse_mode="HTML",
-            )
-        else:
-            await message.answer("❌ Файл не найден (возможно, его удалили).")
-        return
-    if payload.startswith("hw_"):
-        # Кнопка «Открыть файл» у ДЗ в WebApp — файл может отдать только бот.
-        from group_context import list_homework
-        hw_id = payload.removeprefix("hw_")
-        item = next((h for h in await list_homework(500) if str(h["id"]) == hw_id), None)
-        if not item or not item.get("file_id"):
-            await message.answer("❌ Файл ДЗ не найден (возможно, его удалили).")
-            return
-        caption = f"📝 <b>{esc(item['subject'])}</b>" + (f"\n{esc(item['content'][:900])}" if item.get("content") else "")
-        if item.get("file_type") == "photo":
-            await message.bot.send_photo(user.id, item["file_id"], caption=caption, parse_mode="HTML")
-        else:
-            await message.bot.send_document(user.id, item["file_id"], caption=caption, parse_mode="HTML")
+            await message.delete()
+        except Exception:
+            pass
         return
     await cmd_start(message)
 

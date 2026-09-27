@@ -163,6 +163,25 @@ function shiftWeek(delta) {
   renderDayChips();
 }
 
+// Свайп влево/вправо по дням недели — то же, что стрелки.
+(function () {
+  let x0 = null, y0 = null;
+  document.addEventListener("touchstart", e => {
+    if (!e.target.closest || !e.target.closest("#daychips, #day-lessons")) { x0 = null; return; }
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener("touchend", e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > 1.5 * Math.abs(dy)) {
+      shiftWeek(dx < 0 ? 1 : -1);
+      const chips = document.getElementById("daychips");
+      if (chips) { chips.classList.remove("swipe-l", "swipe-r"); void chips.offsetWidth; chips.classList.add(dx < 0 ? "swipe-l" : "swipe-r"); }
+    }
+  }, { passive: true });
+})();
+
 function weekLabel(monday, offset) {
   if (offset === 0) return "Эта неделя";
   if (offset === 1) return "Следующая неделя";
