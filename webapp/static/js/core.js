@@ -37,16 +37,23 @@ function syncSafeArea() {
   root.setProperty("--safe-top", ((sa.top || 0) + (ca.top || 0)) + "px");
   root.setProperty("--safe-bottom", ((sa.bottom || 0) + (ca.bottom || 0)) + "px");
 }
+// Живой тест: с ярлыка «Домой» Telegram открывает приложение уже на весь
+// экран (Launch Mode в BotFather) — requestFullscreen тогда отвечает
+// fullscreenFailed «ALREADY_FULLSCREEN», и мы снимали отступы: шапка
+// налезала на часы. Класс держим по tg.isFullscreen, а не по ответу.
+function syncFullscreen() {
+  document.documentElement.classList.toggle("fullscreen", !!tg.isFullscreen);
+  syncSafeArea();
+}
 if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0") && ["ios", "android"].includes(tg.platform)) {
   try {
-    document.documentElement.classList.add("fullscreen");
     tg.onEvent("safeAreaChanged", syncSafeArea);
     tg.onEvent("contentSafeAreaChanged", syncSafeArea);
-    tg.onEvent("fullscreenChanged", syncSafeArea);
-    tg.onEvent("fullscreenFailed", () => document.documentElement.classList.remove("fullscreen"));
-    tg.requestFullscreen();
-    syncSafeArea();
-  } catch (e) { document.documentElement.classList.remove("fullscreen"); }
+    tg.onEvent("fullscreenChanged", syncFullscreen);
+    tg.onEvent("fullscreenFailed", syncFullscreen);
+    if (!tg.isFullscreen) tg.requestFullscreen();
+    syncFullscreen();
+  } catch (e) {}
 }
 
 function initData() {
