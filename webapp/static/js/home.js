@@ -246,21 +246,46 @@ async function loadWeekDots(mondayIso) {
   });
 }
 
+// Пары дня кэшируются: переключать дни туда-обратно — мгновенно. Пока
+// грузится, список держит прежнюю высоту, чтобы страница не прыгала вверх;
+// тап по дню прокручивает к полоске дней — видны все пары дня сразу
+// (живой тест: на каждый день приходилось заново листать вниз).
+const dayCache = {};
+
+function scrollToWeek() {
+  const head = document.getElementById("wk-label").closest("h2");
+  const safe = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-top")) || 0;
+  const top = head.getBoundingClientRect().top + window.scrollY - safe - 8;
+  if (Math.abs(window.scrollY - top) > 4) window.scrollTo({ top: top, behavior: "smooth" });
+}
+
+function renderDay(list, data) {
+  list.innerHTML = data.lessons.length
+    ? data.lessons.map(l => lessonRow(l, !!l.status)).join("")
+    : '<div class="empty">' + data.weekday + ' — пар нет 🎉</div>';
+}
+
 async function selectDay(btn, silent) {
   document.querySelectorAll("#daychips button").forEach(b => b.classList.toggle("active", b === btn));
   if (!silent) haptic();
   const list = document.getElementById("day-lessons");
-  list.innerHTML = '<div class="skel" style="height:64px"></div>';
-  try {
-    const data = await api("/api/day?date=" + btn.dataset.date);
-    if (btn.classList.contains("active")) {
-      list.innerHTML = data.lessons.length
-        ? data.lessons.map(l => lessonRow(l, !!l.status)).join("")
-        : '<div class="empty">' + data.weekday + ' — пар нет 🎉</div>';
+  const date = btn.dataset.date;
+  const today = todayData && date === todayData.date;   // у сегодняшнего дня статусы пар меняются — без кэша
+  if (dayCache[date] && !today) {
+    renderDay(list, dayCache[date]);
+  } else {
+    list.style.minHeight = list.offsetHeight + "px";
+    list.innerHTML = '<div class="skel" style="height:64px"></div>';
+    try {
+      const data = await api("/api/day?date=" + date);
+      if (!today) dayCache[date] = data;
+      if (btn.classList.contains("active")) renderDay(list, data);
+    } catch (e) {
+      list.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
     }
-  } catch (e) {
-    list.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
+    list.style.minHeight = "";
   }
+  if (!silent) scrollToWeek();
 }
 
 // «На экран Домой» (Telegram 8.0+, Bot API addToHomeScreen): ярлык WebApp на
@@ -333,5 +358,6 @@ async function answerOptional(i, attend, fromPending) {
   renderOptional();
   showToast(attend ? "🎖 Пары «" + subject + "» будут в расписании" : "Убрал «" + subject + "» из расписания");
   Object.keys(weekCache).forEach(k => delete weekCache[k]);
+  Object.keys(dayCache).forEach(k => delete dayCache[k]);
   loadToday();
 }
