@@ -627,6 +627,7 @@ async def _chat_with_fallback(history: list, subject: str, context: str, lecture
         logger.warning(f"webapp chat: с лекциями не вышло ({e!r}) — отвечаю без них")
         result = await chat_with_reasoning(history, subject=subject, extra_system=context, lectures="")
         result["content"] = (result.get("content") or "") + f"\n\n_(ответ без лекций: {_short_reason(e)})_"
+        result["no_lectures"] = True
         return result
 
 
@@ -661,6 +662,31 @@ async def api_subjects(user: dict = CurrentUser):
     rest = [s for s in await get_group_subjects() if s not in with_lectures]
     return {"subjects": [{"name": s, "lectures": True} for s in with_lectures]
                         + [{"name": s, "lectures": False} for s in rest]}
+
+
+async def _lecture_sources(lectures: str, subject: str) -> list[dict]:
+    """Какие лекции ушли ИИ вместе с вопросом — «📖 по: ЛК3 · ЛК5» под
+    ответом, с переходом к файлу. Заголовки блоков — «файл» (выбран предмет)
+    или «предмет: файл» (get_all_lecture_context)."""
+    from database import get_files
+    titles = re.findall(r"^=== (.+?) ===$", lectures, re.M)
+    if not titles:
+        return []
+    by_key = {}
+    for f in await get_files():
+        by_key.setdefault(((f.get("subject") or "Без предмета"), f["title"]), f)
+        by_key.setdefault(("", f["title"]), f)
+    out, seen = [], set()
+    for t in titles:
+        f = by_key.get((subject, t)) if subject else None
+        if not f and ": " in t:
+            subj, _, title = t.partition(": ")
+            f = by_key.get((subj, title))
+        f = f or by_key.get(("", t))
+        if f and f["id"] not in seen:
+            seen.add(f["id"])
+            out.append({"id": f["id"], "title": f["title"]})
+    return out
 
 
 async def _chat_file_request(text: str) -> dict | None:
@@ -766,6 +792,9 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
         raise HTTPException(status_code=502, detail=f"ИИ сейчас недоступен ({_short_reason(e)}), попробуй чуть позже")
     # Тот же вид, что и в боте: жирный, код, x² вместо x^2 (всё экранировано).
     result["html"] = "\n".join(md_to_tg_html_chunks(result.get("content", "")))
+    # ответ без лекций (запасной путь _chat_with_fallback) — источников нет
+    if lectures and not result.pop("no_lectures", False):
+        result["sources"] = await _lecture_sources(lectures, subject)
     return result
 
 

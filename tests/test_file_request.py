@@ -136,3 +136,28 @@ async def test_webapp_chat_answers_file_request_without_ai(db, monkeypatch):
         {"role": "user", "content": "Скинь 1 лк по уч деят на предпрят"}], "subject": ""}).json()
     assert [f["title"] for f in data["files"]] == ["Лекция 1-2"]
     assert UCH in data["content"]
+
+
+@pytest.mark.asyncio
+async def test_webapp_chat_returns_lecture_sources(db, monkeypatch):
+    # «📖 по: …» под ответом — какие лекции ушли ИИ, с id для перехода к файлу
+    from fastapi.testclient import TestClient
+    import ai_solver
+    import webapp.server as server
+    from database import add_file, save_file_text
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    lk = await add_file("ЛК1", UCH, "TGL", "lk1.pdf", 0, category="lecture")
+    await save_file_text(lk, "Бухгалтерский учет: дебет и кредит, баланс предприятия.")
+    seen = {}
+
+    async def fake_chat(history, subject="", extra_system="", lectures=""):
+        seen["lectures"] = lectures
+        return {"content": "Дебет — левая сторона счёта.", "reasoning": ""}
+
+    monkeypatch.setattr(ai_solver, "chat_with_reasoning", fake_chat)
+    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+    data = c.post("/api/chat", headers=headers, json={"history": [
+        {"role": "user", "content": "Что такое дебет?"}], "subject": UCH}).json()
+    assert "ЛК1" in seen["lectures"]
+    assert data["sources"] == [{"id": lk, "title": "ЛК1"}]

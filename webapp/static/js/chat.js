@@ -3,17 +3,35 @@
 
 // ── Чат ───────────────────────────────────────────────────────────────────
 
-// История чата живёт в localStorage этого устройства (только текст, без
-// вложений): закрыл WebApp — открыл — разговор на месте. «Новый чат» — чистит.
-const CHAT_KEY = "chatLog.v1";
-let chatLog = loadChatLog();          // [{role, content, html, att}]
+// Чаты живут в localStorage этого устройства (только текст, без вложений):
+// закрыл WebApp — открыл — разговор на месте. «＋ Новый» не стирает старый —
+// он остаётся в «☰ Чаты» (до 20 последних).
+const CHATS_KEY = "chats.v1", OLD_CHAT_KEY = "chatLog.v1";
+let chats = loadChats();              // [{id, title, updated, log}]
+let chatId = chats.length ? chats[0].id : null;
+let chatLog = chats.length ? chats[0].log : [];   // [{role, content, html, att, files, sources}]
 let pendingAttachment = null;         // {name, mime, data(base64), url}
 
-function loadChatLog() {
-  try { return JSON.parse(localStorage.getItem(CHAT_KEY) || "[]"); } catch (e) { return []; }
+function loadChats() {
+  try {
+    const list = JSON.parse(localStorage.getItem(CHATS_KEY) || "null");
+    if (Array.isArray(list)) return list;
+    const old = JSON.parse(localStorage.getItem(OLD_CHAT_KEY) || "[]");   // прежняя одна история
+    return old.length ? [{ id: "c" + Date.now(), title: chatTitle(old), updated: Date.now(), log: old }] : [];
+  } catch (e) { return []; }
+}
+function chatTitle(log) {
+  const first = log.find(m => m.role === "user" && m.content);
+  return first ? first.content.slice(0, 60) : "Новый чат";
 }
 function saveChatLog() {
-  try { localStorage.setItem(CHAT_KEY, JSON.stringify(chatLog.slice(-40))); } catch (e) {}
+  if (!chatLog.length) return;
+  if (!chatId) chatId = "c" + Date.now();
+  let cur = chats.find(c => c.id === chatId);
+  if (!cur) { cur = { id: chatId }; chats.unshift(cur); }
+  cur.log = chatLog.slice(-40); cur.title = chatTitle(chatLog); cur.updated = Date.now();
+  chats = [cur, ...chats.filter(c => c !== cur)].slice(0, 20);
+  try { localStorage.setItem(CHATS_KEY, JSON.stringify(chats)); } catch (e) {}
 }
 
 const SUGGESTIONS = [
@@ -44,18 +62,48 @@ function renderChat() {
     log.appendChild(empty);
     return;
   }
-  chatLog.forEach(m => appendMsg(m.role, m.content, "", m.html, m.att, false, m.files));
+  chatLog.forEach(m => appendMsg(m.role, m.content, "", m.html, m.att, false, m.files, m.sources));
+  addQuickReplies();
 }
 
 function newChat() {
   haptic();
+  chatId = null;
   chatLog = [];
-  saveChatLog();
   clearAttachment();
   renderChat();
 }
 
-function appendMsg(role, content, reasoning, html, att, scroll = true, files) {
+// ☰ Чаты — список прошлых разговоров прямо на месте ленты.
+function openChats() {
+  haptic();
+  const log = document.getElementById("chat-log");
+  if (!chats.length) { showToast("Пока один чат — этот"); return; }
+  log.innerHTML = '<button class="file-back" onclick="renderChat()">‹ К чату</button>' +
+    chats.map((c, i) => '<div class="chat-item' + (c.id === chatId ? ' cur' : '') + '" onclick="switchChat(' + i + ')">' +
+      '<div style="min-width:0;flex:1"><div class="ft">' + escapeHtml(c.title) + '</div>' +
+      '<div class="fs">' + new Date(c.updated).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) +
+      ' · ' + c.log.length + ' ' + plural(c.log.length, "сообщение", "сообщения", "сообщений") + '</div></div>' +
+      '<button class="del" onclick="event.stopPropagation(); deleteChat(' + i + ')" aria-label="Удалить">✕</button></div>').join("");
+}
+function switchChat(i) {
+  const c = chats[i];
+  if (!c) return;
+  haptic();
+  chatId = c.id; chatLog = c.log;
+  clearAttachment();
+  renderChat();
+}
+function deleteChat(i) {
+  const c = chats[i];
+  if (!c) return;
+  chats.splice(i, 1);
+  try { localStorage.setItem(CHATS_KEY, JSON.stringify(chats)); } catch (e) {}
+  if (c.id === chatId) { chatId = null; chatLog = []; }
+  chats.length ? openChats() : renderChat();
+}
+
+function appendMsg(role, content, reasoning, html, att, scroll = true, files, sources) {
   const log = document.getElementById("chat-log");
   const empty = log.querySelector(".chat-empty");
   if (empty) empty.remove();
@@ -82,6 +130,15 @@ function appendMsg(role, content, reasoning, html, att, scroll = true, files) {
     box.className = "chat-files";
     box.innerHTML = files.map(f => fileCard(f, false)).join("");
     div.appendChild(box);
+  }
+  // на какие лекции ИИ опирался — тап открывает файл во вкладке «Файлы»
+  if (sources && sources.length) {
+    const src = document.createElement("div");
+    src.className = "msg-src";
+    src.innerHTML = "📖 " + sources.slice(0, 4).map(f =>
+      '<button onclick="openFileFromLink(' + f.id + ')">' + escapeHtml(f.title.slice(0, 40)) + '</button>').join(" · ") +
+      (sources.length > 4 ? " · +" + (sources.length - 4) : "");
+    div.appendChild(src);
   }
   if (reasoning) {
     const det = document.createElement("details");
@@ -194,6 +251,7 @@ async function sendChat() {
   const btn = document.getElementById("chat-send");
   btn.disabled = true;
 
+  dropQuickReplies();
   const shownAtt = att ? { name: att.name, url: att.url, image: att.image } : null;
   appendMsg("user", text, "", "", shownAtt);
   // В истории для сервера — только текст; само вложение уходит отдельным полем.
@@ -220,9 +278,10 @@ async function requestAnswer(entry, att) {
     const data = await api("/api/chat", { method: "POST", body: JSON.stringify(body) });
     pending.remove();
     delete entry.failed;
-    appendMsg("assistant", data.content, data.reasoning, data.html, null, true, data.files);
-    chatLog.push({ role: "assistant", content: data.content, html: data.html, files: data.files });
+    appendMsg("assistant", data.content, data.reasoning, data.html, null, true, data.files, data.sources);
+    chatLog.push({ role: "assistant", content: data.content, html: data.html, files: data.files, sources: data.sources });
     saveChatLog();
+    addQuickReplies();
     haptic("success");
   } catch (e) {
     pending.remove();
@@ -277,3 +336,35 @@ document.getElementById("chat-input").addEventListener("keydown", (e) => {
     sendChat();
   }
 });
+
+// Быстрые ответы — только под последним ответом ИИ, одна строка.
+const QUICK_REPLIES = [
+  ["Короче", "Объясни то же самое короче, в 3–4 предложениях."],
+  ["Подробнее", "Разбери подробнее, по шагам."],
+  ["Пример", "Приведи простой пример из жизни или задачу с решением."],
+  ["Проверь меня", "Задай мне 3 коротких вопроса по этой теме, по одному, и проверь ответы."],
+];
+function dropQuickReplies() {
+  document.querySelectorAll(".quick-replies").forEach(el => el.remove());
+}
+function addQuickReplies() {
+  dropQuickReplies();
+  const last = chatLog[chatLog.length - 1];
+  if (!last || last.role !== "assistant" || last.files || !last.content || /^(⚠️|🤔|🤷)/.test(last.content)) return;
+  const bubbles = document.querySelectorAll("#chat-log .msg.bot");
+  const bubble = bubbles[bubbles.length - 1];
+  if (!bubble) return;
+  const row = document.createElement("div");
+  row.className = "quick-replies";
+  QUICK_REPLIES.forEach(([label, prompt]) => {
+    const b = document.createElement("button");
+    b.textContent = label;
+    b.onclick = () => {
+      if (document.getElementById("chat-send").disabled) return;
+      document.getElementById("chat-input").value = prompt;
+      sendChat();
+    };
+    row.appendChild(b);
+  });
+  bubble.after(row);
+}
