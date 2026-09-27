@@ -126,3 +126,32 @@ def pick(context: str, query: str, budget: int = SUBJECT_BUDGET, min_score: int 
         chosen.append(i)
         used += size
     return _JUNK.sub("", "\n\n".join(blocks[i][1] for i in sorted(chosen)))
+
+
+# «по лекции», «на практике», «что препод говорил» — вопрос явно про
+# материалы конкретного предмета, а не общий.
+_WANTS_COURSE = re.compile(r"лекци|(?<![а-яё])лк(?![а-яё])|практи|семинар|методич|препод|на пар[еау]|по предмет|"
+                           r"(?<![а-яё])тем[аеуы]\s*№?\s*\d|по курсу|в курсе", re.I)
+
+
+def wants_course(query: str) -> bool:
+    return bool(_WANTS_COURSE.search(query or ""))
+
+
+def subject_scores(context: str, query: str, min_score: int = AUTO_MIN_SCORE) -> list[tuple[str, int]]:
+    """[(предмет, лучший балл лекции)] по убыванию — для контекста с
+    заголовками «предмет: файл». Чат без предмета спрашивает, какой имелся в
+    виду, если двое близки, а вопрос явно про лекции."""
+    if not context.strip():
+        return []
+    blocks = _blocks(context)
+    q = _fix_typos(_stems(query or ""), blocks, (len(context), context[:200], context[-200:]))
+    if not q:
+        return []
+    best: dict[str, int] = {}
+    for title, _, t, b in blocks:
+        score = _score(q, t, b)
+        if score >= min_score and ": " in title:
+            subj = title.split(": ", 1)[0]
+            best[subj] = max(best.get(subj, 0), score)
+    return sorted(best.items(), key=lambda x: -x[1])
