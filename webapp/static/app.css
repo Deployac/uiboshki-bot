@@ -142,6 +142,13 @@
   .daychips .dots { display: flex; justify-content: center; gap: 2px; height: 5px; margin-top: 4px; }
   .daychips .dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--hint); }
   .daychips button.active .dots i { background: rgba(255,255,255,.9) !important; }
+  .daychips.swipe-l { animation: swipel .25s ease-out; }
+  .daychips.swipe-r { animation: swiper .25s ease-out; }
+  @keyframes swipel { from { transform: translateX(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+  @keyframes swiper { from { transform: translateX(-24px); opacity: .4; } to { transform: none; opacity: 1; } }
+  button.sending { animation: pulse .8s ease-in-out infinite; }
+  button.sent { background: var(--ok, #34c759) !important; color: #fff !important; transform: scale(1.04); transition: transform .15s, background .2s; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
   .kd { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
   #wk-num, #tw-num { margin-left: 6px; }
   .skel {

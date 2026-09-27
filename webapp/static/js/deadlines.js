@@ -205,7 +205,7 @@ async function loadHomework() {
     if (!data.items.length) { list.innerHTML = '<div class="empty">Доска ДЗ пока пустая</div>'; return; }
     list.innerHTML = data.items.map(h => {
       const when = h.lesson_date ? '<span class="chip warn">к ' + h.lesson_date.slice(8, 10) + "." + h.lesson_date.slice(5, 7) + '</span>' : "";
-      const file = h.has_file ? '<div class="dl-actions"><button onclick="openHwFile(' + h.id + ')">📎 Открыть файл</button></div>' : "";
+      const file = h.has_file ? '<div class="dl-actions"><button onclick="openHwFile(' + h.id + ', this)">📎 Открыть файл</button></div>' : "";
       return '<div class="hw-card"><div class="hw-subj">' + escapeHtml(h.subject) + '</div>' +
         (h.content ? '<div class="hw-text">' + escapeHtml(h.content) + '</div>' : '') +
         '<div class="dl-meta">' + when + '</div>' + file + '</div>';
@@ -215,7 +215,6 @@ async function loadHomework() {
   }
 }
 
-function openHwFile(id) {
-  const link = "https://t.me/" + BOT_USERNAME + "?start=hw_" + id;
-  if (tg && tg.openTelegramLink) tg.openTelegramLink(link); else window.open(link, "_blank");
+function openHwFile(id, btn) {
+  sendToChat("/api/homework/" + id + "/send", "hw_" + id, btn);
 }
