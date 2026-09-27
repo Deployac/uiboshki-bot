@@ -18,6 +18,12 @@
 
   <!-- ── Сегодня ───────────────────────────────────────────────────── -->
   <section class="view active" id="view-today">
+    <div class="home-add" id="home-add" style="display:none;">
+      <span class="ic">📲</span>
+      <span class="txt"><b>На экран «Домой»</b>Открывать как отдельное приложение</span>
+      <button onclick="addToHome()">Добавить</button>
+      <button class="x" onclick="hideHomeAdd()" aria-label="Скрыть">✕</button>
+    </div>
     <div class="weather-pill" id="weather" style="display:none;"></div>
     <div id="hero"><div class="skel" style="height:118px"></div></div>
 

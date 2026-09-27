@@ -257,3 +257,34 @@ async function selectDay(btn, silent) {
     list.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
   }
 }
+
+// «На экран Домой» (Telegram 8.0+, Bot API addToHomeScreen): ярлык WebApp на
+// рабочем столе телефона — открывается сразу приложением. Карточка только
+// если ярлыка ещё нет; ✕ — скрыть навсегда на этом устройстве.
+const HOME_ADD_KEY = "homeAdd.hidden";
+
+function initHomeAdd() {
+  if (!(tg && tg.checkHomeScreenStatus && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) return;
+  try { if (localStorage.getItem(HOME_ADD_KEY)) return; } catch (e) {}
+  try {
+    tg.checkHomeScreenStatus(status => {
+      if (status === "missed" || status === "unknown") document.getElementById("home-add").style.display = "flex";
+    });
+    tg.onEvent("homeScreenAdded", () => {
+      document.getElementById("home-add").style.display = "none";
+      haptic("success");
+      showToast("📲 Готово — ярлык на экране «Домой»");
+    });
+  } catch (e) {}
+}
+
+function addToHome() {
+  haptic();
+  try { tg.addToHomeScreen(); } catch (e) { showToast("Telegram не дал добавить — обнови приложение"); }
+}
+
+function hideHomeAdd() {
+  haptic();
+  document.getElementById("home-add").style.display = "none";
+  try { localStorage.setItem(HOME_ADD_KEY, "1"); } catch (e) {}
+}
