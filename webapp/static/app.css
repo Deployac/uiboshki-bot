@@ -99,7 +99,6 @@
   .opt-card button { flex: 1; border: none; border-radius: 999px; padding: 9px 0; font-size: 14px; font-weight: 700;
                      background: var(--accent); color: #fff; }
   .opt-card button.no { background: none; border: 1px solid var(--border); color: var(--text); }
-  .optional-links .home-link { margin: 10px auto 0; }
   .home-add {
     display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 10px 10px 12px;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);

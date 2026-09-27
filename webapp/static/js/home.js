@@ -304,7 +304,8 @@ function hideHomeAdd() {
 
 // Предметы по выбору (военная кафедра): пары скрыты, пока человек не
 // скажет «хожу». Спрашиваем карточкой на главной — кто ходит, сразу видит,
-// что про него не забыли; ответ можно поменять ссылкой внизу «Сегодня».
+// что про него не забыли. Поменять ответ — только командой /optional в боте
+// (ссылка на главной лишь мешала остальным).
 let optionalState = { pending: [], answers: {} };
 
 async function initOptional() {
@@ -318,10 +319,6 @@ function renderOptional() {
     '<div class="opt-card"><div class="txt"><b>🎖 ' + escapeHtml(s) + '</b>Ходишь? Если нет — уберём эти пары из твоего расписания.</div>' +
     '<div class="btns"><button onclick="answerOptional(' + i + ', true, true)">Хожу</button>' +
     '<button class="no" onclick="answerOptional(' + i + ', false, true)">Не хожу</button></div></div>').join("");
-  const links = document.getElementById("optional-links");
-  links.innerHTML = Object.entries(optionalState.answers).map(([s, on], i) =>
-    '<button class="link-btn home-link" onclick="toggleOptional(' + i + ')">🎖 ' + escapeHtml(s) + ': ' +
-    (on ? "хожу" : "не хожу") + ' · изменить</button>').join("");
 }
 
 async function answerOptional(i, attend, fromPending) {
@@ -337,9 +334,4 @@ async function answerOptional(i, attend, fromPending) {
   showToast(attend ? "🎖 Пары «" + subject + "» будут в расписании" : "Убрал «" + subject + "» из расписания");
   Object.keys(weekCache).forEach(k => delete weekCache[k]);
   loadToday();
-}
-
-function toggleOptional(i) {
-  const subject = Object.keys(optionalState.answers)[i];
-  answerOptional(i, !optionalState.answers[subject], false);
 }
