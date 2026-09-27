@@ -7,6 +7,9 @@ const BOT_USERNAME = "uiboshkibot"; // если бот переименуют �
 if (tg) {
   tg.ready();
   tg.expand();
+  // Случайный свайп вниз не сворачивает приложение (Bot API 7.7), как у
+  // @BotFather; закрыть — кнопкой «Закрыть».
+  try { if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch (e) {}
   try { tg.setHeaderColor("secondary_bg_color"); } catch (e) {}
   const tp = tg.themeParams || {};
   const root = document.documentElement.style;
