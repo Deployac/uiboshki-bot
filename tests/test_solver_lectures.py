@@ -56,7 +56,7 @@ async def test_solve_uses_lectures_in_first_answer_and_follow_ups(db, dp, bot, m
     fid = await db.add_file("Лекция 1", "Анализ данных", "tg1", "l1.pdf", 1)
     await db.save_file_text(fid, "Метод наименьших квадратов: минимизируем сумму квадратов отклонений")
 
-    async def subjects():
+    async def subjects(**_):
         return ["Анализ данных", "Архитектура предприятия"]
 
     monkeypatch.setattr(schedule_parser, "get_group_subjects", subjects)
@@ -92,7 +92,7 @@ async def test_subject_keyboard_marks_lecture_subjects(db, monkeypatch):
     fid = await db.add_file("Лекция", "Анализ данных", "tg1", "l1.pdf", 1)
     await db.save_file_text(fid, "текст")
 
-    async def subjects():
+    async def subjects(**_):
         return ["Анализ данных", "Архитектура предприятия"]
 
     monkeypatch.setattr(schedule_parser, "get_group_subjects", subjects)

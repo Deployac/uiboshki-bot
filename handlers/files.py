@@ -416,10 +416,25 @@ async def cmd_delfile(message: Message):
 # кнопки: после перезапуска бота кнопка просит прогнать /sdofiles заново.
 
 _sdo_scans: dict[int, list] = {}
+_sdo_moves: dict[int, list[tuple[int, str]]] = {}
 _sdo_tasks: set[asyncio.Task] = set()
 
 
-def _sdo_report(courses, known: set[str]) -> tuple[list[str], int]:
+def sdo_moves(courses, current: dict[str, tuple[int, str]]) -> list[tuple[int, str]]:
+    """Уже выгруженные файлы, чей курс теперь сопоставлен с другим предметом:
+    [(id, новый предмет)]."""
+    out = []
+    for c in courses:
+        if c.old or c.error:
+            continue
+        for f in c.files:
+            fid, subject = current.get(f.source, (None, None))
+            if fid is not None and subject != f.subject:
+                out.append((fid, f.subject))
+    return out
+
+
+def _sdo_report(courses, known: set[str], current: dict | None = None) -> tuple[list[str], int]:
     from file_categories import CATEGORIES
     from utils import plural
     total = sum(len(c.files) for c in courses)
@@ -446,6 +461,9 @@ def _sdo_report(courses, known: set[str]) -> tuple[list[str], int]:
         by_type = " · ".join(f"{label.split(' ')[0]} {counts[key]}" for key, label in CATEGORIES if key in counts)
         fresh = sum(f.source not in known for f in c.files)
         state = "" if fresh == len(c.files) else (" · уже в боте" if not fresh else f" · новых {fresh}")
+        moved = len(sdo_moves([c], current or {}))
+        if moved:
+            state += f" · 🔀 переложу {moved} из других папок"
         lines.append(f"\n<b>{esc(c.name)}</b>\n→ 📁 {esc(c.subject)} · {len(c.files)}: {by_type}{state}")
     if empty:
         lines.append(f"\nБез файлов: {esc(', '.join(empty))}")
@@ -468,13 +486,13 @@ async def cmd_sdo_files(message: Message):
         return
     import sdo_files
     import sdo_parser
-    from database import get_file_sources
+    from database import get_file_sources, get_sdo_file_subjects
     from schedule_parser import get_group_subjects
     if not sdo_parser.SDO_SESSION_COOKIE:
         await message.answer("⚠️ Кука СДО не задана (SDO_SESSION_COOKIE в Railway) — см. /syncsdo.")
         return
     wait = await message.answer("⏳ Смотрю, что лежит в СДО: курсы, файлы, папки… Это может занять минуту.")
-    subjects = await get_group_subjects()
+    subjects = await get_group_subjects(**sdo_parser.SEMESTER_WINDOW)
     try:
         async with sdo_files.make_client(sdo_parser.SDO_SESSION_COOKIE) as client:
             courses = await sdo_files.scan(client, subjects)
@@ -487,16 +505,45 @@ async def cmd_sdo_files(message: Message):
     if not courses:
         await wait.edit_text("🤷 В СДО не нашёл ни одного курса — возможно, кука от другого аккаунта.")
         return
-    chunks, new = _sdo_report(courses, await get_file_sources())
-    kb = None
+    current = await get_sdo_file_subjects()
+    chunks, new = _sdo_report(courses, await get_file_sources(), current)
+    moves = sdo_moves(courses, current)
+    from utils import plural
+    rows = []
+    if moves:
+        _sdo_moves[message.from_user.id] = moves
+        rows.append([InlineKeyboardButton(
+            text=f"🔀 Переложить {len(moves)} {plural(len(moves), 'файл', 'файла', 'файлов')} по предметам",
+            callback_data="sdof:mv")])
     if new:
         _sdo_scans[message.from_user.id] = courses
-        from utils import plural
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
-            text=f"📥 Загрузить {new} {plural(new, 'файл', 'файла', 'файлов')}", callback_data="sdof:go")]])
+        rows.append([InlineKeyboardButton(
+            text=f"📥 Загрузить {new} {plural(new, 'файл', 'файла', 'файлов')}", callback_data="sdof:go")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
     await wait.edit_text(chunks[0], parse_mode="HTML", reply_markup=kb if len(chunks) == 1 else None)
     for i, chunk in enumerate(chunks[1:], 2):
         await message.answer(chunk, parse_mode="HTML", reply_markup=kb if i == len(chunks) else None)
+
+
+@router.callback_query(F.data == "sdof:mv")
+async def sdo_files_move(callback: CallbackQuery):
+    if STAROSTA_ID and callback.from_user.id != STAROSTA_ID:
+        await callback.answer("Только для старосты", show_alert=True)
+        return
+    moves = _sdo_moves.pop(callback.from_user.id, None)
+    if not moves:
+        await callback.answer("Список устарел — запусти /sdofiles ещё раз", show_alert=True)
+        return
+    from database import set_files_subject
+    await set_files_subject(moves)
+    from utils import plural
+    await callback.answer(f"Переложил {len(moves)} {plural(len(moves), 'файл', 'файла', 'файлов')}", show_alert=True)
+    try:
+        kb = callback.message.reply_markup
+        rows = [r for r in (kb.inline_keyboard if kb else []) if r[0].callback_data != "sdof:mv"]
+        await callback.message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data == "sdof:go")

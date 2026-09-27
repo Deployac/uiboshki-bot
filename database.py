@@ -553,6 +553,21 @@ async def get_file_sources() -> set[str]:
         return {r[0] for r in await cursor.fetchall()}
 
 
+async def get_sdo_file_subjects() -> dict[str, tuple[int, str]]:
+    """source → (id, предмет) у файлов из СДО: чтобы переложить их, если
+    курс раньше сопоставился не с тем предметом."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute("SELECT source, id, subject FROM files WHERE source IS NOT NULL")
+        return {r[0]: (r[1], r[2] or "") for r in await cursor.fetchall()}
+
+
+async def set_files_subject(moves: list[tuple[int, str]]):
+    """[(id файла, новый предмет)]."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.executemany("UPDATE files SET subject=? WHERE id=?", [(s, i) for i, s in moves])
+        await db.commit()
+
+
 async def update_file_meta(fid: int, title: str, subject: str, category: str):
     """Правка файла (WebApp): название, предмет, тип."""
     async with aiosqlite.connect(DATABASE_PATH) as db:

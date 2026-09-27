@@ -202,7 +202,7 @@ async def test_sync_keeps_only_courses_from_schedule(db, monkeypatch):
     import schedule_parser
     monkeypatch.setattr(sdo_parser, "SDO_SESSION_COOKIE", "x")
 
-    async def subjects():
+    async def subjects(**_):
         return ["Анализ данных", "Архитектура предприятия"]
 
     async def calendar():
@@ -218,7 +218,7 @@ async def test_sync_keeps_only_courses_from_schedule(db, monkeypatch):
     assert (res["added"], res["old_semester"]) == (3, 2)
     assert res["old_courses"] == ["Методы принятия управленческих решений", "Физическая культура и спорт 3/3"]
 
-    async def no_schedule():
+    async def no_schedule(**_):
         return []
 
     monkeypatch.setattr(schedule_parser, "get_group_subjects", no_schedule)   # расписание не загрузилось —
