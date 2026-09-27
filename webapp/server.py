@@ -453,6 +453,36 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
             "can_delete": not STAROSTA_ID or user["id"] == STAROSTA_ID}
 
 
+_tg_bot = None
+
+
+def tg_bot():
+    """Свой экземпляр Bot для отправки файлов из WebApp (тот же токен)."""
+    global _tg_bot
+    if _tg_bot is None:
+        from aiogram import Bot
+        _tg_bot = Bot(BOT_TOKEN)
+    return _tg_bot
+
+
+@app.post("/api/files/{file_id}/send")
+async def api_send_file(file_id: int, user: dict = CurrentUser):
+    """Кнопка «Открыть»: бот шлёт файл в личку. Раньше фронт открывал
+    диплинк t.me/<бот>?start=file_<id>, и в чате копились «/start file_…»."""
+    from handlers.start import send_file_to
+    if not await send_file_to(tg_bot(), user["id"], file_id):
+        raise HTTPException(404, "Файл не найден")
+    return {"ok": True}
+
+
+@app.post("/api/homework/{hw_id}/send")
+async def api_send_hw(hw_id: int, user: dict = CurrentUser):
+    from handlers.start import send_hw_to
+    if not await send_hw_to(tg_bot(), user["id"], hw_id):
+        raise HTTPException(404, "Файл ДЗ не найден")
+    return {"ok": True}
+
+
 class FileIds(BaseModel):
     ids: list[int]
 

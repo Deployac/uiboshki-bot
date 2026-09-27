@@ -16,12 +16,15 @@ class DocSession(RecordingSession):
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
         self.docs = []
+        self.deleted = []
 
     async def make_request(self, bot, method, timeout=None):
         name = type(method).__name__
         if name in ("SendDocument", "SendPhoto"):
             self.docs.append((name, getattr(method, "document", None) or getattr(method, "photo", None), method.caption))
             return Message(message_id=1, date=0, chat=Chat(id=USER.id, type="private")).as_(bot)
+        if name == "DeleteMessage":
+            self.deleted.append(method.message_id)
         return await super().make_request(bot, method, timeout)
 
 
@@ -45,3 +48,38 @@ async def test_hw_deeplink_sends_file(db):
         router._parent_router = None
     assert bot.session.docs == [("SendDocument", "TGDOC", "📝 <b>Анализ</b>\nзадачи &lt;1–5&gt;")]
     assert any("Файл ДЗ не найден" in t for t, _ in bot.session.sent)
+
+
+@pytest.mark.asyncio
+async def test_file_deeplink_sends_file_and_wipes_start(db):
+    # живой тест: после каждого «Открыть» в чате оставалось «/start file_N»
+    from database import add_file
+    from handlers.start import router
+    fid = await add_file("ЛК1", "Основы предпринимательской деятельности", "TGF", "lk1.pdf", 0)
+    bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=DocSession())
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(router)
+    try:
+        msg = Message(message_id=77, date=0, chat=Chat(id=USER.id, type="private"), from_user=USER,
+                      text=f"/start file_{fid}")
+        await dp.feed_update(bot, Update(update_id=int(time.time()), message=msg))
+    finally:
+        router._parent_router = None
+    assert bot.session.docs == [("SendDocument", "TGF", "📄 <b>ЛК1</b> (Основы предпринимательской деятельности)")]
+    assert bot.session.deleted == [77]
+
+
+@pytest.mark.asyncio
+async def test_webapp_send_file_goes_to_chat_without_start(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    from database import add_file
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    fid = await add_file("ЛК2", "ОПД", "TGF2", "lk2.pdf", 0)
+    bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=DocSession())
+    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server, "tg_bot", lambda: bot)
+    c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+    assert c.post(f"/api/files/{fid}/send", headers=headers).json() == {"ok": True}
+    assert bot.session.docs == [("SendDocument", "TGF2", "📄 <b>ЛК2</b> (ОПД)")]
+    assert c.post("/api/files/999/send", headers=headers).status_code == 404

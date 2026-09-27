@@ -36,7 +36,7 @@ function fileCard(f, withPlace) {
     '<span class="ic">' + fileIcon(f.file_name) + '</span>' +
     '<div style="min-width:0"><div class="ft">' + escapeHtml(f.title) + (f.has_text ? '\u2060<span class="badge">📖</span>' : '') + '</div>' +
     '<div class="fs">' + escapeHtml(sub) + '</div></div>' +
-    '<button onclick="openFile(' + f.id + ')">Открыть</button>' +
+    '<button onclick="openFile(' + f.id + ', this)">Открыть</button>' +
     (f.can_edit ? '<button class="edit" onclick="openFileSheet(' + f.id + ')" aria-label="Изменить">✏️</button>' : '') +
   '</div>';
 }
@@ -235,8 +235,6 @@ async function submitFileEdit() {
   }
 }
 
-function openFile(id) {
-  const link = "https://t.me/" + BOT_USERNAME + "?start=file_" + id;
-  if (tg && tg.openTelegramLink) tg.openTelegramLink(link);
-  else window.open(link, "_blank");
+function openFile(id, btn) {
+  sendToChat("/api/files/" + id + "/send", "file_" + id, btn);
 }
