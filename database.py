@@ -121,6 +121,14 @@ async def init_db():
         # Закреплённые в поиске WebApp группы/преподаватели/аудитории —
         # в базе, а не в браузере: видны с телефона и с компьютера.
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS optional_subjects (
+                user_id INTEGER NOT NULL,
+                subject TEXT NOT NULL,
+                attend  INTEGER NOT NULL,
+                PRIMARY KEY (user_id, subject)
+            )
+        """)
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS pinned_targets (
                 user_id     INTEGER NOT NULL,
                 target_type INTEGER NOT NULL,
@@ -895,4 +903,18 @@ async def unpin_target(user_id: int, target_type: int, target_id: int):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("DELETE FROM pinned_targets WHERE user_id=? AND target_type=? AND target_id=?",
                          (user_id, target_type, target_id))
+        await db.commit()
+
+
+async def get_optional_answers(user_id: int) -> dict[str, bool]:
+    """Предметы по выбору, на которые человек уже ответил: предмет → ходит ли."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute("SELECT subject, attend FROM optional_subjects WHERE user_id=?", (user_id,))
+        return {r[0]: bool(r[1]) for r in await cursor.fetchall()}
+
+
+async def set_optional_answer(user_id: int, subject: str, attend: bool):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("INSERT OR REPLACE INTO optional_subjects (user_id, subject, attend) VALUES (?, ?, ?)",
+                         (user_id, subject, int(attend)))
         await db.commit()

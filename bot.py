@@ -10,7 +10,7 @@ from config import BOT_TOKEN, STAROSTA_ID, WEBAPP_PORT, WEBAPP_URL
 from database import init_db
 from handlers import register_handlers
 from scheduler import start_scheduler
-from middleware import MenuInterruptMiddleware
+from middleware import MenuInterruptMiddleware, OptionalSubjectsMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -126,6 +126,7 @@ async def main():
     # меню посреди диалога (добавление дедлайна, выбор предмета и т.д.)
     # проглатывалось как обычный текстовый ввод. См. middleware.py.
     dp.message.outer_middleware(MenuInterruptMiddleware())
+    dp.update.outer_middleware(OptionalSubjectsMiddleware())
     dp.error.register(notify_starosta_on_error)
 
     await init_db()

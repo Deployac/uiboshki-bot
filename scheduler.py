@@ -44,7 +44,7 @@ def progress_bar(delta: int, max_days: int = 14) -> str:
 
 
 async def send_morning_schedule(bot: Bot):
-    schedule_text = await get_today_schedule()
+    from optional_subjects import apply_for
 
     # Приветствие + погода одной строкой (если не получили — без неё)
     try:
@@ -54,11 +54,12 @@ async def send_morning_schedule(bot: Bot):
         logger.error(f"Weather error: {e}")
         weather_text = ""
     head = "☀️ <b>Доброе утро!</b>" + (f"\n{weather_text}" if weather_text else "")
-    full_text = f"{head}\n\n{schedule_text}"
 
     users = await get_all_subscribed_users()
     for uid in users:
         try:
+            await apply_for(uid)   # у каждого своё: предметы по выбору
+            full_text = f"{head}\n\n{await get_today_schedule()}"
             await bot.send_message(uid, full_text, parse_mode="HTML")
         except Exception as e:
             logger.warning(f"Не смог отправить {uid}: {e}")
@@ -72,7 +73,10 @@ async def send_group_morning_digest(bot: Bot):
     if not GROUP_CHAT_ID:
         return
     try:
+        from config import OPTIONAL_SUBJECTS
         from handlers.schedule import _notes_block
+        from optional_subjects import HIDE
+        HIDE.set(frozenset(OPTIONAL_SUBJECTS))   # в общем чате — без предметов по выбору
         text = await get_today_schedule()
         text += await _notes_block(today_msk().isoformat())
         await bot.send_message(GROUP_CHAT_ID, text, parse_mode="HTML")
@@ -145,14 +149,16 @@ async def check_lesson_reminders(bot: Bot):
         today = now.date()
         _sent_reminders = {k for k in _sent_reminders if k[0] == today}
 
+        from optional_subjects import apply_for
         raw    = await fetch_schedule_raw()
-        events = parse_events_for_date(raw, today)
         users  = await get_all_subscribed_users()
 
         for uid in users:
             user = await get_user(uid)
             if not user:
                 continue
+            await apply_for(uid)
+            events = parse_events_for_date(raw, today)
             remind_mins = user.get("reminder_minutes", 15)
             remind_time = now + timedelta(minutes=remind_mins)
 

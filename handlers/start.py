@@ -87,6 +87,57 @@ async def cmd_start(message: Message):
             "(можно кидать фото и файлы). Ещё оно всегда под кнопкой «Приложение» слева от поля ввода.",
             reply_markup=kb,
         )
+    await ask_optional(message, user.id)
+
+
+# ── Предметы по выбору (optional_subjects.py) ───────────────────────────────
+
+def _optional_kb(i: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🎖 Хожу", callback_data=f"opt:{i}:1"),
+        InlineKeyboardButton(text="Не хожу", callback_data=f"opt:{i}:0"),
+    ]])
+
+
+async def ask_optional(message: Message, user_id: int, all_subjects: bool = False):
+    """Спросить про предметы по выбору: после /start — только те, на которые
+    ещё не ответил; /optional — все (чтобы поменять ответ)."""
+    from config import OPTIONAL_SUBJECTS
+    from database import get_optional_answers
+    from optional_subjects import pending_for
+    subjects = OPTIONAL_SUBJECTS if all_subjects else await pending_for(user_id)
+    answers = await get_optional_answers(user_id) if all_subjects else {}
+    for s in subjects:
+        now = ("\nСейчас: " + ("хожу" if answers[s] else "не хожу")) if s in answers else ""
+        await message.answer(
+            f"🎖 <b>{esc(s)}</b> — ходишь?\nЕсли нет, уберу эти пары из твоего расписания и напоминаний.{now}",
+            parse_mode="HTML", reply_markup=_optional_kb(OPTIONAL_SUBJECTS.index(s)))
+    if all_subjects and not subjects:
+        await message.answer("Предметов по выбору нет.")
+
+
+@router.message(Command("optional"))
+async def cmd_optional(message: Message):
+    await ask_optional(message, message.from_user.id, all_subjects=True)
+
+
+@router.callback_query(F.data.startswith("opt:"))
+async def optional_answer(callback: CallbackQuery):
+    from config import OPTIONAL_SUBJECTS
+    from database import set_optional_answer
+    _, i, attend = callback.data.split(":")
+    if not i.isdigit() or int(i) >= len(OPTIONAL_SUBJECTS):
+        await callback.answer("Устарело", show_alert=True)
+        return
+    subject = OPTIONAL_SUBJECTS[int(i)]
+    await set_optional_answer(callback.from_user.id, subject, attend == "1")
+    text = (f"🎖 <b>{esc(subject)}</b> — буду показывать эти пары." if attend == "1"
+            else f"Ок, <b>{esc(subject)}</b> убрал из твоего расписания. Передумаешь — /optional")
+    await callback.answer()
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML")
+    except Exception:
+        pass
 
 
 @router.message(Command("app"))

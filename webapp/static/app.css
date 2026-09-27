@@ -89,6 +89,17 @@
   .schedule-html { font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; }
 
   /* Главная: погода, «следующая пара», пары карточками, выбор дня */
+  .opt-card {
+    margin: 0 0 12px; padding: 12px 14px; background: var(--bg-card); border: 1px solid var(--accent);
+    border-radius: var(--radius-sm); animation: fadein .3s ease-out;
+  }
+  .opt-card .txt { font-size: 13px; color: var(--hint); line-height: 1.35; }
+  .opt-card .txt b { display: block; font-size: 15px; color: var(--text); margin-bottom: 2px; }
+  .opt-card .btns { display: flex; gap: 8px; margin-top: 10px; }
+  .opt-card button { flex: 1; border: none; border-radius: 999px; padding: 9px 0; font-size: 14px; font-weight: 700;
+                     background: var(--accent); color: #fff; }
+  .opt-card button.no { background: none; border: 1px solid var(--border); color: var(--text); }
+  .optional-links .home-link { margin: 10px auto 0; }
   .home-add {
     display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 10px 10px 12px;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
