@@ -7,11 +7,21 @@ const BOT_USERNAME = "uiboshkibot"; // если бот переименуют �
 if (tg) {
   tg.ready();
   tg.expand();
+  // Случайный свайп вниз не сворачивает приложение (Bot API 7.7), как у
+  // @BotFather; закрыть — кнопкой «Закрыть».
+  try { if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch (e) {}
   try { tg.setHeaderColor("secondary_bg_color"); } catch (e) {}
   const tp = tg.themeParams || {};
   const root = document.documentElement.style;
   if (tp.bg_color)            root.setProperty("--bg", tp.bg_color);
-  if (tp.secondary_bg_color)  root.setProperty("--bg-card", tp.secondary_bg_color);
+  // Карточки должны отличаться от фона. Живой тест: из чата бота Telegram
+  // дал серый secondary_bg_color, а с ярлыка «Домой» — такой же чёрный, как
+  // фон, и карточки сливались. Берём первый цвет, отличный от фона, иначе
+  // чуть светлее/темнее фона сами.
+  const sameAsBg = c => !c || (tp.bg_color && c.toLowerCase() === tp.bg_color.toLowerCase());
+  const card = [tp.section_bg_color, tp.secondary_bg_color].find(c => !sameAsBg(c))
+    || (tp.bg_color ? (tg.colorScheme === "light" ? "#f2f2f7" : "#1c1c1e") : "");
+  if (card) root.setProperty("--bg-card", card);
   if (tp.text_color)          root.setProperty("--text", tp.text_color);
   if (tp.hint_color)          root.setProperty("--hint", tp.hint_color);
   if (tp.button_color)        root.setProperty("--accent", tp.button_color);
