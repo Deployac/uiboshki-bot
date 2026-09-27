@@ -3,6 +3,7 @@
 
 loadToday();
 initHomeAdd();
+initOptional();
 renderChat();
 loadChatSubjects();
 

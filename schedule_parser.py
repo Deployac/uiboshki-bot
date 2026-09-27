@@ -11,6 +11,7 @@ import recurring_ical_events
 from config import ICAL_URL, TIMEZONE, SCHEDULE_CACHE_TTL_SECONDS
 from utils import esc
 
+from optional_subjects import unfiltered
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo(TIMEZONE)
 
@@ -80,10 +81,14 @@ def parse_events_for_date(ical_data: bytes, target: date) -> list[dict]:
     events_raw = _calendar_query(ical_data).at(target)
     events = []
 
+    from optional_subjects import HIDE
+    hide = HIDE.get()
     for component in events_raw:
         summary = str(component.get("SUMMARY", "Без названия"))
         if summary.strip().endswith("неделя"):
             continue
+        if hide and _split_kind(summary)[0] in hide:
+            continue   # предмет по выбору, на который человек не ходит
 
         location = str(component.get("LOCATION", ""))
         teacher  = _extract_teacher(component)
@@ -339,6 +344,7 @@ def week_overview(raw: bytes, monday: date, days: int = 6) -> dict:
     return {"week": num, "days": out}
 
 
+@unfiltered
 def target_weeks(raw: bytes, first_monday: date, weeks: int = 8, now: datetime | None = None) -> list[dict]:
     """Расписание найденной группы/преподавателя/аудитории по неделям для
     WebApp — сразу на weeks недель одним ответом (разбор ~0,1 с), чтобы
@@ -389,6 +395,7 @@ async def get_group_subjects(days_back: int = 14, days_ahead: int = 28) -> list[
     return _subjects_cache[key]
 
 
+@unfiltered
 def summarize_target(raw: bytes, days: int = 14) -> tuple[str, int]:
     """(главный предмет, сколько пар) за days дней вперёд — подпись, чтобы
     отличить однофамильцев: в справочнике МИРЭА у преподавателей только
@@ -405,6 +412,7 @@ def summarize_target(raw: bytes, days: int = 14) -> tuple[str, int]:
     return (subjects.most_common(1)[0][0] if subjects else ""), pairs
 
 
+@unfiltered
 def format_target_schedule(raw: bytes, target_type: int, days: int = 14) -> str:
     """Расписание найденного преподавателя/группы/аудитории на days дней
     вперёд, пустые дни пропускаются. У преподавателя и аудитории в строке —

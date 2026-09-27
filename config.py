@@ -13,6 +13,10 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "mirea_bot.db")
 
 # ─── Группа ───────────────────────────────────────────────────────────────────
 GROUP_NAME = "УИБО-03-24"
+# Предметы по выбору: ходят не все (военная кафедра — двое из группы).
+# Пары скрыты, пока человек не ответит «хожу» (WebApp спросит на главной,
+# бот — при /start). Через запятую.
+OPTIONAL_SUBJECTS = [s.strip() for s in os.getenv("OPTIONAL_SUBJECTS", "Военная кафедра").split(",") if s.strip()]
 TIMEZONE   = "Europe/Moscow"
 
 # ─── ID старосты (твой Telegram ID) ───────────────────────────────────────────

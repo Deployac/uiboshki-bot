@@ -31,3 +31,17 @@ class MenuInterruptMiddleware(BaseMiddleware):
                 data["interrupted_fsm_data"] = await state.get_data()
                 await state.clear()
         return await handler(event, data)
+
+
+class OptionalSubjectsMiddleware(BaseMiddleware):
+    """Скрывает пары предметов по выбору, на которые человек не ходит
+    (optional_subjects.HIDE), для всего, что бот делает по его апдейту."""
+    async def __call__(self, handler, event, data):
+        user = data.get("event_from_user")
+        if user:
+            from optional_subjects import apply_for
+            try:
+                await apply_for(user.id)
+            except Exception as e:
+                logger.warning(f"optional subjects: {e}")
+        return await handler(event, data)

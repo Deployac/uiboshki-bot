@@ -77,6 +77,8 @@ async def get_current_user(x_telegram_init_data: str = Header(default="")) -> di
     # заход в WebApp перетирал в users фамилию, записанную ботом.
     full_name = " ".join(p for p in (user.get("first_name", ""), user.get("last_name", "")) if p)
     await upsert_user(user["id"], user.get("username", ""), full_name)
+    from optional_subjects import apply_for
+    await apply_for(user["id"])   # пары предметов по выбору, на которые не ходит — скрыть
     return user
 
 
@@ -171,6 +173,32 @@ async def api_today(user: dict = CurrentUser):
         "deadlines": {"active": len(items), "soon": soon},
         "notes": [{"subject": n.get("subject") or "", "text": n["text"]} for n in notes],
     }
+
+
+class OptionalAnswer(BaseModel):
+    subject: str
+    attend: bool
+
+
+@app.get("/api/optional")
+async def api_optional(user: dict = CurrentUser):
+    """Предметы по выбору: о каких спросить (pending) и что уже ответил."""
+    from config import OPTIONAL_SUBJECTS
+    from database import get_optional_answers
+    from optional_subjects import pending_for
+    answers = await get_optional_answers(user["id"])
+    return {"pending": await pending_for(user["id"]),
+            "answers": {s: answers[s] for s in OPTIONAL_SUBJECTS if s in answers}}
+
+
+@app.post("/api/optional")
+async def api_optional_set(body: OptionalAnswer, user: dict = CurrentUser):
+    from config import OPTIONAL_SUBJECTS
+    from database import set_optional_answer
+    if body.subject not in OPTIONAL_SUBJECTS:
+        raise HTTPException(status_code=400, detail="не предмет по выбору")
+    await set_optional_answer(user["id"], body.subject, body.attend)
+    return {"ok": True}
 
 
 @app.get("/api/day")
@@ -830,6 +858,8 @@ async def ics_feed(token: str):
     owner = await get_user_by_calendar_token(token)
     if not owner:
         raise HTTPException(status_code=404, detail="ссылка недействительна")
+    from optional_subjects import apply_for
+    await apply_for(owner["user_id"])
     body = await build_ics_for_user(token)
     return Response(
         content=body,

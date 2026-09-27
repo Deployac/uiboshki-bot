@@ -42,7 +42,9 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 (календарь группы, по умолчанию УИБО-03-24 = группа 4928 на зеркале),
 `DATABASE_PATH`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `DEEPSEEK_API_KEY`
 (необязательно), `WEBAPP_URL`, `PORT`, `SDO_SESSION_COOKIE`,
-`SDO_SYNC_INTERVAL_HOURS` (6), `SDO_KEEP_COURSES` (по умолчанию «Учебный отдел»).
+`SDO_SYNC_INTERVAL_HOURS` (6), `SDO_KEEP_COURSES` (по умолчанию «Учебный отдел»),
+`OPTIONAL_SUBJECTS` (предметы по выбору, по умолчанию «Военная кафедра»: пары
+скрыты, пока человек не ответит «хожу» — `optional_subjects.py`, /optional).
 
 ## Как устроено (главное)
 - **Расписание МИРЭА.** Официальный API `schedule-of.mirea.ru` из-за рубежа не
