@@ -311,6 +311,7 @@
   .file-card .fs { color: var(--hint); font-size: 12.5px; }
   .file-card button {
     margin-left: auto;
+    flex: none; white-space: nowrap;   /* «В чат» в одну строку — сжимается название, а не кнопка */
     background: var(--accent);
     color: #fff;
     border: none;
