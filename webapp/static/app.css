@@ -31,6 +31,9 @@
     padding: 18px 18px 10px;
     background: var(--bg);
   }
+  /* полный экран Telegram (core.js): шапка ниже «чёлки» и кнопок Telegram, вкладки — выше полоски */
+  html.fullscreen header.top { padding-top: calc(var(--safe-top, 0px) + 8px); }
+  html.fullscreen nav.tabs { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
   header.top h1 {
     margin: 0;
     font-size: 22px;
