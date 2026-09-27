@@ -750,8 +750,19 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
     if subject and subject in await get_subjects_with_lecture_text():
         lectures = lecture_picker.pick(await get_subject_lecture_context(subject), query)
     elif not subject and query.strip():
-        lectures = await asyncio.to_thread(lecture_picker.pick, await get_all_lecture_context(), query,
-                                           lecture_picker.AUTO_BUDGET, lecture_picker.AUTO_MIN_SCORE)
+        all_lectures = await get_all_lecture_context()
+        if not body.attachment and lecture_picker.wants_course(query):
+            # «объясни 3 лекцию» без предмета: вопрос явно про лекции, а предмет
+            # не угадывается — не отвечаем наугад, а даём выбрать (фронт
+            # переключит предмет и задаст тот же вопрос)
+            ranked = await asyncio.to_thread(lecture_picker.subject_scores, all_lectures, query)
+            if not ranked or (len(ranked) > 1 and ranked[1][1] * 4 >= ranked[0][1] * 3):
+                options = [s for s, _ in ranked[:4]] or (await get_subjects_with_lecture_text())[:8]
+                if options:
+                    msg = "🤔 По какому предмету? Выбери — и я отвечу по его лекциям."
+                    return {"content": msg, "html": msg, "reasoning": "", "choose": options}
+        lectures = await asyncio.to_thread(lecture_picker.pick, all_lectures, query,
+                                           lecture_picker.AUTO_BUDGET, lecture_picker.AUTO_MIN_SCORE, True)
     context = await build_group_context(user["id"])
 
     try:

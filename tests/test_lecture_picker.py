@@ -124,3 +124,49 @@ def test_typo_in_question_still_finds_lecture():
                ("Лекция 2. Налоги", "НДС и налог на прибыль. " + "налог " * 3000))
     out = lp.pick(ctx, "Дебит и кредит эт что?", lp.AUTO_BUDGET, lp.AUTO_MIN_SCORE)
     assert out.startswith("=== Лекция 1. Учёт ===") and "Лекция 2" not in out
+
+
+def test_auto_mode_takes_lectures_of_one_subject():
+    # живой тест: вопрос про оценку бизнеса без предмета — в «📖» оказались
+    # «Практика 1» анализа данных и ПР по ООАиП, по паре общих слов
+    ctx = _ctx(("ФХД: Лекция 5. Оценка стоимости бизнеса", "Стоимость бизнеса, мультипликаторы P/E, дисконтирование денежных потоков. " * 50),
+               ("ФХД: Лекция 6. Рентабельность", "Рентабельность и стоимость капитала, денежные потоки. " * 50),
+               ("Анализ данных: Практика 1", "Денежные потоки в таблице, стоимость ячейки. " * 50),
+               ("ООАиП: ПР1", "Стоимость объекта класса, потоки ввода. " * 50))
+    out = lp.pick(ctx, "как считать стоимость бизнеса через денежные потоки и мультипликаторы",
+                  lp.AUTO_BUDGET, lp.AUTO_MIN_SCORE, True)
+    assert "=== ФХД: Лекция 5" in out and "=== ФХД: Лекция 6" in out
+    assert "Анализ данных" not in out and "ООАиП" not in out
+
+
+def test_subject_scores_and_wants_course():
+    ctx = _ctx(("Учет: Лекция 3. Баланс", "Баланс предприятия, актив и пассив. " * 20),
+               ("ФХД: Лекция 3. Анализ баланса", "Анализ баланса предприятия, ликвидность. " * 20),
+               ("ООАиП: Лекция 1", "Классы и объекты. " * 20))
+    ranked = lp.subject_scores(ctx, "что было в лекции про баланс предприятия")
+    assert {s for s, _ in ranked[:2]} == {"Учет", "ФХД"} and "ООАиП" not in dict(ranked)
+    assert lp.wants_course("объясни 3 лекцию") and lp.wants_course("что препод говорил на паре")
+    assert not lp.wants_course("что такое NPV")
+
+
+@pytest.mark.asyncio
+async def test_chat_asks_subject_when_lecture_question_is_ambiguous(db, monkeypatch):
+    # вопрос явно про лекции, а подходят два предмета — не отвечаем наугад
+    from fastapi.testclient import TestClient
+    import ai_solver
+    import webapp.server as server
+    from database import add_file, save_file_text
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    for subj in ("Учет", "ФХД"):
+        fid = await add_file("Лекция 3", subj, "TG" + subj, "l3.pdf", 0)
+        await save_file_text(fid, "Баланс предприятия, актив и пассив. " * 20)
+
+    async def no_ai(*a, **kw):
+        raise AssertionError("должен переспросить предмет, а не звать ИИ")
+
+    monkeypatch.setattr(ai_solver, "chat_with_reasoning", no_ai)
+    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+    data = c.post("/api/chat", headers=headers, json={"history": [
+        {"role": "user", "content": "объясни баланс предприятия из 3 лекции"}], "subject": ""}).json()
+    assert sorted(data["choose"]) == ["Учет", "ФХД"]

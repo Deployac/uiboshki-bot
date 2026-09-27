@@ -277,6 +277,7 @@ async function requestAnswer(entry, att) {
   try {
     const data = await api("/api/chat", { method: "POST", body: JSON.stringify(body) });
     pending.remove();
+    if (data.choose && data.choose.length) { askSubject(entry, att, data); return; }
     delete entry.failed;
     appendMsg("assistant", data.content, data.reasoning, data.html, null, true, data.files, data.sources);
     chatLog.push({ role: "assistant", content: data.content, html: data.html, files: data.files, sources: data.sources });
@@ -367,4 +368,34 @@ function addQuickReplies() {
     row.appendChild(b);
   });
   bubble.after(row);
+}
+
+// «По какому предмету?» — вопрос явно про лекции, а предмет не угадан.
+// Тап по предмету: он выбирается сверху, и тот же вопрос уходит заново.
+// Пока не выбрал — вопрос в историю не идёт (как после ошибки).
+function askSubject(entry, att, data) {
+  entry.failed = true;
+  saveChatLog();
+  const bubble = appendMsg("assistant", "", "", escapeHtml(data.content));
+  const row = document.createElement("div");
+  row.className = "subject-choice";
+  data.choose.forEach(name => {
+    const b = document.createElement("button");
+    b.textContent = name;
+    b.onclick = () => {
+      haptic();
+      const sel = document.getElementById("chat-subject");
+      if (![...sel.options].some(o => o.value === name)) {
+        const o = document.createElement("option"); o.value = name; o.textContent = name; sel.appendChild(o);
+      }
+      sel.value = name;
+      bubble.remove();
+      chatLog.splice(chatLog.indexOf(entry), 1);
+      delete entry.failed;
+      chatLog.push(entry);
+      requestAnswer(entry, att);
+    };
+    row.appendChild(b);
+  });
+  bubble.appendChild(row);
 }
