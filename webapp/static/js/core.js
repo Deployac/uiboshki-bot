@@ -26,6 +26,29 @@ if (tg) {
   }
 }
 
+// Полный экран на телефоне (Telegram 8.0+): без шапки Telegram, как
+// отдельное приложение. Отступы под «чёлку»/полоску (safeAreaInset) и под
+// плавающие кнопки Telegram сверху (contentSafeAreaInset) — в CSS-переменные
+// --safe-top/--safe-bottom, по ним сдвигаются шапка и вкладки (app.css).
+function syncSafeArea() {
+  if (!tg) return;
+  const sa = tg.safeAreaInset || {}, ca = tg.contentSafeAreaInset || {};
+  const root = document.documentElement.style;
+  root.setProperty("--safe-top", ((sa.top || 0) + (ca.top || 0)) + "px");
+  root.setProperty("--safe-bottom", ((sa.bottom || 0) + (ca.bottom || 0)) + "px");
+}
+if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0") && ["ios", "android"].includes(tg.platform)) {
+  try {
+    document.documentElement.classList.add("fullscreen");
+    tg.onEvent("safeAreaChanged", syncSafeArea);
+    tg.onEvent("contentSafeAreaChanged", syncSafeArea);
+    tg.onEvent("fullscreenChanged", syncSafeArea);
+    tg.onEvent("fullscreenFailed", () => document.documentElement.classList.remove("fullscreen"));
+    tg.requestFullscreen();
+    syncSafeArea();
+  } catch (e) { document.documentElement.classList.remove("fullscreen"); }
+}
+
 function initData() {
   return tg ? tg.initData : "";
 }

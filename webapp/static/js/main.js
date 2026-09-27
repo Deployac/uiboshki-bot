@@ -2,6 +2,7 @@
 // Файлы подключаются по порядку и делят глобальную область видимости.
 
 loadToday();
+initHomeAdd();
 renderChat();
 loadChatSubjects();
 

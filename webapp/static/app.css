@@ -31,6 +31,9 @@
     padding: 18px 18px 10px;
     background: var(--bg);
   }
+  /* полный экран Telegram (core.js): шапка ниже «чёлки» и кнопок Telegram, вкладки — выше полоски */
+  html.fullscreen header.top { padding-top: calc(var(--safe-top, 0px) + 8px); }
+  html.fullscreen nav.tabs { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
   header.top h1 {
     margin: 0;
     font-size: 22px;
@@ -86,6 +89,17 @@
   .schedule-html { font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; }
 
   /* Главная: погода, «следующая пара», пары карточками, выбор дня */
+  .home-add {
+    display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 10px 10px 12px;
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    animation: fadein .3s ease-out;
+  }
+  .home-add .ic { font-size: 22px; }
+  .home-add .txt { flex: 1; min-width: 0; font-size: 12.5px; color: var(--hint); line-height: 1.3; }
+  .home-add .txt b { display: block; font-size: 14px; color: var(--text); }
+  .home-add button { flex: none; background: var(--accent); color: #fff; border: none; border-radius: 999px;
+                     padding: 7px 13px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .home-add button.x { background: none; color: var(--hint); padding: 4px; font-size: 14px; font-weight: 400; }
   .weather-pill {
     display: inline-block; margin: 0 0 10px; padding: 7px 12px; border-radius: 999px;
     background: var(--bg-card); border: 1px solid var(--border); color: var(--hint); font-size: 13px;
