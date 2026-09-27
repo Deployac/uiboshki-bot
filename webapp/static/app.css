@@ -32,7 +32,7 @@
     background: var(--bg);
   }
   /* полный экран Telegram (core.js): шапка ниже «чёлки» и кнопок Telegram, вкладки — выше полоски */
-  html.fullscreen header.top { padding-top: calc(var(--safe-top, 0px) + 8px); }
+  html.fullscreen header.top { padding-top: calc(max(var(--safe-top, 0px), env(safe-area-inset-top), 44px) + 8px); }
   html.fullscreen nav.tabs { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
   header.top h1 {
     margin: 0;
@@ -100,6 +100,7 @@
   .home-add button { flex: none; background: var(--accent); color: #fff; border: none; border-radius: 999px;
                      padding: 7px 13px; font-size: 13px; font-weight: 700; white-space: nowrap; }
   .home-add button.x { background: none; color: var(--hint); padding: 4px; font-size: 14px; font-weight: 400; }
+  .home-link { display: block; margin: 18px auto 4px; color: var(--hint); font-weight: 600; }
   .weather-pill {
     display: inline-block; margin: 0 0 10px; padding: 7px 12px; border-radius: 999px;
     background: var(--bg-card); border: 1px solid var(--border); color: var(--hint); font-size: 13px;

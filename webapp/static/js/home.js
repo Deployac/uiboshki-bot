@@ -59,9 +59,14 @@ function refreshStatuses() {
     l.status = now >= e ? "past" : (now >= s ? "now" : "later");
   });
   renderHero();
+  // Пар нет — об этом уже крупно говорит карточка сверху, пустой блок
+  // «Сегодня · пар нет» под ней только оставлял дыру (живой тест).
+  const noPairs = !todayData.lessons.length && todayData.schedule_ok;
+  document.getElementById("today-head").style.display = noPairs ? "none" : "";
+  document.getElementById("today-lessons").style.display = noPairs ? "none" : "";
   document.getElementById("today-lessons").innerHTML = todayData.lessons.length
     ? todayData.lessons.map(l => lessonRow(l, true)).join("")
-    : '<div class="empty">' + (todayData.schedule_ok ? "Сегодня пар нет 🎉" : "Расписание сейчас не загрузилось") + '</div>';
+    : '<div class="empty">Расписание сейчас не загрузилось</div>';
 }
 
 function renderHero() {
@@ -259,19 +264,25 @@ async function selectDay(btn, silent) {
 }
 
 // «На экран Домой» (Telegram 8.0+, Bot API addToHomeScreen): ярлык WebApp на
-// рабочем столе телефона — открывается сразу приложением. Карточка только
-// если ярлыка ещё нет; ✕ — скрыть навсегда на этом устройстве.
+// рабочем столе телефона — открывается сразу приложением.
+// Карточка сверху — только если Telegram точно знает, что ярлыка нет
+// («missed»); ✕ её прячет. Тихая ссылка внизу «Сегодня» остаётся для тех, кто
+// закрыл карточку случайно, и для iPhone, где статус «unknown» — ярлык там
+// мог уже быть, и карточка у них висела зря (живой тест).
 const HOME_ADD_KEY = "homeAdd.hidden";
 
 function initHomeAdd() {
   if (!(tg && tg.checkHomeScreenStatus && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) return;
-  try { if (localStorage.getItem(HOME_ADD_KEY)) return; } catch (e) {}
+  let hidden = false;
+  try { hidden = !!localStorage.getItem(HOME_ADD_KEY); } catch (e) {}
   try {
     tg.checkHomeScreenStatus(status => {
-      if (status === "missed" || status === "unknown") document.getElementById("home-add").style.display = "flex";
+      if (status === "missed" && !hidden) document.getElementById("home-add").style.display = "flex";
+      else if (status === "missed" || status === "unknown") document.getElementById("home-link").style.display = "block";
     });
     tg.onEvent("homeScreenAdded", () => {
       document.getElementById("home-add").style.display = "none";
+      document.getElementById("home-link").style.display = "none";
       haptic("success");
       showToast("📲 Готово — ярлык на экране «Домой»");
     });
@@ -286,5 +297,6 @@ function addToHome() {
 function hideHomeAdd() {
   haptic();
   document.getElementById("home-add").style.display = "none";
+  document.getElementById("home-link").style.display = "block";
   try { localStorage.setItem(HOME_ADD_KEY, "1"); } catch (e) {}
 }
