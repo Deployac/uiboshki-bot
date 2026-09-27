@@ -663,6 +663,35 @@ async def api_subjects(user: dict = CurrentUser):
                         + [{"name": s, "lectures": False} for s in rest]}
 
 
+async def _chat_file_request(text: str) -> dict | None:
+    """«Скинь 5 лк по уч деят на предпрят» в чате WebApp — файлы карточками
+    (📥 / «В чат»), а не пересказ лекции от ИИ (живой тест). Не просьба о
+    файле или предмет не угадан — None, отвечает ИИ."""
+    import file_request
+    from database import get_file_ids_with_text, get_files
+    from file_categories import LABELS, category_of
+    from utils import esc
+    if not file_request.is_request(text):
+        return None
+    subjects, items = file_request.find(text, await get_files())
+    if not subjects:
+        return None
+    if len(subjects) > 1:
+        msg = "🤔 По какому предмету? Подходят: " + "; ".join(subjects[:8]) + ". Напиши чуть подробнее."
+        return {"content": msg, "html": esc(msg), "reasoning": ""}
+    if not items:
+        msg = f"🤷 В папке «{subjects[0]}» такого не нашёл — загляни во вкладку «Файлы»."
+        return {"content": msg, "html": esc(msg), "reasoning": ""}
+    with_text = await get_file_ids_with_text()
+    msg = f"📁 {subjects[0]} — " + ("вот файл:" if len(items) == 1 else f"нашёл {len(items)}" +
+                                    (", показываю 8:" if len(items) > 8 else ":"))
+    files = [{"id": f["id"], "title": f["title"], "subject": f.get("subject") or "",
+              "file_name": f.get("file_name") or "", "has_text": f["id"] in with_text,
+              "category": category_of(f), "category_label": LABELS[category_of(f)], "can_edit": False}
+             for f in items[:8]]
+    return {"content": msg, "html": esc(msg), "reasoning": "", "files": files}
+
+
 @app.post("/api/chat")
 async def api_chat(body: ChatBody, user: dict = CurrentUser):
     """Чат WebApp: история (последние 20), по желанию предмет (если по нему
@@ -687,6 +716,10 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
     import lecture_picker
     from database import get_all_lecture_context
     query = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+    if not body.attachment and history[-1]["role"] == "user":
+        found = await _chat_file_request(history[-1]["content"])
+        if found:
+            return found
     lectures = ""
     if subject and subject in await get_subjects_with_lecture_text():
         lectures = lecture_picker.pick(await get_subject_lecture_context(subject), query)

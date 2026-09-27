@@ -44,7 +44,7 @@ function renderChat() {
     log.appendChild(empty);
     return;
   }
-  chatLog.forEach(m => appendMsg(m.role, m.content, "", m.html, m.att, false));
+  chatLog.forEach(m => appendMsg(m.role, m.content, "", m.html, m.att, false, m.files));
 }
 
 function newChat() {
@@ -55,7 +55,7 @@ function newChat() {
   renderChat();
 }
 
-function appendMsg(role, content, reasoning, html, att, scroll = true) {
+function appendMsg(role, content, reasoning, html, att, scroll = true, files) {
   const log = document.getElementById("chat-log");
   const empty = log.querySelector(".chat-empty");
   if (empty) empty.remove();
@@ -75,6 +75,13 @@ function appendMsg(role, content, reasoning, html, att, scroll = true) {
     // html собирает сервер (utils.md_to_tg_html_chunks): всё, кроме <b>/<i>/<code>/<pre>, экранировано
     if (html) textNode.innerHTML = html; else textNode.textContent = content;
     div.appendChild(textNode);
+  }
+  // «скинь лк 5 по …» — найденные файлы с теми же кнопками, что во вкладке «Файлы»
+  if (files && files.length) {
+    const box = document.createElement("div");
+    box.className = "chat-files";
+    box.innerHTML = files.map(f => fileCard(f, false)).join("");
+    div.appendChild(box);
   }
   if (reasoning) {
     const det = document.createElement("details");
@@ -213,8 +220,8 @@ async function requestAnswer(entry, att) {
     const data = await api("/api/chat", { method: "POST", body: JSON.stringify(body) });
     pending.remove();
     delete entry.failed;
-    appendMsg("assistant", data.content, data.reasoning, data.html);
-    chatLog.push({ role: "assistant", content: data.content, html: data.html });
+    appendMsg("assistant", data.content, data.reasoning, data.html, null, true, data.files);
+    chatLog.push({ role: "assistant", content: data.content, html: data.html, files: data.files });
     saveChatLog();
     haptic("success");
   } catch (e) {

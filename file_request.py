@@ -56,7 +56,7 @@ def match_subjects(text: str, subjects: list[str]) -> list[str]:
     """Предметы, лучше всех покрытые словами запроса (по началам слов:
     «предпр» → «предпринимательской», «основам» → «основы»). Пусто —
     ни одно слово не подошло."""
-    query = [w for w in _words(text) if len(w) >= 3 and w not in _NOISE]
+    query = [w for w in _words(text) if len(w) >= 2 and w not in _NOISE]   # «уч деят» — и «уч» в деле
     if not query:
         return []
     scored = []

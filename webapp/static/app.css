@@ -251,6 +251,7 @@
   .hw-card .hw-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
   .hw-card .dl-meta { margin-top: 8px; }
   .file-card .badge { font-size: 11px; font-weight: 800; color: var(--accent-2); margin-left: 6px; }
+  .chat-files { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
   .file-card button.dl { background: none; padding: 6px 4px; font-size: 18px; }
   .file-card.hl { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; }
   .file-card button.edit { margin-left: -4px; background: none; color: var(--hint); padding: 6px 2px; font-size: 15px; }

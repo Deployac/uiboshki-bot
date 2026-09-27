@@ -12,10 +12,11 @@ from tests.test_deeplinks import USER, DocSession
 OPD = "Основы предпринимательской деятельности"
 UCH = "Учетная деятельность на предприятии"
 AD = "Анализ данных"
+ANFHD = "Анализ и диагностика финансово-хозяйственной деятельности предприятия"
 FILES = [{"id": i, "subject": s, "title": t, "category": c} for i, (s, t, c) in enumerate([
     (OPD, "Практическая работа 3", "practice"), (OPD, "Практическая работа 1", "practice"),
     (OPD, "ЛК1", "lecture"), (OPD, "ЛК3", "lecture"), (UCH, "Лекция 1-2", "lecture"),
-    (AD, "Практика 13", "practice"), (AD, "Практика 3", "practice"),
+    (AD, "Практика 13", "practice"), (AD, "Практика 3", "practice"), (ANFHD, "Лекция 5", "lecture"),
 ])]
 
 
@@ -25,7 +26,9 @@ FILES = [{"id": i, "subject": s, "title": t, "category": c} for i, (s, t, c) in 
     ("скинь лк1 по основам предпринимательской", [OPD], ["ЛК1"]),
     ("дай файлы по учетной деят", [UCH], ["Лекция 1-2"]),
     ("нужна практика 3 по анализу данных", [AD], ["Практика 3"]),      # не «Практика 13»
-    ("скинь лекцию по предпр", [OPD, UCH], []),                         # ничья — переспросить
+    ("скинь лекцию по предпр", [ANFHD, OPD, UCH], []),                         # ничья — переспросить
+    # живой тест: «уч» решает между тремя «деят … предпр…»
+    ("Скинь 1 лк по уч деят на предпрят", [UCH], ["Лекция 1-2"]),
 ])
 def test_find(text, subjects, titles):
     assert file_request.is_request(text)
@@ -110,3 +113,26 @@ async def test_download_link_is_signed_and_expires(db, monkeypatch):
     assert c.get(path.replace("sig=", "sig=0")).status_code == 403
     monkeypatch.setattr(time, "time", lambda: 4102444800.0)  # 2100 год — ссылка протухла
     assert c.get(path).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_webapp_chat_answers_file_request_without_ai(db, monkeypatch):
+    # живой тест: в чате WebApp «скинь 5 лк по уч деят» ИИ пересказал чужую лекцию
+    from fastapi.testclient import TestClient
+    import ai_solver
+    import webapp.server as server
+    from database import add_file
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    for f in FILES:
+        await add_file(f["title"], f["subject"], f"TG{f['id']}", f["title"] + ".pdf", 0, category=f["category"])
+
+    async def no_ai(*a, **kw):
+        raise AssertionError("просьба о файле не должна уходить к ИИ")
+
+    monkeypatch.setattr(ai_solver, "chat_with_reasoning", no_ai)
+    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+    data = c.post("/api/chat", headers=headers, json={"history": [
+        {"role": "user", "content": "Скинь 1 лк по уч деят на предпрят"}], "subject": ""}).json()
+    assert [f["title"] for f in data["files"]] == ["Лекция 1-2"]
+    assert UCH in data["content"]
