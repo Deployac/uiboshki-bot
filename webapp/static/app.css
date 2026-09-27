@@ -33,6 +33,13 @@
   }
   /* полный экран Telegram (core.js): шапка ниже «чёлки» и кнопок Telegram, вкладки — выше полоски */
   html.fullscreen header.top { padding-top: calc(max(var(--safe-top, 0px), env(safe-area-inset-top), 44px) + 8px); }
+  /* в полном экране под часами и кнопками Telegram — полоса фона, чтобы
+     прокрученный контент не просвечивал под ними (живой тест) */
+  html.fullscreen body::before {
+    content: ""; position: fixed; top: 0; left: 0; right: 0; z-index: 50; pointer-events: none;
+    height: calc(max(var(--safe-top, 0px), env(safe-area-inset-top)) + 4px);
+    background: linear-gradient(var(--bg) 75%, transparent);
+  }
   html.fullscreen nav.tabs { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
   header.top h1 {
     margin: 0;
