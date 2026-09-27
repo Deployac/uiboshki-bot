@@ -251,6 +251,7 @@
   .hw-card .hw-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
   .hw-card .dl-meta { margin-top: 8px; }
   .file-card .badge { font-size: 11px; font-weight: 800; color: var(--accent-2); margin-left: 6px; }
+  .chat-files { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
   .file-card button.dl { background: none; padding: 6px 4px; font-size: 18px; }
   .file-card.hl { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; }
   .file-card button.edit { margin-left: -4px; background: none; color: var(--hint); padding: 6px 2px; font-size: 15px; }
@@ -310,6 +311,7 @@
   .file-card .fs { color: var(--hint); font-size: 12.5px; }
   .file-card button {
     margin-left: auto;
+    flex: none; white-space: nowrap;   /* «В чат» в одну строку — сжимается название, а не кнопка */
     background: var(--accent);
     color: #fff;
     border: none;
@@ -444,6 +446,21 @@
                    padding: 4px 9px; margin-bottom: 6px; font-size: 13px; }
   .msg .msg-tools { margin-top: 6px; display: flex; gap: 10px; }
   .msg .msg-tools button { background: none; border: none; color: var(--hint); font-size: 12px; font-weight: 700; padding: 0; }
+  .chat-head-btns { display: inline-flex; gap: 14px; }
+  .msg .msg-src { margin-top: 8px; font-size: 12px; color: var(--hint); line-height: 1.5; }
+  .msg .msg-src button { background: none; border: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 600; }
+  .quick-replies { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: -2px 0 4px; padding: 0 2px;
+                   animation: fadein .25s ease-out; }
+  .quick-replies::-webkit-scrollbar { display: none; }
+  .quick-replies button { flex: none; background: none; border: 1px solid var(--border); color: var(--text); border-radius: 999px;
+                          padding: 5px 11px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .quick-replies button:active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .chat-item { display: flex; align-items: center; gap: 10px; background: var(--bg-card); border: 1px solid var(--border);
+               border-radius: var(--radius-sm); padding: 11px 13px; margin-bottom: 6px; cursor: pointer; }
+  .chat-item.cur { border-color: var(--accent); }
+  .chat-item .ft { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-item .fs { font-size: 12px; color: var(--hint); margin-top: 2px; }
+  .chat-item .del { background: none; border: none; color: var(--hint); font-size: 15px; padding: 4px; }
   .msg .chat-retry { display: block; margin-top: 8px; background: none; border: none; padding: 0;
                      color: var(--accent); font-size: 13px; font-weight: 800; }
   .msg.typing-dots { display: inline-flex; gap: 4px; padding: 14px 16px; }
