@@ -394,8 +394,8 @@ async def _old_sdo_deadlines(items: list[dict]) -> list[dict]:
     """Прошлый семестр по метке в названии курса или курса нет в нынешнем
     расписании группы (sdo_parser.not_this_semester)."""
     from schedule_parser import get_group_subjects
-    from sdo_parser import not_this_semester
-    subjects = await get_group_subjects()
+    from sdo_parser import SEMESTER_WINDOW, not_this_semester
+    subjects = await get_group_subjects(**SEMESTER_WINDOW)
     return [d for d in items if not_this_semester(d, subjects)]
 
 

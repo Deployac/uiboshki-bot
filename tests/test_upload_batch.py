@@ -124,7 +124,7 @@ async def _click(dp, bot, data):
 async def test_upload_with_picked_category(db, dp, monkeypatch):
     import schedule_parser
 
-    async def subjects():
+    async def subjects(**_):
         return ["Анализ данных"]
 
     monkeypatch.setattr(schedule_parser, "get_group_subjects", subjects)

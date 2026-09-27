@@ -115,6 +115,42 @@ def test_match_subject(course, subject):
     assert sdo_files.match_subject(course, SUBJECTS) == subject
 
 
+ECON = ["Анализ и диагностика финансово-хозяйственной деятельности предприятия",
+        "Основы предпринимательской деятельности", "Учетная деятельность на предприятии"]
+
+
+@pytest.mark.parametrize("course,subject", [
+    # баг: лекции Черненькой (учётная деятельность) легли в папку курса
+    # Чижаньковой — общие «деятельность» и «предпр…», побеждал первый в списке
+    ("Учетная деятельность на предприятии_Зачет [I.26-27]", "Учетная деятельность на предприятии"),
+    ("Основы предпринимательской деятельности [I.26-27]", "Основы предпринимательской деятельности"),
+    ("Анализ и диагностика ФХД предприятия", ECON[0]),
+])
+@pytest.mark.parametrize("order", [ECON, ECON[::-1]])
+def test_match_subject_similar_names(course, subject, order):
+    assert sdo_files.match_subject(course, order) == subject
+
+
+def test_match_subject_full_tie_is_not_guessed():
+    assert sdo_files.match_subject("Деятельность", ["Деятельность А-ля", "Деятельность Б-ля"]) == "Деятельность"
+
+
+async def test_misplaced_sdo_files_are_moved(db):
+    from database import add_file, get_files, get_sdo_file_subjects, set_files_subject
+    from handlers.files import sdo_moves
+    wrong = await add_file("Лекция 1-2", ECON[1], "tg1", "l.pptx", 0, category="lectures", source="sdo:7")
+    ok = await add_file("ЛК1", ECON[1], "tg2", "lk1.pdf", 0, category="lectures", source="sdo:8:lk1.pdf")
+    f = lambda src, subj: sdo_files.SdoFile(course_id=1, subject=subj, title="x", category="lectures",
+                                            source=src, url="u")
+    courses = [sdo_files.SdoCourse(id=1, name="Учетная", subject=ECON[2], files=[f("sdo:7", ECON[2])]),
+               sdo_files.SdoCourse(id=2, name="Основы", subject=ECON[1], files=[f("sdo:8:lk1.pdf", ECON[1])]),
+               sdo_files.SdoCourse(id=3, name="Старый", subject="", old=True)]
+    moves = sdo_moves(courses, await get_sdo_file_subjects())
+    assert moves == [(wrong, ECON[2])]
+    await set_files_subject(moves)
+    assert {x["id"]: x["subject"] for x in await get_files()} == {wrong: ECON[2], ok: ECON[1]}
+
+
 def test_parse_resources_carries_section_and_strips_hidden_text():
     items = sdo_files.parse_course_resources(RESOURCES_11)
     assert [(i["kind"], i["cmid"], i["title"], i["section"]) for i in items] == [
@@ -215,7 +251,7 @@ async def test_sdofiles_command_dry_run_then_import(db, bot, monkeypatch):
     import schedule_parser
     import handlers.files as hf
 
-    async def subjects():
+    async def subjects(**_):
         return SUBJECTS
 
     monkeypatch.setattr(schedule_parser, "get_group_subjects", subjects)

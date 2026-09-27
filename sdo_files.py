@@ -147,19 +147,30 @@ def _stems(text: str) -> set[str]:
 
 def match_subject(course_name: str, subjects: list[str]) -> str:
     """Предмет из расписания группы, похожий на курс СДО (чтобы файлы и
-    решалка жили под одним названием), иначе — очищенное имя курса."""
+    решалка жили под одним названием), иначе — очищенное имя курса.
+
+    Главное — доля слов меньшего названия, найденных в большем
+    («Архитектура» → «Архитектура вычислительных машин…»). При равенстве
+    решает доля общих слов от всех: «Учетная деятельность на предприятии» и
+    «Основы предпринимательской деятельности» делят «деятельность» и
+    «предпр…», раньше побеждал первый по списку. Полная ничья — не угадываем."""
     clean = clean_course_name(course_name)
     course_stems = _stems(clean)
-    best, best_score = None, 0.0
+    scored = []
     for subject in subjects:
         subj_stems = _stems(subject)
         if not subj_stems or not course_stems:
             continue
         common = len(course_stems & subj_stems)
-        score = common / min(len(course_stems), len(subj_stems))
-        if common and score > best_score:
-            best, best_score = subject, score
-    return best if best and best_score >= 0.6 else clean
+        if common:
+            scored.append((common / min(len(course_stems), len(subj_stems)),
+                           common / len(course_stems | subj_stems), subject))
+    scored.sort(key=lambda t: t[:2], reverse=True)
+    if not scored or scored[0][0] < 0.6:
+        return clean
+    if len(scored) > 1 and scored[1][:2] == scored[0][:2]:
+        return clean
+    return scored[0][2]
 
 
 # ── материалы курса ──────────────────────────────────────────────────────────

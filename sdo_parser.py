@@ -208,6 +208,12 @@ def course_of(subject: str) -> str:
 # по вхождению без учёта регистра; переопределяется SDO_KEEP_COURSES.
 KEEP_COURSES = [c.strip().lower() for c in os.getenv("SDO_KEEP_COURSES", "Учебный отдел").split(",") if c.strip()]
 
+# Предметы для сверки с курсами СДО — за весь семестр, а не за ±пару недель:
+# предмет, у которого пары через раз или ещё не начались, иначе не попадал в
+# список, и его курс уходил к похожему по словам («Учетная деятельность на
+# предприятии» → «Основы предпринимательской деятельности»).
+SEMESTER_WINDOW = {"days_back": 60, "days_ahead": 120}
+
 
 def off_schedule(course: str, subjects: list[str]) -> bool:
     """Курса нет среди предметов нынешнего расписания группы. Живой тест:
@@ -330,7 +336,7 @@ async def sync_deadlines() -> dict:
 
     from schedule_parser import get_group_subjects
     added = updated = skipped = 0
-    subjects = await get_group_subjects()
+    subjects = await get_group_subjects(**SEMESTER_WINDOW)
     old = [i for i in items if not_this_semester(i, subjects)]
     items = [i for i in items if not not_this_semester(i, subjects)]
 
