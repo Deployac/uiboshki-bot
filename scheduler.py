@@ -14,6 +14,7 @@ from config import (
 from database import get_all_subscribed_users, get_deadlines_soon, get_user
 from schedule_parser import get_today_schedule, fetch_schedule_raw, parse_events_for_date, format_lesson, is_self_study
 from utils import esc, today_msk, esc_attr
+from keyboards import app_button
 
 logger = logging.getLogger(__name__)
 TZ = ZoneInfo(TIMEZONE)
@@ -60,7 +61,8 @@ async def send_morning_schedule(bot: Bot):
         try:
             await apply_for(uid)   # у каждого своё: предметы по выбору
             full_text = f"{head}\n\n{await get_today_schedule()}"
-            await bot.send_message(uid, full_text, parse_mode="HTML")
+            await bot.send_message(uid, full_text, parse_mode="HTML",
+                                   reply_markup=app_button("📅 Открыть расписание", "today"))
         except Exception as e:
             logger.warning(f"Не смог отправить {uid}: {e}")
 
@@ -121,7 +123,8 @@ async def send_deadline_reminders(bot: Bot):
             deadlines = await get_deadlines_soon(days=3, viewer_id=uid)
             if not deadlines:
                 continue
-            await bot.send_message(uid, _format_deadline_reminders(deadlines), parse_mode="HTML")
+            await bot.send_message(uid, _format_deadline_reminders(deadlines), parse_mode="HTML",
+                                   reply_markup=app_button("📋 Открыть дедлайны", "deadlines"))
         except Exception as e:
             logger.warning(f"Не смог отправить {uid}: {e}")
 
@@ -177,7 +180,8 @@ async def check_lesson_reminders(bot: Bot):
                             uid,
                             f"⏰ <b>Через {remind_mins} мин пара</b>\n\n"
                             + format_lesson(e),
-                            parse_mode="HTML"
+                            parse_mode="HTML",
+                            reply_markup=app_button("📅 Расписание", "today"),
                         )
                     except Exception as ex:
                         logger.warning(f"Reminder error {uid}: {ex}")

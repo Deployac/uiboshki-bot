@@ -51,3 +51,4 @@ async def test_second_account_runs_starosta_command(monkeypatch):
     finally:
         announce.router._parent_router = None
     assert any("Пульс МИРЭА" in t for t, _ in bot.session.sent)
+

@@ -93,7 +93,10 @@ async def test_webapp_task_and_signed_download(db, monkeypatch):
     assert "attachment" in resp.headers["content-disposition"]
     assert any("pluginfile.php" in u and COOKIE in ck for u, ck in seen)            # скачано входом студента
     token = link.split("/sdl/")[1].split("/")[0]
-    assert c.get(f"/sdl/{token[:-1]}0/x.pdf").status_code == 403                     # подпись испорчена
+    # подпись испорчена (раньше брали token[:-1] + "0" — если подпись и так
+    # кончалась на «0», она не менялась, и тест краснел ~1 раз из 16)
+    bad = token[:-1] + ("1" if token[-1] == "0" else "0")
+    assert c.get(f"/sdl/{bad}/x.pdf").status_code == 403
     forged = server._sdl_token(222, "/login/index.php", 4102444800)
     assert c.get(f"/sdl/{forged}/x").status_code == 403                               # только pluginfile.php
 

@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 
 from database import upsert_user, set_subscription, get_user
 from config import GROUP_NAME, STAROSTA_ID, WEBAPP_URL, SCHEDULE_HOUR, SCHEDULE_MINUTE
-from keyboards import MAIN_KB, ACTIONS_KB, webapp_keyboard
+from keyboards import MAIN_KB, ACTIONS_KB, app_button, webapp_keyboard
 from utils import esc, split_by_lines
 
 router = Router()
@@ -67,26 +67,16 @@ async def cmd_start_deeplink(message: Message, command: CommandObject):
 async def cmd_start(message: Message):
     user = message.from_user
     await upsert_user(user.id, user.username or "", user.full_name or "")
-    await message.answer(
-        f"👋 Привет, <b>{esc(user.first_name)}</b>! Я бот группы <b>{GROUP_NAME}</b> 🎓\n\n"
-        "📅 <b>Расписание</b> — сегодня, неделя, следующая пара, напоминания\n"
-        "📋 <b>Дедлайны и ДЗ</b> — общие группы и свои\n"
-        "🤖 <b>Решалка</b> — текст или фото задачи, по лекциям предмета\n"
-        "📁 <b>Файлы</b> — лекции и методички группы\n"
-        "🔍 <b>Любое расписание МИРЭА</b> — препод, группа, аудитория\n\n"
-        "💡 Пиши и своими словами: «когда следующая пара», «что сдавать на неделе» "
-        "или просто условие задачи.\n"
-        "Все команды — /help",
-        parse_mode="HTML",
-        reply_markup=MAIN_KB
-    )
-    kb = webapp_keyboard()
+    # Одно короткое сообщение с одной кнопкой. Сначала оно уходит с
+    # ReplyKeyboardRemove (убрать старую большую клавиатуру у тех, у кого она
+    # осталась), потом к нему же цепляется кнопка «Открыть приложение».
+    sent = await message.answer(start_text(user.first_name), parse_mode="HTML", reply_markup=MAIN_KB)
+    kb = app_button()
     if kb:
-        await message.answer(
-            "🚀 Всё то же — в приложении: главная с ближайшей парой, дедлайны, поиск и чат с ИИ "
-            "(можно кидать фото и файлы). Ещё оно всегда под кнопкой «Приложение» слева от поля ввода.",
-            reply_markup=kb,
-        )
+        try:
+            await sent.edit_reply_markup(reply_markup=kb)
+        except Exception:
+            await message.answer("👇", reply_markup=kb)
     await ask_optional(message, user.id)
 
 
@@ -216,36 +206,35 @@ async def handle_action(callback: CallbackQuery):
         await callback.bot.send_message(uid, "🔕 Отписался от уведомлений." if is_sub else "✅ Подписан на уведомления!")
 
 
+def start_text(first_name: str) -> str:
+    return (
+        f"👋 Привет, <b>{esc(first_name or 'друг')}</b>!\n\n"
+        f"Я — бот группы <b>{GROUP_NAME}</b>. Всё главное — в приложении:\n"
+        "расписание, дедлайны, баллы БРС, файлы и сдача работ в СДО.\n\n"
+        "А сюда я сам пришлю:\n"
+        "🔔 напоминание до пары\n"
+        "☀️ расписание на день — утром\n"
+        "⏰ дедлайны, которые горят\n\n"
+        "И можно просто написать мне: «скинь лекцию 3 по анализу данных», "
+        "задать вопрос или прислать фото задачи — отвечу."
+    )
+
+
 HELP_TEXT = (
-    "📖 <b>Что умеет бот</b>\n\n"
-    "📅 <b>Расписание</b>\n"
-    "/schedule · /tomorrow — сегодня и завтра\n"
-    "/week · /nextweek — эта и следующая неделя\n"
-    "/next — следующая пара\n"
-    "/teacher Фамилия · /group УИБО-03-24 · /room А-18 — чужое расписание\n"
-    "/note — заметка к паре · /calendar — расписание в свой календарь\n\n"
-    "📋 <b>Дедлайны и ДЗ</b>\n"
-    "/deadlines — список · /add — добавить свой\n"
-    "/done ID — выполнено · /undone ID — вернуть · /del ID — удалить\n"
-    "/hw — доска домашних заданий\n\n"
-    "🤖 <b>Решалка</b>\n"
-    "/solve — задача текстом или фото\n"
-    "/solve_lectures — по загруженным лекциям предмета\n"
-    "/solve_ds — через DeepSeek · /history — прошлые решения\n\n"
-    "📁 <b>Файлы</b>\n"
-    "/files — лекции и методички · /search запрос — поиск\n"
-    "/upload — загрузить файлы, можно пачкой · /delfile ID — удалить свой\n\n"
+    "📖 <b>Что умею</b>\n\n"
+    "🚀 Всё главное — в приложении: кнопка «Открыть приложение» слева от поля ввода "
+    "или /app.\n\n"
+    "💬 <b>Просто напиши</b>\n"
+    "«когда следующая пара», «что сдавать на неделе», «скинь практику 3 по …», "
+    "вопрос по учёбе или фото задачи.\n\n"
+    "⚡ <b>Быстро в чате</b>\n"
+    "/schedule · /tomorrow · /week — расписание\n"
+    "/next — следующая пара · /deadlines — дедлайны\n"
+    "/teacher Фамилия · /group УИБО-03-24 · /room А-18 — чужое расписание\n\n"
+    "⚙️ <b>Уведомления</b>\n"
+    "/settings — что и когда присылать · /optional — предметы по выбору\n\n"
     "💬 <b>Группа</b>\n"
-    "/feed — анонимный пост в «Подслушано»\n"
-    "/anon — анонимный вопрос старосте\n"
-    "/vote Вопрос — голосование · /closevote — закрыть своё\n"
-    "/rating — рейтинг\n\n"
-    "⚙️ <b>Настройки</b>\n"
-    "/settings — уведомления · /setreminder N — напомнить за N мин\n"
-    "/subscribe · /unsubscribe — утренняя рассылка\n"
-    "/weather — погода · /app — приложение\n\n"
-    "💡 Можно писать и своими словами: «когда следующая пара», "
-    "«какие дедлайны на неделе» или просто условие задачи."
+    "/anon — анонимный вопрос старосте · /feed — «Подслушано» · /vote — голосование"
 )
 
 STAROSTA_HELP = (
@@ -257,6 +246,7 @@ STAROSTA_HELP = (
     "/sdofiles — файлы из СДО (сначала покажу, что нашлось)\n"
     "/sdoclean — убрать дедлайны прошлого семестра\n"
     "/backup — копия базы (сама приходит каждую ночь)\n"
+    "/pulsecheck — пускает ли Пульс МИРЭА сервер бота\n"
     "/delpost ID — удалить пост из ленты\n"
     "/clearsem — сбросить всё под новый семестр"
 )
@@ -270,7 +260,7 @@ async def cmd_help(message: Message):
     text = HELP_TEXT
     if await is_editor(message.from_user.id):
         text += STAROSTA_HELP
-    await message.answer(text, parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML", reply_markup=app_button())
 
 
 @router.message(Command("subscribe"))
