@@ -320,3 +320,64 @@ async def course_detail(user_id: int, cookie: str, course_id: int) -> dict:
     passed = sum(1 for w in works if w["status"] == "ok")
     out = dict(s, id=course_id, name=course["name"], title=course["title"], works=works, works_passed=passed)
     return _store(key, out)
+
+
+# ── задание целиком: описание, файлы преподавателя ───────────────────────────
+
+_PLUGINFILE = re.compile(r"/pluginfile\.php/")
+
+
+def _file_name(a) -> str:
+    from urllib.parse import unquote, urlparse
+    text = _clean(a.get_text(" "))
+    if text and "." in text[-6:]:
+        return text
+    return unquote(urlparse(a["href"]).path.rsplit("/", 1)[-1]) or text or "файл"
+
+
+def parse_task_page(html: str) -> dict:
+    """Страница задания: название, описание (текстом), файлы преподавателя
+    (introattachment и вложенные в описание) и свои уже сданные файлы."""
+    soup = BeautifulSoup(html, "html.parser")
+    main = soup.find(attrs={"role": "main"}) or soup
+    title_el = main.find(["h2", "h1"]) or soup.find(["h1", "h2"])
+    teacher, mine, seen = [], [], set()
+    for a in main.find_all("a", href=_PLUGINFILE):
+        href = a["href"].split("?")[0]
+        if href in seen:
+            continue
+        seen.add(href)
+        item = {"name": _file_name(a), "url": href}
+        (mine if "assignsubmission_file" in href else teacher).append(item)
+    intro = main.find(class_=re.compile(r"activity-description")) or main.find(id="intro")
+    text = ""
+    if intro:
+        for a in intro.find_all("a", href=_PLUGINFILE):
+            (a.find_parent("li") or a).decompose()
+        for br in intro.find_all("br"):
+            br.replace_with("\n")
+        blocks = [_clean(el.get_text(" ")) for el in intro.find_all(["p", "li", "div"]) if not el.find(["p", "li", "div"])]
+        text = "\n".join(b for b in blocks if b) or _clean(intro.get_text(" "))
+    out = parse_assign_page(html)
+    out.update(title=_clean(title_el.get_text(" ")) if title_el else "", description=text[:3000],
+               files=teacher, mine=mine)
+    return out
+
+
+async def task_detail(cookie: str, cmid: int) -> dict:
+    from sdo_files import make_client
+    from sdo_parser import get_checked
+    import sdo_submit
+    url = f"{SDO_BASE_URL}/mod/assign/view.php?id={cmid}"
+    async with make_client(cookie) as client:
+        page = parse_task_page((await get_checked(client, url)).text)
+        page["maxfiles"] = 0
+        if page["can_submit"]:
+            try:
+                edit = sdo_submit.parse_edit_page((await get_checked(client, url + "&action=editsubmission")).text)
+                page["maxfiles"] = edit["maxfiles"]
+                page["maxbytes"] = edit["maxbytes"]
+            except sdo_submit.SubmitError:
+                page["can_submit"] = False
+    page.update(cmid=cmid, url=url, limit=min(sdo_submit.MAX_FILES, page["maxfiles"] or sdo_submit.MAX_FILES))
+    return page

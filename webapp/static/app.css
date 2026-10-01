@@ -690,3 +690,25 @@
   .wrow.ok .ws b { color: var(--ok); }
   .wrow.low .ws b { color: var(--danger); }
   .wrow .chev { color: var(--hint); font-size: 18px; }
+
+  /* ── СДО: задание и сдача нескольких файлов ── */
+  .t-due { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .t-due .eyebrow { margin: 0 0 2px; }
+  .t-due b { font-size: 17px; }
+  .t-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .t-tag { font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px; background: var(--bg-raised); color: var(--hint); white-space: nowrap; }
+  .t-tag.ok { background: rgba(61,220,132,.14); color: var(--ok); }
+  .t-tag.warn { background: rgba(255,178,56,.14); color: var(--warn); }
+  .t-tag.bad { background: rgba(255,99,99,.14); color: var(--danger); }
+  .t-desc { font-size: 14px; line-height: 1.5; margin: 12px 0 0; overflow-wrap: anywhere; }
+  .t-file { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .t-file:first-child { border-top: none; }
+  .t-file .ic { font-size: 22px; }
+  .t-file .nm { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .dlb { width: 38px; height: 38px; border-radius: 11px; border: none; background: rgba(124,127,245,.16); font-size: 17px; flex: none; }
+  .dlb.sending { opacity: .5; }
+  .t-go { margin-top: 4px; }
+  .fcount { display: flex; gap: 5px; margin: 2px 0 12px; }
+  .fcount i { flex: 1; height: 4px; border-radius: 4px; background: var(--bg-raised); }
+  .fcount i.on { background: var(--accent); }
+  .fpick.add { justify-content: center; border-style: dashed; color: var(--accent); font-weight: 700; font-size: 14px; }
