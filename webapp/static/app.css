@@ -760,3 +760,18 @@
   .hero .ico.mood { color: #fff; }
   /* файлы: кнопки «скачать / в чат / изменить» — ровной колонкой справа */
   .file-card > div { flex: 1; }
+
+  /* ── Нижняя панель: у каждой вкладки свой цвет (как плитки «Ещё»).
+     Невыбранные — своим цветом, но приглушённые; выбранная — цветная плитка. ── */
+  nav.tabs button[data-tab="today"]     { --tc: #4a8ff7; --tc2: #3164d9; }
+  nav.tabs button[data-tab="deadlines"] { --tc: #f0884b; --tc2: #e0553f; }
+  nav.tabs button[data-tab="files"]     { --tc: #2bb3a3; --tc2: #2366b0; }
+  nav.tabs button[data-tab="chat"]      { --tc: #9b7cf6; --tc2: #6a4fe0; }
+  nav.tabs button[data-tab="more"]      { --tc: #f06292; --tc2: #c2185b; }
+  nav.tabs button .ic { color: var(--tc); opacity: .6; transition: opacity .15s ease; }
+  nav.tabs button { color: var(--hint); transition: background .2s ease, box-shadow .2s ease, color .15s ease; }
+  nav.tabs button.active, nav.tabs button.open {
+    color: #fff; background: linear-gradient(145deg, var(--tc), var(--tc2));
+    box-shadow: 0 6px 16px color-mix(in srgb, var(--tc) 40%, transparent);
+  }
+  nav.tabs button.active .ic, nav.tabs button.open .ic { color: #fff; opacity: 1; }
