@@ -12,7 +12,7 @@ from config import (
     SDO_SYNC_INTERVAL_HOURS, STAROSTA_ID, SCHEDULE_DIFF_CHECK_MINUTES, GROUP_CHAT_ID,
 )
 from database import get_all_subscribed_users, get_deadlines_soon, get_user
-from schedule_parser import get_today_schedule, fetch_schedule_raw, parse_events_for_date, format_lesson
+from schedule_parser import get_today_schedule, fetch_schedule_raw, parse_events_for_date, format_lesson, is_self_study
 from utils import esc, today_msk, esc_attr
 
 logger = logging.getLogger(__name__)
@@ -163,8 +163,8 @@ async def check_lesson_reminders(bot: Bot):
             remind_time = now + timedelta(minutes=remind_mins)
 
             for e in events:
-                if not e["time_start"]:
-                    continue
+                if not e["time_start"] or is_self_study(e["summary"]):
+                    continue   # сам. работа (практика на удалёнке) — без напоминаний
                 t = e["time_start"]
                 diff = abs((t - remind_time).total_seconds())
                 if diff <= 60:

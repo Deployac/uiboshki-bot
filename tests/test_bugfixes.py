@@ -189,6 +189,48 @@ async def test_lesson_reminder_dedupe_resets_next_day(monkeypatch):
     assert len(sent) == 2
 
 
+@pytest.mark.asyncio
+async def test_no_reminder_for_self_study(monkeypatch):
+    """Производственная практика «СР» на удалёнке — без фиксированного
+    времени, напоминать «через 15 мин пара» не нужно (просьба владельца)."""
+    from datetime import datetime, timedelta
+    import scheduler
+
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2099, 1, 10, 8, 45, tzinfo=scheduler.TZ)
+
+    def fake_events(raw, day):
+        start = datetime(day.year, day.month, day.day, 9, 0, tzinfo=scheduler.TZ)
+        return [{"summary": "СР Производственная практика", "location": "", "time": "09:00–10:30",
+                 "time_start": start, "time_end": start + timedelta(minutes=90)}]
+
+    async def fake_raw():
+        return b""
+
+    async def fake_users():
+        return [USER.id]
+
+    async def fake_get_user(uid):
+        return {"user_id": uid, "reminder_minutes": 15}
+
+    sent = []
+
+    class FakeBot:
+        async def send_message(self, uid, text, **kwargs):
+            sent.append((uid, text))
+
+    monkeypatch.setattr(scheduler, "datetime", FakeDatetime)
+    monkeypatch.setattr(scheduler, "fetch_schedule_raw", fake_raw)
+    monkeypatch.setattr(scheduler, "parse_events_for_date", fake_events)
+    monkeypatch.setattr(scheduler, "get_all_subscribed_users", fake_users)
+    monkeypatch.setattr(scheduler, "get_user", fake_get_user)
+    monkeypatch.setattr(scheduler, "_sent_reminders", set())
+    await scheduler.check_lesson_reminders(FakeBot())
+    assert sent == []
+
+
 # ── СДО: перенос срока ───────────────────────────────────────────────────────
 
 def _sdo_html(unix_ts: int) -> str:
