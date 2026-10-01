@@ -47,11 +47,12 @@ function renderChat() {
   if (!chatLog.length) {
     const empty = document.createElement("div");
     empty.className = "chat-empty";
-    empty.innerHTML = '<div class="chat-avatar">✨</div><p>Спрашивай про учёбу, присылай фото задач и файлы лекций.<br>Я знаю ваше расписание, дедлайны и ДЗ.</p><div class="suggest"></div>';
+    empty.innerHTML = '<div class="chat-avatar">' + icon("sparkle") + '</div><p>Спрашивай про учёбу, присылай фото задач и файлы лекций.<br>Я знаю ваше расписание, дедлайны и ДЗ.</p><div class="suggest"></div>';
     const box = empty.querySelector(".suggest");
     SUGGESTIONS.forEach(t => {
       const b = document.createElement("button");
-      b.textContent = t;
+      if (t.startsWith("📷")) b.innerHTML = icon("camera", "inl") + escapeHtml(t.slice(2).trim());
+      else b.textContent = t;
       b.onclick = () => {
         if (t.startsWith("📷")) { document.getElementById("chat-file").click(); return; }
         document.getElementById("chat-input").value = t;
@@ -84,7 +85,7 @@ function openChats() {
       '<div style="min-width:0;flex:1"><div class="ft">' + escapeHtml(c.title) + '</div>' +
       '<div class="fs">' + new Date(c.updated).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) +
       ' · ' + c.log.length + ' ' + plural(c.log.length, "сообщение", "сообщения", "сообщений") + '</div></div>' +
-      '<button class="del" onclick="event.stopPropagation(); deleteChat(' + i + ')" aria-label="Удалить">✕</button></div>').join("");
+      '<button class="del" onclick="event.stopPropagation(); deleteChat(' + i + ')" aria-label="Удалить">' + icon("cross") + '</button></div>').join("");
 }
 function switchChat(i) {
   const c = chats[i];
@@ -115,7 +116,7 @@ function appendMsg(role, content, reasoning, html, att, scroll = true, files, so
     div.appendChild(img);
   } else if (att && att.name) {
     const chip = document.createElement("div");
-    chip.className = "file-att"; chip.textContent = (att.image ? "🖼 " : "📄 ") + att.name;
+    chip.className = "file-att"; chip.innerHTML = icon(att.image ? "image" : "doc", "inl") + escapeHtml(att.name);
     div.appendChild(chip);
   }
   if (content || html) {
@@ -135,7 +136,7 @@ function appendMsg(role, content, reasoning, html, att, scroll = true, files, so
   if (sources && sources.length) {
     const src = document.createElement("div");
     src.className = "msg-src";
-    src.innerHTML = "📖 " + sources.slice(0, 4).map(f =>
+    src.innerHTML = icon("bookOpen", "inl") + sources.slice(0, 4).map(f =>
       '<button onclick="openFileFromLink(' + f.id + ')">' + escapeHtml(f.title.slice(0, 40)) + '</button>').join(" · ") +
       (sources.length > 4 ? " · +" + (sources.length - 4) : "");
     div.appendChild(src);
@@ -151,15 +152,15 @@ function appendMsg(role, content, reasoning, html, att, scroll = true, files, so
     const tools = document.createElement("div");
     tools.className = "msg-tools";
     const copy = document.createElement("button");
-    copy.textContent = "⧉ Копировать";
+    copy.innerHTML = icon("copy", "inl") + "Копировать";
     copy.onclick = async () => {
       try { await navigator.clipboard.writeText(content); } catch (e) {
         const ta = document.createElement("textarea"); ta.value = content; document.body.appendChild(ta);
         ta.select(); try { document.execCommand("copy"); } catch (e2) {} ta.remove();
       }
       haptic("success");
-      copy.textContent = "✓ Скопировано";
-      setTimeout(() => { copy.textContent = "⧉ Копировать"; }, 1500);
+      copy.innerHTML = icon("check", "inl") + "Скопировано";
+      setTimeout(() => { copy.innerHTML = icon("copy", "inl") + "Копировать"; }, 1500);
     };
     tools.appendChild(copy);
     div.appendChild(tools);
@@ -212,10 +213,10 @@ function renderAttachment() {
   if (pendingAttachment.url) {
     const img = document.createElement("img"); img.src = pendingAttachment.url; chip.appendChild(img);
   } else {
-    const ic = document.createElement("span"); ic.textContent = "📄"; chip.appendChild(ic);
+    const ic = document.createElement("span"); ic.innerHTML = icon("doc"); chip.appendChild(ic);
   }
   const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = pendingAttachment.name; chip.appendChild(nm);
-  const x = document.createElement("button"); x.textContent = "✕"; x.setAttribute("aria-label", "Убрать"); x.onclick = clearAttachment;
+  const x = document.createElement("button"); x.innerHTML = icon("cross"); x.setAttribute("aria-label", "Убрать"); x.onclick = clearAttachment;
   chip.appendChild(x);
   box.appendChild(chip);
   syncNavHeight();
@@ -234,7 +235,7 @@ async function loadChatSubjects() {
     const sel = document.getElementById("chat-subject");
     data.subjects.forEach(s => {
       const o = document.createElement("option");
-      o.value = s.name; o.textContent = (s.lectures ? "📖 " : "") + s.name;
+      o.value = s.name; o.textContent = s.name + (s.lectures ? " · есть лекции" : "");
       sel.appendChild(o);
     });
   } catch (e) {}
@@ -291,7 +292,7 @@ async function requestAnswer(entry, att) {
     const bubble = appendMsg("assistant", "⚠️ " + e.message);
     const retry = document.createElement("button");
     retry.className = "chat-retry";
-    retry.textContent = "↻ Повторить";
+    retry.innerHTML = icon("refresh", "inl") + "Повторить";
     retry.onclick = () => {
       bubble.remove();
       chatLog.splice(chatLog.indexOf(entry), 1);   // повтор — последним, чтобы ответ был на него

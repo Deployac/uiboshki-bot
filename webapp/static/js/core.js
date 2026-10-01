@@ -130,19 +130,19 @@ function escapeHtml(s) {
 // происходит (⏳ → ✓ В чате). Если запрос не прошёл — старый путь через
 // диплинк t.me/<бот>?start=… (там «/start …» бот сразу стирает).
 async function sendToChat(path, deeplink, btn) {
-  const label = btn ? btn.textContent : "";
-  if (btn) { btn.disabled = true; btn.classList.add("sending"); btn.textContent = "⏳"; }
+  const label = btn ? btn.innerHTML : "";
+  if (btn) { btn.disabled = true; btn.classList.add("sending"); btn.innerHTML = icon("clock"); }
   try {
     await api(path, { method: "POST" });
     haptic("success");
-    if (btn) { btn.classList.remove("sending"); btn.classList.add("sent"); btn.textContent = "✓ В чате"; }
+    if (btn) { btn.classList.remove("sending"); btn.classList.add("sent"); btn.innerHTML = icon("check") + " В чате"; }
     showToast("📨 Файл в чате с ботом");
   } catch (e) {
     if (btn) btn.classList.remove("sending");
     const link = "https://t.me/" + BOT_USERNAME + "?start=" + deeplink;
     if (tg && tg.openTelegramLink) tg.openTelegramLink(link); else window.open(link, "_blank");
   } finally {
-    if (btn) setTimeout(() => { btn.disabled = false; btn.classList.remove("sent"); btn.textContent = label; }, 2500);
+    if (btn) setTimeout(() => { btn.disabled = false; btn.classList.remove("sent"); btn.innerHTML = label; }, 2500);
   }
 }
 
