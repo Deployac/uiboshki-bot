@@ -1,0 +1,7 @@
+Шрифты DejaVu Sans (DejaVuSans.ttf, DejaVuSans-Bold.ttf) — для картинки /stats
+(на сервере Railway может не быть системных шрифтов с кириллицей).
+
+Лицензия DejaVu: свободная (Bitstream Vera Fonts Copyright + Arev Fonts
+Copyright, public domain changes). Разрешено использовать, копировать и
+распространять, в том числе вместе с программами. Полный текст:
+https://dejavu-fonts.github.io/License.html

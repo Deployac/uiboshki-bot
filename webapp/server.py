@@ -59,7 +59,7 @@ async def health():
 
 # ── Аутентификация ──────────────────────────────────────────────────────────
 
-async def get_current_user(x_telegram_init_data: str = Header(default="")) -> dict:
+async def get_current_user(request: Request, x_telegram_init_data: str = Header(default="")) -> dict:
     """FastAPI dependency: валидирует initData, апсертит пользователя в общую
     с ботом таблицу users (тем же способом, что и /start в самом боте — тогда
     и утренний дайджест, и всё остальное видят его одинаково), возвращает
@@ -79,6 +79,8 @@ async def get_current_user(x_telegram_init_data: str = Header(default="")) -> di
     await upsert_user(user["id"], user.get("username", ""), full_name)
     from optional_subjects import apply_for
     await apply_for(user["id"])   # пары предметов по выбору, на которые не ходит — скрыть
+    import stats                  # «кто, что, когда» для /stats старосты (без содержимого)
+    await stats.track(user["id"], stats.kind_for(request.method, request.url.path))
     return user
 
 

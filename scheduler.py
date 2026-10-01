@@ -274,6 +274,8 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     # свои входы студентов в СДО (сдача работ из WebApp) — так же держим живыми
     from sdo_accounts import keepalive_all
     scheduler.add_job(keepalive_all,           "interval", minutes=55, args=[bot])
+    from database import purge_events          # статистика старше 180 дней не нужна
+    scheduler.add_job(purge_events,            "cron", hour=4, minute=20)
     scheduler.add_job(check_schedule_changes,  "interval", minutes=SCHEDULE_DIFF_CHECK_MINUTES, args=[bot])
     # Справочник для поиска преподавателей/групп/аудиторий: достроить, если
     # обход прервался (редеплой), и обновлять раз в месяц (см. schedule_index).

@@ -45,3 +45,14 @@ class OptionalSubjectsMiddleware(BaseMiddleware):
             except Exception as e:
                 logger.warning(f"optional subjects: {e}")
         return await handler(event, data)
+
+
+class StatsMiddleware(BaseMiddleware):
+    """Сообщение боту в личку — событие «чат с ботом» для /stats (stats.py)."""
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        chat = getattr(event, "chat", None)
+        if user and chat and chat.type == "private":
+            import stats
+            await stats.track(user.id, "bot")
+        return await handler(event, data)
