@@ -81,7 +81,7 @@ function renderSdo(connecting) {
     box.innerHTML = '<h3>🎓 СДО</h3>' +
       statusCard("ok", "Подключено, работает", sdoState.shared ? "Вход старосты из настроек бота" : agoText(sdoState.checked_at)) +
       '<p class="sheet-hint">У дедлайнов из СДО есть кнопка «📤 Сдать»: выбираешь файл — бот загружает его в нужное задание.</p>' +
-      (sdoState.shared ? '' : '<button class="ghost danger" onclick="disconnectSdo()">Отключить СДО</button>');
+      (sdoState.shared ? '' : '<button class="ghost danger" onclick="disconnectSdo()">Отключить СДО</button>') + pulseBtn();
   } else if (sdoState.state === "expired") {
     box.innerHTML = '<h3>🎓 СДО</h3>' +
       statusCard("bad", "Вход устарел", "СДО разлогинил сессию — подключи заново", "bad") +
@@ -91,8 +91,25 @@ function renderSdo(connecting) {
     box.innerHTML = '<h3>🎓 СДО</h3>' +
       statusCard("off", "Не подключено", "Дедлайны группы видны и без этого") +
       '<p class="sheet-hint">Подключи свой вход в СДО — и сдавай работы прямо отсюда: выбрал файл → «Сдать» → готово.</p>' +
-      lock + '<button class="primary" onclick="renderSdo(true)">Подключить СДО</button>';
+      lock + '<button class="primary" onclick="renderSdo(true)">Подключить СДО</button>' + pulseBtn();
   }
+}
+
+// Староста: пускает ли pulse.mirea.ru сервер бота (посещаемость по датам — потом)
+function pulseBtn() {
+  return sdoState.starosta ? '<button class="ghost" id="pulse-btn" onclick="checkPulse()">🩺 Проверить доступ к Пульсу</button>' : '';
+}
+
+async function checkPulse() {
+  const btn = document.getElementById("pulse-btn");
+  btn.disabled = true; btn.textContent = "Проверяю Пульс…";
+  try {
+    const r = await api("/api/pulsecheck", { method: "POST" });
+    btn.textContent = (r.ok ? "🟢 Пульс пускает сервер" : "🔴 Пульс: " + r.why) + " · HTTP " + r.status;
+  } catch (e) {
+    btn.textContent = "Не вышло: " + e.message;
+  }
+  btn.disabled = false;
 }
 
 async function connectSdo() {
@@ -105,6 +122,7 @@ async function connectSdo() {
     input.value = "";
     haptic("success");
     renderSdo(); loadSdoStatus(); loadDeadlines();
+    if (document.getElementById("view-sdo").classList.contains("active")) openSdo(true);
   } catch (e) {
     btn.disabled = false; btn.textContent = "Проверить и сохранить";
     showToast("⚠️ " + e.message);
@@ -126,8 +144,9 @@ async function disconnectSdo() {
 const SUBMIT_MAX_MB = 20;
 let submitting = { item: null, file: null, data: "" };
 
-async function openSubmit(id) {
-  const item = deadlineIndex[id];
+async function openSubmit(id, work) {
+  // work — задание из «Текущего контроля» (js/sdo.js): {cmid, subject, due_text, description}
+  const item = work || deadlineIndex[id];
   if (!item) return;
   haptic();
   if (sdoState.state === "off" || sdoState.state === "expired") await loadSdoStatus();
@@ -140,8 +159,9 @@ async function openSubmit(id) {
 function submitHead() {
   const it = submitting.item;
   return '<h3>📤 Сдать работу</h3><div class="sub-task"><b>' + escapeHtml(it.subject) + '</b>' +
-    '<div class="s">до ' + escapeHtml(it.due_date.split("-").reverse().slice(0, 2).join(".")) +
-    (it.due_time ? " · " + escapeHtml(it.due_time) : "") + '</div></div>';
+    '<div class="s">' + (it.due_text !== undefined ? escapeHtml(it.due_text)
+      : "до " + escapeHtml(it.due_date.split("-").reverse().slice(0, 2).join(".")) + (it.due_time ? " · " + escapeHtml(it.due_time) : "")) +
+    '</div></div>';
 }
 
 function fileSize(bytes) {
@@ -196,9 +216,10 @@ async function sendSubmission() {
   renderSubmit("sending");
   try {
     const res = await api("/api/sdo/submit", { method: "POST", body: JSON.stringify({
-      deadline_id: submitting.item.id, name: submitting.file.name, data: submitting.data }) });
+      deadline_id: submitting.item.id || 0, cmid: submitting.item.cmid || 0, name: submitting.file.name, data: submitting.data }) });
     haptic("success");
     renderSubmit("done", res);
+    if (submitting.item.cmid && typeof refreshTk === "function") refreshTk();
   } catch (e) {
     renderSubmit();
     showToast("⚠️ " + e.message);
