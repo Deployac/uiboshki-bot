@@ -15,7 +15,7 @@ MENU_BUTTON_TEXTS — источник правды для всех тексто
 каждом хендлере.
 """
 
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import ReplyKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 
 def webapp_keyboard(text: str = "🚀 Открыть приложение") -> InlineKeyboardMarkup | None:
@@ -31,13 +31,23 @@ def webapp_keyboard(text: str = "🚀 Открыть приложение") -> I
     ])
 
 
-MAIN_KB = ReplyKeyboardMarkup(keyboard=[
-    [KeyboardButton(text="📅 Сегодня"),    KeyboardButton(text="📆 Неделя"),     KeyboardButton(text="🌅 Завтра")],
-    [KeyboardButton(text="⏭ Следующая"),   KeyboardButton(text="📋 Дедлайны"),   KeyboardButton(text="🤖 Решить")],
-    [KeyboardButton(text="📁 Файлы"),       KeyboardButton(text="📝 ДЗ"),         KeyboardButton(text="🌤 Погода")],
-    [KeyboardButton(text="🗣 Подслушано"),  KeyboardButton(text="🏆 Рейтинг"),    KeyboardButton(text="⚙️ Настройки")],
-    [KeyboardButton(text="⋯ Действия")],
-], resize_keyboard=True)
+def app_button(text: str = "🚀 Открыть приложение", tab: str = "") -> InlineKeyboardMarkup | None:
+    """Кнопка, которая открывает приложение сразу на нужном экране (?tab=…,
+    js/main.js): уведомление «дедлайн завтра» → «Открыть дедлайны». None без
+    WEBAPP_URL — тогда уведомление уходит без кнопки."""
+    from aiogram.types import WebAppInfo
+    from config import WEBAPP_URL
+    if not WEBAPP_URL:
+        return None
+    url = WEBAPP_URL + (("&" if "?" in WEBAPP_URL else "?") + "tab=" + tab if tab else "")
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=text, web_app=WebAppInfo(url=url))]])
+
+
+# Обновление чата («Корнилов», v4.19.0): всё смотрят в приложении, чат — вход
+# в него и уведомления. Большая клавиатура из 13 кнопок дублировала приложение
+# — теперь она убирается (ReplyKeyboardRemove там, где раньше её показывали).
+# Старые тексты кнопок по-прежнему понимаются (MENU_BUTTON_TEXTS ниже).
+MAIN_KB = ReplyKeyboardRemove(remove_keyboard=True)
 
 CANCEL_KB = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text="❌ Отмена")]], resize_keyboard=True)
 

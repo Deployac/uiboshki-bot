@@ -109,8 +109,10 @@ async def keepalive_all(bot=None):
         await set_sdo_status(row["user_id"], "ok" if alive else "expired")
         if not alive and bot:
             try:
+                from keyboards import app_button
                 await bot.send_message(row["user_id"],
-                    "🎓 Вход в СДО устарел — сдавать работы из приложения пока не выйдет.\n"
-                    "Подключи заново: приложение → ☰ Ещё → СДО.")
+                    "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
+                    "Подключи заново: приложение → ☰ Ещё → СДО.",
+                    reply_markup=app_button("🎓 Подключить СДО", "sdo"))
             except Exception:
                 pass

@@ -170,7 +170,7 @@ async def test_keepalive_marks_expired_and_tells_once(db, moodle):
     sent = []
 
     class Bot:
-        async def send_message(self, chat_id, text):
+        async def send_message(self, chat_id, text, **kw):
             sent.append(chat_id)
 
     await sdo_accounts.keepalive_all(Bot())

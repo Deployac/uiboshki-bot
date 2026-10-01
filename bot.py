@@ -51,17 +51,21 @@ async def notify_starosta_on_error(event: ErrorEvent, bot: Bot):
         logger.warning(f"Не смог отправить алерт старосте: {e}")
 
 
-# Команды в меню «/» клиента Telegram — самые нужные, остальное в /help.
+# Команды в меню «/» клиента Telegram — коротко: главное в приложении
+# («Корнилов»). Старосте (всем его аккаунтам) — ещё свои, остальным не видны.
 BOT_COMMANDS = [
+    BotCommand(command="app", description="🚀 Открыть приложение"),
     BotCommand(command="schedule", description="📅 Расписание на сегодня"),
-    BotCommand(command="week", description="📆 Расписание на неделю"),
     BotCommand(command="next", description="⏭ Следующая пара"),
     BotCommand(command="deadlines", description="📋 Дедлайны"),
-    BotCommand(command="solve", description="🤖 Решить задачу"),
-    BotCommand(command="hw", description="📝 Домашние задания"),
-    BotCommand(command="files", description="📁 Файлы и лекции"),
-    BotCommand(command="app", description="🚀 Открыть приложение"),
-    BotCommand(command="help", description="📖 Все команды"),
+    BotCommand(command="settings", description="⚙️ Уведомления"),
+    BotCommand(command="help", description="📖 Что умеет бот"),
+]
+STAROSTA_COMMANDS = BOT_COMMANDS + [
+    BotCommand(command="announce", description="📣 Рассылка группе"),
+    BotCommand(command="sdofiles", description="📥 Файлы из СДО"),
+    BotCommand(command="pulsecheck", description="🩺 Пускает ли Пульс"),
+    BotCommand(command="backup", description="💾 Копия базы"),
 ]
 
 
@@ -71,9 +75,16 @@ async def setup_bot_menu(bot: Bot):
     настройки в BotFather. Не критично: при ошибке бот работает дальше."""
     try:
         await bot.set_my_commands(BOT_COMMANDS)
+        from aiogram.types import BotCommandScopeChat
+        from config import STAROSTA_IDS
+        for sid in STAROSTA_IDS:
+            try:
+                await bot.set_my_commands(STAROSTA_COMMANDS, scope=BotCommandScopeChat(chat_id=sid))
+            except Exception as e:      # староста ещё не писал боту — чата нет
+                logger.info(f"Команды старосты {sid}: {e}")
         if WEBAPP_URL:
             await bot.set_chat_menu_button(
-                menu_button=MenuButtonWebApp(text="Приложение", web_app=WebAppInfo(url=WEBAPP_URL))
+                menu_button=MenuButtonWebApp(text="Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))
             )
     except Exception as e:
         logger.warning(f"Не смог настроить меню бота: {e}")
