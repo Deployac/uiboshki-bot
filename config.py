@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +22,19 @@ TIMEZONE   = "Europe/Moscow"
 
 # ─── ID старосты (твой Telegram ID) ───────────────────────────────────────────
 # Узнать свой ID: написать @userinfobot в Telegram
-STAROSTA_ID = int(os.getenv("STAROSTA_ID", "0"))
+# Можно несколько через запятую — второй аккаунт старосты: «111,222».
+# Первый — основной: ему приходят уведомления, бэкапы, вопросы; права старосты
+# у всех перечисленных (is_starosta).
+def parse_ids(raw: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in re.split(r"[\s,;]+", raw or "") if x.lstrip("-").isdigit() and int(x))
+
+
+STAROSTA_IDS = parse_ids(os.getenv("STAROSTA_ID", "0"))
+STAROSTA_ID = STAROSTA_IDS[0] if STAROSTA_IDS else 0
+
+
+def is_starosta(user_id) -> bool:
+    return user_id in STAROSTA_IDS
 
 if not STAROSTA_ID:
     logger.warning(

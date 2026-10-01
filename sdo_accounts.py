@@ -20,7 +20,7 @@ import re
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
-from config import BOT_TOKEN, SDO_BASE_URL, SDO_SESSION_COOKIE, STAROSTA_ID
+from config import BOT_TOKEN, SDO_BASE_URL, SDO_SESSION_COOKIE, STAROSTA_ID, is_starosta
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ async def cookie_for(user_id: int) -> str | None:
     row = await get_sdo_session(user_id)
     if row and row["status"] == "ok":
         return decrypt(row["cookie_enc"])
-    if not row and user_id == STAROSTA_ID and SDO_SESSION_COOKIE:
+    if not row and is_starosta(user_id) and SDO_SESSION_COOKIE:
         return SDO_SESSION_COOKIE
     return None
 
@@ -90,7 +90,7 @@ async def status_for(user_id: int) -> dict:
     row = await get_sdo_session(user_id)
     if row:
         return {"state": "ok" if row["status"] == "ok" else "expired", "checked_at": row["checked_at"]}
-    if user_id == STAROSTA_ID and SDO_SESSION_COOKIE:
+    if is_starosta(user_id) and SDO_SESSION_COOKIE:
         return {"state": "ok", "checked_at": None, "shared": True}
     return {"state": "off"}
 

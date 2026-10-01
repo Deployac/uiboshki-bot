@@ -11,7 +11,7 @@ from aiogram.types import (
 )
 
 from database import add_file, get_files, delete_file, search_files
-from config import STAROSTA_ID
+from config import STAROSTA_ID, is_starosta
 from keyboards import MAIN_KB, CANCEL_KB
 from utils import esc, today_msk
 
@@ -405,7 +405,7 @@ async def cmd_delfile(message: Message):
     # удалять может только староста — так решил владелец. Раньше мог и тот,
     # кто загрузил, и зам. STAROSTA_ID не задан — как у остальных
     # админ-команд, без ограничений.
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Удалять файлы может только староста — файл пропадёт у всей группы.")
         return
     await delete_file(fid)
@@ -482,7 +482,7 @@ def _sdo_report(courses, known: set[str], current: dict | None = None) -> tuple[
 
 @router.message(Command("sdofiles"))
 async def cmd_sdo_files(message: Message):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     import sdo_files
@@ -528,7 +528,7 @@ async def cmd_sdo_files(message: Message):
 
 @router.callback_query(F.data == "sdof:mv")
 async def sdo_files_move(callback: CallbackQuery):
-    if STAROSTA_ID and callback.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(callback.from_user.id):
         await callback.answer("Только для старосты", show_alert=True)
         return
     moves = _sdo_moves.pop(callback.from_user.id, None)
@@ -549,7 +549,7 @@ async def sdo_files_move(callback: CallbackQuery):
 
 @router.callback_query(F.data == "sdof:go")
 async def sdo_files_go(callback: CallbackQuery):
-    if STAROSTA_ID and callback.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(callback.from_user.id):
         await callback.answer("Только для старосты", show_alert=True)
         return
     courses = _sdo_scans.pop(callback.from_user.id, None)
@@ -608,7 +608,7 @@ async def _sdo_import(bot: Bot, chat_id: int, status: Message, files: list):
 @router.message(Command("backup"))
 async def cmd_backup(message: Message):
     """Копия базы прямо сейчас (обычно приходит сама каждую ночь)."""
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     from backup import send_backup
@@ -619,7 +619,7 @@ async def cmd_backup(message: Message):
 
 @router.message(Command("syncfiles"))
 async def cmd_syncfiles(message: Message):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     await message.answer(
@@ -636,7 +636,7 @@ async def cmd_syncfiles(message: Message):
 # вызывался. Теперь этот хендлер реагирует только вне активных диалогов.
 @router.message(F.document, StateFilter(None))
 async def handle_sync_json(message: Message):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         return
     fname = (message.document.file_name or "").lower()
     if not fname.endswith('.json'):

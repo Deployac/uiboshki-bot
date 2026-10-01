@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from database import get_all_subscribed_users, upsert_user
-from config import STAROSTA_ID
+from config import STAROSTA_ID, is_starosta
 from utils import esc, parse_day_month, today_msk, utc_to_msk_date, plural
 
 router = Router()
@@ -24,7 +24,7 @@ class ClearSemState(StatesGroup):
 
 @router.message(Command("announce"))
 async def cmd_announce(message: Message, state: FSMContext):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     await state.set_state(AnnounceState.waiting)
@@ -84,7 +84,7 @@ async def send_announce(message: Message, state: FSMContext, bot: Bot):
 
 @router.message(Command("clearsem"))
 async def cmd_clearsem(message: Message, state: FSMContext):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     await state.set_state(ClearSemState.confirm)
@@ -172,7 +172,7 @@ async def is_editor(user_id: int) -> bool:
     # появления проверки в cmd_setzam) навсегда роняло ValueError в каждом
     # /hw и /addhw у всех.
     zam_id = int(zam) if zam and zam.isdigit() else 0
-    return user_id == STAROSTA_ID or user_id == zam_id
+    return is_starosta(user_id) or user_id == zam_id
 
 
 async def add_hw(subject: str, content: str, file_id: str, file_type: str, created_by: int,
@@ -411,7 +411,7 @@ async def hw_lesson_date_input(message: Message, state: FSMContext):
 
 @router.message(Command("setzam"))
 async def cmd_setzam(message: Message):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     parts = message.text.split()
@@ -462,7 +462,7 @@ async def cmd_rating(message: Message):
 @router.message(Command("pulsecheck"))
 async def cmd_pulsecheck(message: Message):
     """Пускает ли pulse.mirea.ru сервер бота (pulse_check.py) — только староста."""
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         return
     import pulse_check
     await message.answer(pulse_check.text(await pulse_check.check()))

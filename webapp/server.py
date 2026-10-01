@@ -28,7 +28,7 @@ from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from config import BOT_TOKEN, STAROSTA_ID, WEBAPP_URL
+from config import BOT_TOKEN, STAROSTA_ID, STAROSTA_IDS, is_starosta, WEBAPP_URL
 from webapp.auth import InitDataError, validate_init_data
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -442,7 +442,7 @@ async def api_deadline_toggle(deadline_id: int, body: ToggleBody, user: dict = C
     existing = await get_deadline(deadline_id)
     if not existing:
         raise HTTPException(status_code=404, detail="дедлайн не найден")
-    is_shared = existing["created_by"] in (0, STAROSTA_ID)
+    is_shared = existing["created_by"] in (0, *STAROSTA_IDS)
     if not is_shared and existing["created_by"] != user["id"]:
         raise HTTPException(status_code=403, detail="это чужой личный дедлайн")
     # Персонально для user["id"] — не трогает статус остальных по этому же дедлайну.
@@ -480,7 +480,7 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
             "can_edit": editor or f.get("uploaded_by") == user["id"],
         })
     return {"items": out, "categories": [{"key": k, "label": v} for k, v in CATEGORIES],
-            "can_delete": not STAROSTA_ID or user["id"] == STAROSTA_ID}
+            "can_delete": not STAROSTA_ID or is_starosta(user["id"])}
 
 
 _tg_bot = None
@@ -581,7 +581,7 @@ async def api_files_delete(body: FileIds, user: dict = CurrentUser):
     """Удалить файл или сразу папку/раздел (лишнее из выгрузки СДО) — у
     всей группы. Как /delfile в боте: только староста."""
     from database import delete_files, get_files
-    if STAROSTA_ID and user["id"] != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(user["id"]):
         raise HTTPException(status_code=403, detail="удалять файлы может только староста")
     ids = sorted(set(body.ids))
     if not ids or len(ids) > 1000:
@@ -868,7 +868,7 @@ class SdoSubmit(BaseModel):
 @app.get("/api/sdo/status")
 async def api_sdo_status(user: dict = CurrentUser):
     from sdo_accounts import status_for
-    return dict(await status_for(user["id"]), starosta=user["id"] == STAROSTA_ID)
+    return dict(await status_for(user["id"]), starosta=is_starosta(user["id"]))
 
 
 @app.post("/api/sdo/connect")
@@ -1066,7 +1066,7 @@ async def sdo_download(token: str, name: str):
 @app.post("/api/pulsecheck")
 async def api_pulsecheck(user: dict = CurrentUser):
     """Пускает ли pulse.mirea.ru сервер бота — кнопка старосты в листе «СДО»."""
-    if user["id"] != STAROSTA_ID:
+    if not is_starosta(user["id"]):
         raise HTTPException(status_code=403, detail="только для старосты")
     import pulse_check
     return await pulse_check.check()
