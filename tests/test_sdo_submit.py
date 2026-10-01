@@ -179,3 +179,32 @@ async def test_keepalive_marks_expired_and_tells_once(db, moodle):
     await sdo_accounts.keepalive_all(Bot())
     await sdo_accounts.keepalive_all(Bot())
     assert (await db.get_sdo_session(222))["status"] == "expired" and sent == [222]
+
+
+NO_FORM = """<html><body><noscript><div class="alert alert-danger">JavaScript отключен в вашем браузере.</div></noscript>
+<div role="main"><h2>Практическая работа №1</h2></div></body></html>"""
+VIEW_CLOSED = """<noscript><div class="alert alert-danger">JavaScript отключен в вашем браузере.</div></noscript>
+<table><tr><th>Состояние ответа</th><td>Ни одной попытки</td></tr>
+<tr><th>Состояние оценивания</th><td>Не оценено</td></tr>
+<tr><th>Оставшееся время</th><td>Задание просрочено на: 5 дн.</td></tr></table>"""
+
+
+@pytest.mark.asyncio
+async def test_no_form_explains_from_assignment_page(moodle, monkeypatch):
+    # живой тест 01.10: формы не было, а бот показал плашку «JavaScript отключен» из <noscript>
+    moodle.edit = NO_FORM
+    real_call = moodle.__call__
+
+    def call(request):
+        url = str(request.url)
+        if request.method == "GET" and url.endswith("view.php?id=4242"):
+            return httpx.Response(200, text=VIEW_CLOSED)
+        return real_call(request)
+
+    monkeypatch.setattr(FakeMoodle, "__call__", lambda self, r: call(r))
+    with pytest.raises(sdo_submit.SubmitError) as e:
+        await sdo_submit.submit_file(COOKIE, 4242, "work.pdf", b"%PDF-work")
+    msg = str(e.value)
+    assert "JavaScript" not in msg
+    assert "Ни одной попытки" in msg and "просрочено на: 5 дн." in msg
+    assert not any(m == "POST" for m, _, _ in moodle.calls)                     # ничего не грузили
