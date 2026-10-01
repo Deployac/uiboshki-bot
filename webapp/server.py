@@ -764,6 +764,9 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
     from group_context import build_group_context
     from utils import md_to_tg_html_chunks
 
+    import ratelimit
+    if not ratelimit.allow("ai", user["id"]):
+        raise HTTPException(status_code=429, detail="слишком много вопросов подряд — подожди минуту")
     if not body.history:
         raise HTTPException(status_code=400, detail="пустая история")
     history = [{"role": m.role, "content": m.content} for m in body.history[-20:]]
@@ -877,6 +880,9 @@ async def api_sdo_status(user: dict = CurrentUser):
 async def api_sdo_connect(body: SdoConnect, user: dict = CurrentUser):
     import sdo_accounts
     from database import save_sdo_session
+    import ratelimit
+    if not ratelimit.allow("sdo_connect", user["id"]):
+        raise HTTPException(status_code=429, detail="слишком много попыток — попробуй через 10 минут")
     cookie = sdo_accounts.clean_cookie(body.cookie)
     if not cookie:
         raise HTTPException(status_code=400, detail="не похоже на MoodleSession — скопируй значение целиком")
@@ -909,6 +915,9 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     import sdo_submit
     from database import get_deadline, set_sdo_status
     from sdo_parser import SdoSessionExpired
+    import ratelimit
+    if not ratelimit.allow("submit", user["id"]):
+        raise HTTPException(status_code=429, detail="слишком много сдач подряд — попробуй через 10 минут")
     if body.cmid:
         cmid = body.cmid     # из «Текущего контроля»: задание своего курса, сдаёт своим входом
     else:
@@ -1063,6 +1072,22 @@ async def sdo_download(token: str, name: str):
         raise HTTPException(404, "Файл не скачался из СДО")
     return Response(resp.content, media_type=resp.headers.get("content-type") or mimetypes.guess_type(name)[0] or "application/octet-stream",
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name, safe='')}"})
+
+
+@app.get("/api/security")
+async def api_security(user: dict = CurrentUser):
+    """Экран «Безопасность»: как защищены данные (без самих ключей)."""
+    import ratelimit
+    import sdo_accounts
+    from webapp.auth import MAX_AUTH_AGE_SECONDS
+    return {
+        "sdo": (await sdo_accounts.status_for(user["id"]))["state"],
+        "key_source": sdo_accounts.key_source(),
+        "auth_max_hours": MAX_AUTH_AGE_SECONDS // 3600,
+        "link_minutes": 10,
+        "limits": {k: {"count": v[0], "minutes": max(1, v[1] // 60)} for k, v in ratelimit.LIMITS.items()},
+        "events_days": 180,
+    }
 
 
 @app.post("/api/pulsecheck")

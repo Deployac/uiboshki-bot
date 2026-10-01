@@ -775,3 +775,20 @@
     box-shadow: 0 6px 16px color-mix(in srgb, var(--tc) 40%, transparent);
   }
   nav.tabs button.active .ic, nav.tabs button.open .ic { color: #fff; opacity: 1; }
+
+  /* ── Безопасность (меню «Ещё») ── */
+  .more-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .more-grid .sq.t-sec { background: linear-gradient(145deg, #34d399, #0f9f77); }
+  .sec-hero { display: flex; align-items: center; gap: 14px; margin: 4px 0 14px; }
+  .sec-hero h3 { margin: 0 0 2px; }
+  .sec-hero p { margin: 0; color: var(--hint); font-size: 13px; }
+  .sec-shield { width: 52px; height: 52px; border-radius: 16px; flex: none; display: flex; align-items: center; justify-content: center;
+    color: #fff; background: linear-gradient(145deg, #34d399, #0f9f77); box-shadow: 0 8px 22px rgba(52,211,153,.3); font-size: 28px; }
+  .sec-shield .ico { vertical-align: 0; }
+  .sec-item { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
+  .sec-item b { font-size: 14.5px; }
+  .sec-item p { margin: 3px 0 0; color: var(--hint); font-size: 13px; line-height: 1.45; }
+  .sec-ic { width: 34px; height: 34px; border-radius: 10px; flex: none; display: flex; align-items: center; justify-content: center;
+    background: rgba(52,211,153,.13); color: #34d399; font-size: 17px; }
+  .sec-ic .ico { vertical-align: 0; }
+  #security-sheet .sheet { max-height: 88vh; overflow-y: auto; }
