@@ -334,6 +334,7 @@ async def api_unpin(target_type: int, target_id: int, user: dict = CurrentUser):
 async def api_deadlines(include_done: bool = False, user: dict = CurrentUser):
     from database import get_active_deadlines, get_deadline_stats, is_shared_deadline
     from handlers.announce import is_editor
+    from sdo_submit import can_submit
     items = await get_active_deadlines(user["id"], include_done=include_done)
     editor = await is_editor(user["id"])
     for d in items:
@@ -341,6 +342,7 @@ async def api_deadlines(include_done: bool = False, user: dict = CurrentUser):
         d["mine"] = d.get("created_by") == user["id"]
         # Править/удалять: свой личный — автор, общий — староста и зам.
         d["can_edit"] = (d["personal"] and d["mine"]) or (not d["personal"] and editor)
+        d["can_submit"] = can_submit(d)
     stats = await get_deadline_stats(user["id"])
     return {"items": items, "stats": stats}
 
@@ -843,6 +845,78 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
 # приложения (Google/Apple/Outlook) сами периодически переопрашивают
 # webcal-подписку и не умеют слать кастомные заголовки — секретность держится
 # на непредсказуемости токена в самом пути (см. database.get_or_create_calendar_token).
+
+# ── СДО: свой вход и сдача работ (sdo_accounts.py, sdo_submit.py) ───────────
+
+class SdoConnect(BaseModel):
+    cookie: str
+
+
+class SdoSubmit(BaseModel):
+    deadline_id: int
+    name: str
+    data: str  # base64
+
+
+@app.get("/api/sdo/status")
+async def api_sdo_status(user: dict = CurrentUser):
+    from sdo_accounts import status_for
+    return await status_for(user["id"])
+
+
+@app.post("/api/sdo/connect")
+async def api_sdo_connect(body: SdoConnect, user: dict = CurrentUser):
+    import sdo_accounts
+    from database import save_sdo_session
+    cookie = sdo_accounts.clean_cookie(body.cookie)
+    if not cookie:
+        raise HTTPException(status_code=400, detail="не похоже на MoodleSession — скопируй значение целиком")
+    try:
+        alive = await sdo_accounts.check(cookie)
+    except Exception:
+        raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+    if not alive:
+        raise HTTPException(status_code=400, detail="СДО не пускает с этой кукой — войди на сайте заново и скопируй новую")
+    await save_sdo_session(user["id"], sdo_accounts.encrypt(cookie))
+    return await sdo_accounts.status_for(user["id"])
+
+
+@app.post("/api/sdo/disconnect")
+async def api_sdo_disconnect(user: dict = CurrentUser):
+    from database import delete_sdo_session
+    from sdo_accounts import status_for
+    await delete_sdo_session(user["id"])
+    return await status_for(user["id"])
+
+
+@app.post("/api/sdo/submit")
+async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
+    import base64
+    import sdo_accounts
+    import sdo_submit
+    from database import get_deadline, set_sdo_status
+    from sdo_parser import SdoSessionExpired
+    d = await get_deadline(body.deadline_id)
+    if not d or not sdo_submit.can_submit(d):
+        raise HTTPException(status_code=404, detail="это не задание из СДО")
+    cookie = await sdo_accounts.cookie_for(user["id"])
+    if not cookie:
+        raise HTTPException(status_code=403, detail="сначала подключи СДО: ☰ Ещё → СДО")
+    try:
+        raw = base64.b64decode(body.data, validate=False)
+    except Exception:
+        raise HTTPException(status_code=400, detail="файл повреждён")
+    name = re.sub(r'[\\/:*?"<>|]+', "_", body.name).strip() or "работа"
+    try:
+        result = await sdo_submit.submit_file(cookie, sdo_submit.cmid_of(d["description"]), name[:120], raw)
+    except SdoSessionExpired:
+        await set_sdo_status(user["id"], "expired")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
+    except sdo_submit.SubmitError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"СДО: {user['id']} сдал файл в задание {d['id']}")
+    return result
+
 
 @app.get("/api/calendar/link")
 async def api_calendar_link(user: dict = CurrentUser):

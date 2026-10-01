@@ -72,6 +72,7 @@ function renderDeadline(item) {
   const isLink = /^https?:\/\//.test(desc);
   const actions = [];
   if (item.done) actions.push('<button onclick="event.stopPropagation(); toggleDeadline(' + item.id + ', false)">↩ Вернуть в активные</button>');
+  if (item.can_submit && !item.done) actions.push('<button class="submit" onclick="event.stopPropagation(); openSubmit(' + item.id + ')">📤 Сдать</button>');
   if (isLink) actions.push('<a href="#" onclick="event.stopPropagation(); openLink(' + escapeHtml(JSON.stringify(desc)) + '); return false;">🔗 Задание</a>');
   if (item.can_edit) actions.push('<button onclick="event.stopPropagation(); openAddSheet(' + item.id + ')">✏️ Изменить</button>');
   if (item.can_edit) actions.push('<button class="del" onclick="event.stopPropagation(); deleteDeadline(' + item.id + ')">🗑 Удалить</button>');
