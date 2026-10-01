@@ -16,12 +16,15 @@
 Ошибки — SubmitError с понятным текстом для WebApp.
 """
 
+import logging
 import re
 
 import httpx
 from bs4 import BeautifulSoup
 
 from config import SDO_BASE_URL
+
+logger = logging.getLogger(__name__)
 
 MAX_BYTES = 20 * 1024 * 1024
 CMID_RE = re.compile(r"/mod/assign/view\.php\?(?:[^#]*&)?id=(\d+)")
@@ -31,13 +34,21 @@ class SubmitError(Exception):
     pass
 
 
+class NoForm(SubmitError):
+    """На странице сдачи нет формы с файлами — причину ищем на странице задания."""
+
+
 def cmid_of(url: str) -> int | None:
     m = CMID_RE.search(url or "")
     return int(m.group(1)) if m else None
 
 
 def _notice(soup: BeautifulSoup) -> str:
-    """Текст ошибки Moodle со страницы (почему не даёт сдать)."""
+    """Текст ошибки Moodle со страницы (почему не даёт сдать). Плашки внутри
+    <noscript> («JavaScript отключен…») — на каждой странице Moodle, живой
+    тест 01.10: её показывали вместо настоящей причины."""
+    for el in soup.find_all("noscript"):
+        el.decompose()
     for sel in (".alert-danger", ".alert-warning", ".errormessage", ".box.errorbox", ".alert"):
         el = soup.select_one(sel)
         if el and el.get_text(strip=True):
@@ -74,7 +85,7 @@ def parse_edit_page(html: str) -> dict:
     if not area:
         if soup.find(attrs={"name": re.compile(r"^onlinetext")}):
             raise SubmitError("в этом задании ответ пишется текстом на сайте, файл не прикрепить")
-        raise SubmitError("СДО не даёт сдать: " + (_notice(soup) or "формы ответа нет — срок вышел или сдача закрыта"))
+        raise NoForm(_notice(soup))
     form = area.find_parent("form")
     fields = form_fields(form)
     repo_id = None
@@ -98,6 +109,25 @@ def parse_edit_page(html: str) -> dict:
         "client_id": client.group(1) if client else "",
         "maxbytes": int(maxbytes.group(1)) if maxbytes else 0,
     }
+
+
+STATUS_ROWS = ("Состояние ответа", "Оставшееся время", "Последний срок", "Срок сдачи",
+               "Submission status", "Time remaining")
+
+
+def submission_summary(html: str) -> str:
+    """Строки таблицы статуса задания: «Состояние ответа: Нет ответа · Оставшееся
+    время: Задание просрочено на 5 дн.» — чтобы было видно, почему не сдать."""
+    soup = BeautifulSoup(html, "html.parser")
+    parts = []
+    for row in soup.select("table tr"):
+        th, td = row.find("th"), row.find("td")
+        if not (th and td):
+            continue
+        name = th.get_text(" ", strip=True)
+        if any(name.startswith(k) for k in STATUS_ROWS):
+            parts.append(f"{name}: {td.get_text(' ', strip=True)}")
+    return " · ".join(parts)[:300]
 
 
 def status_text(html: str) -> str:
@@ -149,7 +179,14 @@ async def submit_file(cookie: str, cmid: int, name: str, data: bytes) -> dict:
     async with httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=60) as client:
         try:
             resp = await get_checked(client, url + "&action=editsubmission")
-            page = parse_edit_page(resp.text)
+            try:
+                page = parse_edit_page(resp.text)
+            except NoForm as e:
+                view = await get_checked(client, url)
+                why = str(e) or submission_summary(view.text)
+                logger.warning(f"СДО: нет формы сдачи в задании {cmid} (итоговый URL {resp.url}): {why}")
+                raise SubmitError("СДО не даёт прикрепить файл"
+                                  + (f": {why}" if why else " — сдача закрыта или срок вышел. Проверь задание на сайте"))
             if page["maxbytes"] > 0 and len(data) > page["maxbytes"]:
                 raise SubmitError(f"в этом задании файл не больше {page['maxbytes'] // (1024 * 1024) or 1} МБ")
             await _upload(client, page, name, data)
