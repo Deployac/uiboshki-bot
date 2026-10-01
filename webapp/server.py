@@ -853,7 +853,8 @@ class SdoConnect(BaseModel):
 
 
 class SdoSubmit(BaseModel):
-    deadline_id: int
+    deadline_id: int = 0
+    cmid: int = 0
     name: str
     data: str  # base64
 
@@ -861,7 +862,7 @@ class SdoSubmit(BaseModel):
 @app.get("/api/sdo/status")
 async def api_sdo_status(user: dict = CurrentUser):
     from sdo_accounts import status_for
-    return await status_for(user["id"])
+    return dict(await status_for(user["id"]), starosta=user["id"] == STAROSTA_ID)
 
 
 @app.post("/api/sdo/connect")
@@ -878,6 +879,8 @@ async def api_sdo_connect(body: SdoConnect, user: dict = CurrentUser):
     if not alive:
         raise HTTPException(status_code=400, detail="СДО не пускает с этой кукой — войди на сайте заново и скопируй новую")
     await save_sdo_session(user["id"], sdo_accounts.encrypt(cookie))
+    import sdo_grades
+    sdo_grades.forget(user["id"])
     return await sdo_accounts.status_for(user["id"])
 
 
@@ -886,6 +889,8 @@ async def api_sdo_disconnect(user: dict = CurrentUser):
     from database import delete_sdo_session
     from sdo_accounts import status_for
     await delete_sdo_session(user["id"])
+    import sdo_grades
+    sdo_grades.forget(user["id"])
     return await status_for(user["id"])
 
 
@@ -896,9 +901,13 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     import sdo_submit
     from database import get_deadline, set_sdo_status
     from sdo_parser import SdoSessionExpired
-    d = await get_deadline(body.deadline_id)
-    if not d or not sdo_submit.can_submit(d):
-        raise HTTPException(status_code=404, detail="это не задание из СДО")
+    if body.cmid:
+        cmid = body.cmid     # из «Текущего контроля»: задание своего курса, сдаёт своим входом
+    else:
+        d = await get_deadline(body.deadline_id)
+        if not d or not sdo_submit.can_submit(d):
+            raise HTTPException(status_code=404, detail="это не задание из СДО")
+        cmid = sdo_submit.cmid_of(d["description"])
     cookie = await sdo_accounts.cookie_for(user["id"])
     if not cookie:
         raise HTTPException(status_code=403, detail="сначала подключи СДО: ☰ Ещё → СДО")
@@ -908,14 +917,69 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
         raise HTTPException(status_code=400, detail="файл повреждён")
     name = re.sub(r'[\\/:*?"<>|]+', "_", body.name).strip() or "работа"
     try:
-        result = await sdo_submit.submit_file(cookie, sdo_submit.cmid_of(d["description"]), name[:120], raw)
+        result = await sdo_submit.submit_file(cookie, cmid, name[:120], raw)
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
         raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
     except sdo_submit.SubmitError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    logger.info(f"СДО: {user['id']} сдал файл в задание {d['id']}")
+    logger.info(f"СДО: {user['id']} сдал файл в задание {cmid}")
+    import sdo_grades
+    sdo_grades.forget(user["id"])    # статусы и баллы — заново
     return result
+
+
+# ── Баллы БРС из СДО (sdo_grades.py) ─────────────────────────────────────────
+
+async def _sdo_cookie(user_id: int) -> str:
+    from sdo_accounts import cookie_for
+    cookie = await cookie_for(user_id)
+    if not cookie:
+        raise HTTPException(status_code=403, detail="подключи СДО, чтобы видеть свои баллы")
+    return cookie
+
+
+@app.get("/api/sdo/grades")
+async def api_sdo_grades(fresh: bool = False, user: dict = CurrentUser):
+    import sdo_grades
+    from database import set_sdo_status
+    from sdo_parser import SdoSessionExpired
+    cookie = await _sdo_cookie(user["id"])
+    try:
+        return await sdo_grades.overview(user["id"], cookie, fresh=fresh)
+    except SdoSessionExpired:
+        await set_sdo_status(user["id"], "expired")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
+    except Exception as e:
+        logger.warning(f"Баллы СДО: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+
+
+@app.get("/api/sdo/grades/{course_id}")
+async def api_sdo_course(course_id: int, user: dict = CurrentUser):
+    import sdo_grades
+    from database import set_sdo_status
+    from sdo_parser import SdoSessionExpired
+    cookie = await _sdo_cookie(user["id"])
+    try:
+        return await sdo_grades.course_detail(user["id"], cookie, course_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="курс не найден")
+    except SdoSessionExpired:
+        await set_sdo_status(user["id"], "expired")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
+    except Exception as e:
+        logger.warning(f"Баллы СДО, курс {course_id}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+
+
+@app.post("/api/pulsecheck")
+async def api_pulsecheck(user: dict = CurrentUser):
+    """Пускает ли pulse.mirea.ru сервер бота — кнопка старосты в листе «СДО»."""
+    if user["id"] != STAROSTA_ID:
+        raise HTTPException(status_code=403, detail="только для старосты")
+    import pulse_check
+    return await pulse_check.check()
 
 
 @app.get("/api/calendar/link")

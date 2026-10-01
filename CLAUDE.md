@@ -75,6 +75,11 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   у старосты без своей — общая из `SDO_SESSION_COOKIE`). «📤 Сдать» у
   дедлайна-задания (`mod/assign`) — `sdo_submit.py`: форма editsubmission →
   `repository_ajax.php` → savesubmission → при черновиках confirmsubmit.
+- **Баллы БРС** (`sdo_grades.py`, `js/sdo.js`): журнал курса
+  `/grade/report/user/index.php?id=<курс>` своим входом студента → категории,
+  сумма, работы текущего контроля (зачтена — балл не ниже проходного, нужно
+  ≥ 75%); страницы заданий дают порог, статус и срок. Кэш 10 минут.
+  Пульс МИРЭА (посещения по датам) за DDoS-Guard — `/pulsecheck`.
 - **Файлы** (`file_categories.py`): тип по названию (лекции, практики и лабы,
   КР и тесты, методички, экзамен, другое), естественная сортировка номеров.
   Удалять может только староста (`/delfile`, кнопки в WebApp).
@@ -89,7 +94,7 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   Markdown модели → HTML Telegram — `md_to_tg_html_chunks`.
 - **WebApp**: авторизация по `initData` (HMAC, `webapp/auth.py`). Фронт —
   `webapp/static/index.html` + `app.css` + `js/{core,home,deadlines,files,
-  search,chat,main}.js` (классические скрипты, общая глобальная область,
+  search,chat,more,sdo,main}.js` (классические скрипты, общая глобальная область,
   порядок важен). `/` отдаёт index со ссылками `?v=<хэш>` против кэша Telegram.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`

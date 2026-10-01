@@ -457,3 +457,12 @@ async def cmd_rating(message: Message):
         lines.append(f"{medals[i]} {esc(name)} — {r['cnt']} {plural(r['cnt'], 'задача', 'задачи', 'задач')}")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("pulsecheck"))
+async def cmd_pulsecheck(message: Message):
+    """Пускает ли pulse.mirea.ru сервер бота (pulse_check.py) — только староста."""
+    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+        return
+    import pulse_check
+    await message.answer(pulse_check.text(await pulse_check.check()))

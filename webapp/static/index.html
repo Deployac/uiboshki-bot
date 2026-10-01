@@ -118,6 +118,22 @@
     <p class="sheet-hint" style="margin-top:14px;">📖 — ИИ уже прочитал файл и отвечает по нему. Загрузить новые: /upload в боте.</p>
   </section>
 
+  <!-- ── СДО: баллы → предмет → текущий контроль (js/sdo.js) ────────── -->
+  <section class="view" id="view-sdo">
+    <h2 class="section"><span>СДО</span><span class="sdo-head-btns"><span class="stat" id="sdo-updated"></span><button class="link-btn" onclick="openSdoSheet()">⚙️ Вход</button></span></h2>
+    <div id="sdo-list"></div>
+  </section>
+
+  <section class="view" id="view-subject">
+    <button class="back" onclick="sdoBack()">← Баллы</button>
+    <div id="subject-body"></div>
+  </section>
+
+  <section class="view" id="view-tk">
+    <button class="back" id="tk-back" onclick="sdoBack()">← Предмет</button>
+    <div id="tk-body"></div>
+  </section>
+
   <!-- ── Чат ───────────────────────────────────────────────────────── -->
   <section class="view" id="view-chat">
     <h2 class="section">Чат с ИИ ✨ <span class="chat-head-btns"><button class="link-btn" onclick="openChats()">☰ Чаты</button><button class="link-btn" onclick="newChat()">＋ Новый</button></span></h2>
@@ -183,9 +199,9 @@
   <div class="more-pop">
     <div class="more-grid">
       <button onclick="toggleMore(false); switchTab('search')"><span class="sq">🔍</span>Поиск</button>
-      <button onclick="toggleMore(false); openSdoSheet()"><span class="sq sdo" id="more-sdo">🎓</span>СДО</button>
+      <button onclick="toggleMore(false); openSdo()"><span class="sq sdo" id="more-sdo">🎓</span>СДО</button>
       <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq">🗓</span>Календарь</button>
-      <button onclick="toggleMore(false); addToHome()"><span class="sq">📲</span>На «Домой»</button>
+      <button onclick="toggleMore(false); addToHome()"><span class="sq">📲</span>Ярлык</button>
     </div>
   </div>
 </div>
@@ -212,6 +228,7 @@
 <script src="js/search.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/more.js"></script>
+<script src="js/sdo.js"></script>
 <script src="js/main.js"></script>
 
 </body>

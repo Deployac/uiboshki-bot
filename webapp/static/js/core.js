@@ -102,8 +102,8 @@ function switchTab(name) {
   document.getElementById("view-" + name).classList.add("active");
   const menu = document.getElementById("more-menu");
   if (menu) menu.classList.remove("open");
-  // Поиск живёт в меню «Ещё» — тогда подсвечена ☰
-  const tab = name === "search" ? "more" : name;
+  // Поиск и СДО живут в меню «Ещё» — тогда подсвечена ☰
+  const tab = ["search", "sdo", "subject", "tk"].includes(name) ? "more" : name;
   document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   haptic();
   if (name === "deadlines") loadDeadlines();
@@ -112,6 +112,7 @@ function switchTab(name) {
   if (name === "chat") requestAnimationFrame(syncNavHeight);
   if (tg && tg.BackButton) {
     tg.BackButton.offClick(closeFolder);
+    tg.BackButton.offClick(sdoBack);
     const targetOpen = document.getElementById("target-view").style.display === "block";
     if (!(name === "search" && targetOpen)) tg.BackButton.hide();
   }
