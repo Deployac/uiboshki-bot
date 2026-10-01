@@ -172,6 +172,12 @@ def _split_kind(summary: str) -> tuple[str, str, str]:
     return summary.strip(), "", ""
 
 
+def is_self_study(summary: str) -> bool:
+    """«СР …» — самостоятельная работа (производственная практика на
+    удалёнке): фиксированного времени нет, напоминать о ней не нужно."""
+    return _split_kind(summary)[1] == "сам. работа"
+
+
 def _short_teacher(name: str) -> str:
     """"Иванов Иван Иванович" -> "Иванов И. И."."""
     parts = (name or "").split()
