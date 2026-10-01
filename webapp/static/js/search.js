@@ -3,7 +3,7 @@
 
 // ── Поиск расписания: преподаватель / группа / аудитория ──────────────────
 
-const TARGET_KIND = { 1: ["👥", "Группа"], 2: ["👤", "Преподаватель"], 3: ["🚪", "Аудитория"] };
+const TARGET_KIND = { 1: ["users", "Группа"], 2: ["user", "Преподаватель"], 3: ["door", "Аудитория"] };
 let targetType = 0;
 let targetTimer = null;
 let targetSeq = 0;
@@ -21,9 +21,9 @@ document.getElementById("target-search").addEventListener("input", (e) => {
 });
 
 function targetItem(t) {
-  const kind = TARGET_KIND[t.type] || ["📅", ""];
+  const kind = TARGET_KIND[t.type] || ["calendar", ""];
   return '<div class="target-item" onclick="openTarget(' + t.type + ',' + t.id + ',' + escapeHtml(JSON.stringify(t.title)) + ')">' +
-    '<span class="ic">' + kind[0] + '</span>' +
+    '<span class="ic">' + icon(kind[0]) + '</span>' +
     '<div style="min-width:0"><div class="tt">' + escapeHtml(t.title) + '</div><div class="ts">' + kind[1] +
     (t.hint ? ' · ' + escapeHtml(t.hint) : '') + '</div></div>' +
     '<span class="go">›</span></div>';
@@ -79,14 +79,14 @@ function renderRecent() {
   const recents = recentTargets().filter(t => !isPinned(t.type, t.id));
   let html = "";
   if (pinnedTargets.length) {
-    html += '<p class="recent-title">📌 Закреплённые</p><div class="list">' + pinnedTargets.map(targetItem).join("") + '</div>';
+    html += '<p class="recent-title">' + icon("pin", "inl") + ' Закреплённые</p><div class="list">' + pinnedTargets.map(targetItem).join("") + '</div>';
   }
   if (recents.length) {
     html += '<p class="recent-title"' + (pinnedTargets.length ? ' style="margin-top:18px"' : '') + '>Недавние</p>' +
       '<div class="list">' + recents.map(targetItem).join("") + '</div>';
   }
   box.innerHTML = html ||
-    '<div class="empty">Начни вводить фамилию преподавателя, номер группы или аудитории — например «Морозов» или «УИБО-03». Нужное можно закрепить 📌</div>';
+    '<div class="empty">Начни вводить фамилию преподавателя, номер группы или аудитории — например «Морозов» или «УИБО-03». Нужное можно закрепить ' + icon("pin", "inl") + '</div>';
 }
 
 // Экран расписания группы / преподавателя / аудитории — как главная:
@@ -110,10 +110,10 @@ async function openTarget(type, id, title) {
   rememberTarget({ type: type, id: id, title: title });
   targetCurrent = { type: type, id: id, title: title };
   targetData = null;
-  const kind = TARGET_KIND[type] || ["📅", ""];
+  const kind = TARGET_KIND[type] || ["calendar", ""];
   document.getElementById("search-pane").style.display = "none";
   document.getElementById("target-view").style.display = "block";
-  document.getElementById("target-ic").textContent = kind[0];
+  document.getElementById("target-ic").innerHTML = icon(kind[0]);
   document.getElementById("target-kind").textContent = kind[1];
   document.getElementById("target-title").textContent = title;
   setPinButton(isPinned(type, id));

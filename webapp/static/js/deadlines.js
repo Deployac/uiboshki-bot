@@ -9,7 +9,7 @@ function daysUntil(iso) {
 }
 
 function dueBadge(item) {
-  if (item.done) return '<span class="chip ok">✓ готово</span>';
+  if (item.done) return '<span class="chip ok">' + icon("check") + ' готово</span>';
   const days = daysUntil(item.due_date);
   let cls = "ok", label;
   if (days < 0) { cls = "danger"; label = "просрочено"; }
@@ -71,18 +71,18 @@ function renderDeadline(item) {
   const desc = item.description || "";
   const isLink = /^https?:\/\//.test(desc);
   const actions = [];
-  if (item.done) actions.push('<button onclick="event.stopPropagation(); toggleDeadline(' + item.id + ', false)">↩ Вернуть в активные</button>');
-  if (item.can_submit && !item.done) actions.push('<button class="submit" onclick="event.stopPropagation(); openSubmit(' + item.id + ')">📤 Сдать</button>');
-  if (isLink) actions.push('<a href="#" onclick="event.stopPropagation(); openLink(' + escapeHtml(JSON.stringify(desc)) + '); return false;">🔗 Задание</a>');
-  if (item.can_edit) actions.push('<button onclick="event.stopPropagation(); openAddSheet(' + item.id + ')">✏️ Изменить</button>');
-  if (item.can_edit) actions.push('<button class="del" onclick="event.stopPropagation(); deleteDeadline(' + item.id + ')">🗑 Удалить</button>');
+  if (item.done) actions.push('<button onclick="event.stopPropagation(); toggleDeadline(' + item.id + ', false)">' + icon("undo") + ' Вернуть в активные</button>');
+  if (item.can_submit && !item.done) actions.push('<button class="submit" onclick="event.stopPropagation(); openSubmit(' + item.id + ')">' + icon("upload") + ' Сдать</button>');
+  if (isLink) actions.push('<a href="#" onclick="event.stopPropagation(); openLink(' + escapeHtml(JSON.stringify(desc)) + '); return false;">' + icon("link") + ' Задание</a>');
+  if (item.can_edit) actions.push('<button onclick="event.stopPropagation(); openAddSheet(' + item.id + ')">' + icon("edit") + ' Изменить</button>');
+  if (item.can_edit) actions.push('<button class="del" onclick="event.stopPropagation(); deleteDeadline(' + item.id + ')">' + icon("trash") + ' Удалить</button>');
   return (
     '<div class="deadline-card ' + (item.done ? "done" : "") + '" onclick="toggleDeadline(' + item.id + ', ' + (!item.done) + ')">' +
-      '<div class="checkbox ' + (item.done ? "checked" : "") + '">' + (item.done ? "✓" : "") + '</div>' +
+      '<div class="checkbox ' + (item.done ? "checked" : "") + '">' + (item.done ? icon("check") : "") + '</div>' +
       '<div class="dl-body">' +
         '<p class="dl-title">' + escapeHtml(item.subject) + '</p>' +
         (desc && !isLink ? '<p class="dl-desc">' + escapeHtml(desc) + '</p>' : '') +
-        '<div class="dl-meta">' + dueBadge(item) + (item.personal ? '<span class="chip">👤 личный</span>' : '') + '</div>' +
+        '<div class="dl-meta">' + dueBadge(item) + (item.personal ? '<span class="chip">' + icon("user") + ' личный</span>' : '') + '</div>' +
         (actions.length ? '<div class="dl-actions">' + actions.join("") + '</div>' : '') +
       '</div>' +
     '</div>'
@@ -94,9 +94,16 @@ function openLink(url) {
 }
 
 let toastTimer = null;
+// Тосты пишутся по всему приложению с эмодзи в начале («✓ Сохранено»,
+// «📨 Файл в чате») — здесь он меняется на свою иконку (js/icons.js).
+const TOAST_ICONS = [["✓", "check"], ["✅", "check"], ["↩", "undo"], ["📨", "send"], ["📲", "phone"], ["🎖", "medal"],
+  ["🗑", "trash"], ["⚠️", "warning"], ["📥", "download"], ["🗓", "calsub"], ["🔒", "lock"], ["📤", "upload"]];
+
 function showToast(text, actionLabel, onAction) {
   const t = document.getElementById("toast");
-  document.getElementById("toast-text").textContent = text;
+  const lead = TOAST_ICONS.find(([e]) => text.startsWith(e));
+  document.getElementById("toast-text").innerHTML = lead
+    ? icon(lead[1]) + " " + escapeHtml(text.slice(lead[0].length).trim()) : escapeHtml(text);
   const btn = document.getElementById("toast-action");
   btn.textContent = actionLabel || "";
   btn.onclick = () => { t.classList.remove("show"); if (onAction) onAction(); };
@@ -149,10 +156,10 @@ function openAddSheet(id) {
   editingId = item ? item.id : null;
   document.getElementById("nd-title").textContent = item ? "Изменить дедлайн" : "Новый дедлайн";
   document.getElementById("nd-submit").textContent = item ? "Сохранить" : "Добавить";
-  document.getElementById("nd-hint").textContent = !item
-    ? "👤 Личный — видишь только ты. Общие дедлайны группы добавляет староста."
-    : item.personal ? "👤 Личный — видишь только ты."
-    : "✏️ Общий дедлайн — изменится у всей группы. Автосинк СДО его больше не перезапишет.";
+  document.getElementById("nd-hint").innerHTML = !item
+    ? icon("user", "inl") + " Личный — видишь только ты. Общие дедлайны группы добавляет староста."
+    : item.personal ? icon("user", "inl") + " Личный — видишь только ты."
+    : icon("edit", "inl") + " Общий дедлайн — изменится у всей группы. Автосинк СДО его больше не перезапишет.";
   if (item) {
     document.getElementById("nd-subject").value = item.subject;
     document.getElementById("nd-date").value = item.due_date;
@@ -206,7 +213,7 @@ async function loadHomework() {
     if (!data.items.length) { list.innerHTML = '<div class="empty">Доска ДЗ пока пустая</div>'; return; }
     list.innerHTML = data.items.map(h => {
       const when = h.lesson_date ? '<span class="chip warn">к ' + h.lesson_date.slice(8, 10) + "." + h.lesson_date.slice(5, 7) + '</span>' : "";
-      const file = h.has_file ? '<div class="dl-actions"><button onclick="openHwFile(' + h.id + ', this)">📎 Открыть файл</button></div>' : "";
+      const file = h.has_file ? '<div class="dl-actions"><button onclick="openHwFile(' + h.id + ', this)">' + icon("clip") + ' Открыть файл</button></div>' : "";
       return '<div class="hw-card"><div class="hw-subj">' + escapeHtml(h.subject) + '</div>' +
         (h.content ? '<div class="hw-text">' + escapeHtml(h.content) + '</div>' : '') +
         '<div class="dl-meta">' + when + '</div>' + file + '</div>';

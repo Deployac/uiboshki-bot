@@ -96,9 +96,10 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   отвечает без них и пишет причину. Математика в ответах — `utils.pretty_math`,
   Markdown модели → HTML Telegram — `md_to_tg_html_chunks`.
 - **WebApp**: авторизация по `initData` (HMAC, `webapp/auth.py`). Фронт —
-  `webapp/static/index.html` + `app.css` + `js/{core,home,deadlines,files,
+  `webapp/static/index.html` + `app.css` + `js/{core,icons,home,deadlines,files,
   search,chat,more,sdo,main}.js` (классические скрипты, общая глобальная область,
-  порядок важен). `/` отдаёт index со ссылками `?v=<хэш>` против кэша Telegram.
+  порядок важен). Иконки — свои (`js/icons.js`: спрайт, `icon("имя")`, `fileTypeIcon`),
+  эмодзи в интерфейсе не используем. `/` отдаёт index со ссылками `?v=<хэш>` против кэша Telegram.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

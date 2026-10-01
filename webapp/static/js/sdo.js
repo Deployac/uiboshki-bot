@@ -22,8 +22,8 @@ function fmtNum(x) {
 }
 
 function needText(c) {
-  if (c.closed && !c.need) return "✓ все пороги взяты";
-  if (c.closed) return "✓ закрыт · до «" + escapeHtml(c.need_label) + "» ещё <b>" + fmtNum(c.need) + "</b>";
+  if (c.closed && !c.need) return icon("check", "inl") + "все пороги взяты";
+  if (c.closed) return icon("check", "inl") + "закрыт · до «" + escapeHtml(c.need_label) + "» ещё <b>" + fmtNum(c.need) + "</b>";
   return (c.kind === "credit" ? "до зачёта" : "до «" + escapeHtml(c.need_label) + "»") + " ещё <b>" + fmtNum(c.need) + "</b>";
 }
 
@@ -38,12 +38,12 @@ function scoreBar(c, cls) {
 function zachRow(c) {
   const pct = c.works_total ? Math.round(c.works_passed / c.works_total * 100) : 0;
   const ok = pct >= c.pass_share * 100;
-  return '<div class="zach' + (ok ? " ok" : "") + '"><span>✓ Зачтено работ <b>' + c.works_passed + ' из ' + c.works_total + '</b></span>' +
+  return '<div class="zach' + (ok ? " ok" : "") + '"><span>' + icon("checkCircle", "inl") + ' Зачтено работ <b>' + c.works_passed + ' из ' + c.works_total + '</b></span>' +
     '<span class="zb"><i style="width:' + pct + '%"></i><em style="left:' + c.pass_share * 100 + '%"></em></span><b>' + pct + '%</b></div>';
 }
 
 function sdoNeedConnect(box, text) {
-  box.innerHTML = '<div class="card sdo-empty"><div class="big">🎓</div><b>' + escapeHtml(text) + '</b>' +
+  box.innerHTML = '<div class="card sdo-empty"><div class="big">' + icon("cap", "xl acc") + '</div><b>' + escapeHtml(text) + '</b>' +
     '<p class="sheet-hint">Баллы и задания у каждого свои — их видно только со своим входом в СДО.</p>' +
     '<button class="primary" onclick="openSdoSheet()">Подключить СДО</button></div>';
 }
@@ -124,7 +124,7 @@ async function openSubject(id) {
 function renderSubject() {
   const c = sdoCourse;
   const marks = c.marks.map(m => '<span class="gm' + (c.score >= m.at ? " got" : "") + '" style="left:' + (m.at / c.max * 100).toFixed(1) + '%">' +
-    '<b>' + (m.label === "зачёт" ? "✓" : escapeHtml(m.label)) + '</b><em>' + (m.label === "зачёт" ? "зачёт · " : "") + m.at + '</em></span>').join("");
+    '<b>' + (m.label === "зачёт" ? icon("check") : escapeHtml(m.label)) + '</b><em>' + (m.label === "зачёт" ? "зачёт · " : "") + m.at + '</em></span>').join("");
   const seg = c.categories.filter(k => k.score > 0)
     .map(k => '<i style="width:' + Math.min(100, k.score / c.max * 100).toFixed(1) + '%;background:' + catColor(k.name) + '"></i>').join("");
   const rows = c.categories.map((k, i) => {
@@ -145,15 +145,15 @@ function renderSubject() {
 // ── Текущий контроль ──────────────────────────────────────────────────────
 
 const WORK_LOOK = {
-  ok: ["✓", "зачтено"], low: ["✕", "ниже порога"], wait: ["⏳", "сдано · ждёт оценки"],
-  todo: ["📤", "можно сдавать"], offline: ["🏫", "сдаётся на занятии"], soon: ["🔒", "ещё закрыто"],
-  miss: ["!", "срок прошёл"], none: ["·", ""],
+  ok: ["check", "зачтено"], low: ["cross", "ниже порога"], wait: ["clock", "сдано · ждёт оценки"],
+  todo: ["upload", "можно сдавать"], offline: ["classroom", "сдаётся на занятии"], soon: ["lock", "ещё закрыто"],
+  miss: ["warning", "срок прошёл"], none: ["", ""],
 };
 
 function openTk() {
   haptic();
   tkFilter = "all";
-  document.getElementById("tk-back").textContent = "← " + (sdoCourse ? sdoCourse.title : "Предмет");
+  document.getElementById("tk-back").innerHTML = icon("back") + " " + escapeHtml(sdoCourse ? sdoCourse.title : "Предмет");
   showSdoView("tk");
   renderTk();
 }
@@ -200,11 +200,11 @@ function renderTk() {
     '<div class="chips-row tk-chips">' +
       [["all", "Все · " + works.length], ["todo", "Сдать · " + todo], ["graded", "Оценено · " + graded]]
         .map(([k, t]) => '<button class="' + (tkFilter === k ? "active" : "") + '" onclick="tkFilter=\'' + k + '\'; renderTk()">' + t + '</button>').join("") + '</div>' +
-    (detailed ? '' : '<p class="sheet-hint">⏳ Подгружаю сроки и статусы заданий…</p>') +
+    (detailed ? '' : '<p class="sheet-hint">' + icon("clock", "inl") + ' Подгружаю сроки и статусы заданий…</p>') +
     '<div class="card pad">' + (shown.length ? shown.map(w => {
       const look = WORK_LOOK[w.status] || WORK_LOOK.none;
       const i = works.indexOf(works.find(x => x.cmid === w.cmid));
-      return '<div class="wrow ' + w.status + '" onclick="tapWork(' + i + ')"><span class="wi">' + look[0] + '</span>' +
+      return '<div class="wrow ' + w.status + '" onclick="tapWork(' + i + ')"><span class="wi">' + (look[0] ? icon(look[0]) : "") + '</span>' +
         '<span class="wn">' + escapeHtml(w.name) + '<small>' + workMeta(w) + '</small></span>' +
         '<span class="ws"><b>' + (w.grade != null ? fmtNum(w.grade) : "—") + '</b>/' + fmtNum(w.max || 0) +
         (w.pass_mark != null ? '<small>зачёт ' + fmtNum(w.pass_mark) + '</small>' : '') + '</span><span class="chev">›</span></div>';
@@ -238,16 +238,16 @@ async function openTask(w) {
   }
 }
 
-const TASK_TAG = { ok: ["ok", "✓ зачтено"], low: ["bad", "ниже порога"], wait: ["", "⏳ ждёт оценки"], todo: ["warn", ""],
-  offline: ["", "🏫 сдаётся на занятии"], soon: ["", "🔒 ещё закрыто"], miss: ["bad", "срок прошёл"] };
+const TASK_TAG = { ok: ["ok", icon("check", "inl") + "зачтено"], low: ["bad", "ниже порога"], wait: ["", icon("clock", "inl") + "ждёт оценки"], todo: ["warn", ""],
+  offline: ["", icon("classroom", "inl") + "сдаётся на занятии"], soon: ["", icon("lock", "inl") + "ещё закрыто"], miss: ["bad", "срок прошёл"] };
 
 function renderTask() {
   const t = sdoTask, w = t.work;
   const tag = TASK_TAG[w.status] || ["", ""];
-  const remain = w.status === "todo" && t.remaining ? "⏳ " + escapeHtml(t.remaining.replace(/ осталось$/, "")) : tag[1];
+  const remain = w.status === "todo" && t.remaining ? icon("clock", "inl") + escapeHtml(t.remaining.replace(/ осталось$/, "")) : tag[1];
   const fileRow = (f, i, mine) => '<div class="t-file"><span class="ic">' + fileIconFor(f.name) + '</span>' +
     '<span class="nm">' + escapeHtml(f.name) + '</span>' +
-    '<button class="dlb" onclick="downloadSdoFile(' + i + ', ' + mine + ', this)" aria-label="Скачать">📥</button></div>';
+    '<button class="dlb" onclick="downloadSdoFile(' + i + ', ' + mine + ', this)" aria-label="Скачать">' + icon("download") + '</button></div>';
   document.getElementById("task-body").innerHTML =
     '<h2 class="section" style="margin-top:6px"><span>' + escapeHtml(t.title || w.name) + '</span>' +
       '<span class="stat">до ' + fmtNum(w.max || 0) + (w.pass_mark != null ? ' · зачёт от ' + fmtNum(w.pass_mark) : '') + '</span></h2>' +
@@ -257,10 +257,10 @@ function renderTask() {
       '<div class="t-tags">' + (t.status ? '<span class="t-tag">' + escapeHtml(t.status) + '</span>' : '') +
         '<span class="t-tag">' + (w.grade != null ? "Оценка " + fmtNum(w.grade) + " / " + fmtNum(w.max) : "Не оценено") + '</span></div>' +
       (t.description ? '<p class="t-desc">' + escapeHtml(t.description).replace(/\n/g, "<br>") + '</p>' : '') + '</div>' +
-    (t.files.length ? '<h2 class="section">Файлы задания' + (t.files.length > 1 ? '<button class="link-btn" onclick="downloadAllSdo(this)">📥 Скачать все · ' + t.files.length + '</button>' : '') + '</h2>' +
+    (t.files.length ? '<h2 class="section">Файлы задания' + (t.files.length > 1 ? '<button class="link-btn" onclick="downloadAllSdo(this)">' + icon("download", "inl") + ' Скачать все · ' + t.files.length + '</button>' : '') + '</h2>' +
       '<div class="card pad">' + t.files.map((f, i) => fileRow(f, i, false)).join("") + '</div>' : '') +
     (t.mine.length ? '<h2 class="section">Мой ответ</h2><div class="card pad">' + t.mine.map((f, i) => fileRow(f, i, true)).join("") + '</div>' : '') +
-    (t.can_submit ? '<button class="primary t-go" onclick="submitFromTask()">📤 ' + (t.mine.length ? "Сдать ещё / заменить" : "Сдать работу") +
+    (t.can_submit ? '<button class="primary t-go" onclick="submitFromTask()">' + icon("upload") + ' ' + (t.mine.length ? "Сдать ещё / заменить" : "Сдать работу") +
       (t.limit > 1 ? ' · до ' + t.limit + ' ' + plural(t.limit, "файла", "файлов", "файлов") : '') + '</button>' :
       (w.status === "offline" ? '<p class="sheet-hint" style="text-align:center">Эту работу сдают на занятии, не через СДО.</p>' : '')) +
     '<button class="ghost" onclick="openLink(' + escapeHtml(JSON.stringify(t.url)) + ')">Открыть в СДО</button>';

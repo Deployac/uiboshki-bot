@@ -20,25 +20,27 @@ let folderList = [];
 let fileIndex = {};
 let fileCanDelete = false;   // удалять (у всей группы) может только староста
 
-function fileIcon(name) {
-  const n = (name || "").toLowerCase();
-  if (n.endsWith(".pdf")) return "📕";
-  if (n.endsWith(".docx") || n.endsWith(".doc")) return "📘";
-  if (n.endsWith(".pptx") || n.endsWith(".ppt")) return "📙";
-  if (/\.(jpg|jpeg|png|webp)$/.test(n)) return "🖼";
-  if (/\.(xlsx|xls|csv)$/.test(n)) return "📗";
-  return "📄";
+// Разделы приходят с сервера с эмодзи (бот показывает их в чате) — в WebApp
+// вместо эмодзи своя иконка раздела (js/icons.js).
+const CAT_ICONS = { lecture: "book", practice: "edit", control: "note", method: "bookOpen", exam: "cap", other: "folder" };
+
+function catText(label) {
+  return (label || "").replace(/^[^\p{L}\p{N}«"]+/u, "");
+}
+
+function catLabel(c) {
+  return icon(CAT_ICONS[c.key] || "folder") + " " + escapeHtml(catText(c.label));
 }
 
 function fileCard(f, withPlace) {
-  const sub = withPlace ? (f.subject || "Без предмета") + " · " + f.category_label : (f.file_name || "");
+  const sub = withPlace ? (f.subject || "Без предмета") + " · " + catText(f.category_label) : (f.file_name || "");
   return '<div class="file-card" id="fc-' + f.id + '">' +
-    '<span class="ic">' + fileIcon(f.file_name) + '</span>' +
-    '<div style="min-width:0"><div class="ft">' + escapeHtml(f.title) + (f.has_text ? '\u2060<span class="badge">📖</span>' : '') + '</div>' +
+    fileTypeIcon(f.file_name) +
+    '<div style="min-width:0"><div class="ft">' + escapeHtml(f.title) + (f.has_text ? '\u2060<span class="badge">' + icon("bookOpen") + '</span>' : '') + '</div>' +
     '<div class="fs">' + escapeHtml(sub) + '</div></div>' +
-    '<button class="dl" onclick="downloadFile(' + f.id + ', this)" aria-label="Скачать">📥</button>' +
+    '<button class="dl" onclick="downloadFile(' + f.id + ', this)" aria-label="Скачать">' + icon("download") + '</button>' +
     '<button onclick="openFile(' + f.id + ', this)">В чат</button>' +
-    (f.can_edit ? '<button class="edit" onclick="openFileSheet(' + f.id + ')" aria-label="Изменить">✏️</button>' : '') +
+    (f.can_edit ? '<button class="edit" onclick="openFileSheet(' + f.id + ')" aria-label="Изменить">' + icon("edit") + '</button>' : '') +
   '</div>';
 }
 
@@ -58,9 +60,9 @@ function renderFolders(list) {
   list.innerHTML = folderList.map((s, i) => {
     const files = bySubject[s];
     const counts = countByCat(files);
-    const parts = fileCategories.filter(c => counts[c.key]).map(c => c.label.split(" ")[0] + " " + counts[c.key]);
+    const parts = fileCategories.filter(c => counts[c.key]).map(c => icon(CAT_ICONS[c.key] || "folder", "inl") + counts[c.key]);
     return '<div class="folder-card" onclick="openFolder(' + i + ')">' +
-      '<span class="ic">📁</span>' +
+      '<span class="ic">' + icon("folder") + '</span>' +
       '<div style="min-width:0"><div class="ft">' + escapeHtml(s || "Без предмета") + '</div>' +
       '<div class="fs">' + files.length + " " + plural(files.length, "файл", "файла", "файлов") +
         (parts.length > 1 ? " · " + parts.join(" · ") : "") + '</div></div>' +
@@ -93,7 +95,7 @@ function renderFiles() {
     const box = document.getElementById("file-cats");
     [{ key: "", label: "Все" }, ...cats].forEach(c => {
       const b = document.createElement("button");
-      b.textContent = c.label + " · " + (c.key ? counts[c.key] : files.length);
+      b.innerHTML = (c.key ? catLabel(c) : "Все") + " · " + (c.key ? counts[c.key] : files.length);
       b.classList.toggle("active", c.key === fileCat);
       b.onclick = () => { fileCat = c.key; haptic(); renderFiles(); };
       box.appendChild(b);
@@ -103,14 +105,14 @@ function renderFiles() {
   // группы, поэтому только старосте.
   const inView = fileCat ? files.filter(f => f.category === fileCat) : files;
   if (fileCanDelete && inView.length) {
-    const what = fileCat ? "раздел «" + (cats.find(c => c.key === fileCat) || {}).label + "»" : "папку «" + (subject || "Без предмета") + "»";
-    head.insertAdjacentHTML("beforeend", '<button class="file-del inline" id="file-del-all">🗑 Удалить ' + escapeHtml(what) +
+    const what = fileCat ? "раздел «" + catText((cats.find(c => c.key === fileCat) || {}).label) + "»" : "папку «" + (subject || "Без предмета") + "»";
+    head.insertAdjacentHTML("beforeend", '<button class="file-del inline" id="file-del-all">' + icon("trash") + ' Удалить ' + escapeHtml(what) +
       " (" + inView.length + ")</button>");
     document.getElementById("file-del-all").onclick = () => deleteFiles(inView.map(f => f.id), what);
   }
   const shown = fileCat ? cats.filter(c => c.key === fileCat) : cats;
   list.innerHTML = shown.map(c =>
-    '<div class="group-title">' + escapeHtml(c.label) + ' · ' + counts[c.key] + '</div>' +
+    '<div class="group-title">' + catLabel(c) + ' · ' + counts[c.key] + '</div>' +
     files.filter(f => f.category === c.key).sort((a, b) => titleCollator.compare(a.title, b.title))
       .map(f => fileCard(f, false)).join("")
   ).join("");
@@ -186,7 +188,7 @@ function renderFileEditCats() {
   box.innerHTML = "";
   fileCategories.forEach(c => {
     const b = document.createElement("button");
-    b.textContent = c.label;
+    b.innerHTML = catLabel(c);
     b.classList.toggle("active", c.key === fileEditCat);
     b.onclick = () => { fileEditCat = c.key; haptic(); renderFileEditCats(); };
     box.appendChild(b);

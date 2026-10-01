@@ -32,7 +32,7 @@ function kindDot(kind) {
 }
 
 function lessonMeta(l) {
-  const rest = [l.room ? "📍 " + l.room : "", l.teacher].filter(Boolean).map(escapeHtml);
+  const rest = [l.room ? icon("place", "inl") + escapeHtml(l.room) : "", escapeHtml(l.teacher || "")].filter(Boolean);
   return (l.kind ? kindDot(l.kind) + escapeHtml(l.kind) + (rest.length ? " · " : "") : "") + rest.join(" · ");
 }
 
@@ -44,7 +44,7 @@ function lessonRow(l, withStatus) {
     '<div class="l-time"><b>' + escapeHtml(l.start) + '</b><span>' + escapeHtml(l.end) + '</span></div>' +
     '<div class="l-body"><div class="l-title">' + escapeHtml(l.title) + '</div>' +
     '<div class="l-meta">' + lessonMeta(l) + escapeHtml(pairs) + '</div>' +
-    (l.groups ? '<div class="l-groups">👥 ' + escapeHtml(l.groups) + '</div>' : '') + now + '</div>' +
+    (l.groups ? '<div class="l-groups">' + icon("users", "inl") + escapeHtml(l.groups) + '</div>' : '') + now + '</div>' +
     '<div class="l-num">' + escapeHtml(String(l.num)) + '</div></div>';
 }
 
@@ -128,7 +128,7 @@ async function loadToday() {
     document.getElementById("today-deadline-next").textContent = dl.soon.length
       ? dl.soon[0].subject.slice(0, 40) + " · " + dueText(dl.soon[0].days) : "ничего не горит 🎉";
     document.getElementById("today-notes").innerHTML = todayData.notes.map(x =>
-      '<div class="note-card">📌 ' + (x.subject ? "<b>" + escapeHtml(x.subject) + ":</b> " : "") + escapeHtml(x.text) + '</div>').join("");
+      '<div class="note-card">' + icon("pin", "inl") + (x.subject ? "<b>" + escapeHtml(x.subject) + ":</b> " : "") + escapeHtml(x.text) + '</div>').join("");
   } catch (e) {
     const hero = document.getElementById("hero");
     hero.className = "hero calm";
@@ -341,7 +341,7 @@ async function initOptional() {
 function renderOptional() {
   const ask = document.getElementById("optional-ask");
   ask.innerHTML = optionalState.pending.map((s, i) =>
-    '<div class="opt-card"><div class="txt"><b>🎖 ' + escapeHtml(s) + '</b>Ходишь? Если нет — уберём эти пары из твоего расписания.</div>' +
+    '<div class="opt-card"><div class="txt"><b>' + icon("medal", "inl") + escapeHtml(s) + '</b>Ходишь? Если нет — уберём эти пары из твоего расписания.</div>' +
     '<div class="btns"><button onclick="answerOptional(' + i + ', true, true)">Хожу</button>' +
     '<button class="no" onclick="answerOptional(' + i + ', false, true)">Не хожу</button></div></div>').join("");
 }

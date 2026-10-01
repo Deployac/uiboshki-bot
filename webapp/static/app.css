@@ -712,3 +712,44 @@
   .fcount i { flex: 1; height: 4px; border-radius: 4px; background: var(--bg-raised); }
   .fcount i.on { background: var(--accent); }
   .fpick.add { justify-content: center; border-style: dashed; color: var(--accent); font-weight: 700; font-size: 14px; }
+
+  /* ── Свои иконки вместо эмодзи (js/icons.js): размер — от шрифта места ── */
+  .ico { width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; fill: none; stroke: currentColor;
+    stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  .ico.inl { margin-right: 4px; }
+  .ico.lg { width: 28px; height: 28px; }
+  .ico.xl { width: 52px; height: 52px; stroke-width: 1.6; }
+  .ico.acc { color: var(--accent); }
+  .ico.ok { color: var(--ok); }
+  nav.tabs button .ic .ico { width: 24px; height: 24px; vertical-align: 0; }
+  .chat-head-btns .ico, .seg .ico, .chips-row .ico, .link-btn .ico { width: 16px; height: 16px; vertical-align: -3px; }
+  h2.section .ttl { display: inline-flex; align-items: center; gap: 6px; }
+  .more-grid .sq { color: #fff; }
+  .more-grid .sq .ico { width: 30px; height: 30px; stroke-width: 1.8; }
+  .more-grid .sq.t-search { background: linear-gradient(145deg, #4a8ff7, #3164d9); }
+  .more-grid .sq.t-cal { background: linear-gradient(145deg, #f0884b, #e0553f); }
+  .more-grid .sq.t-phone { background: linear-gradient(145deg, #8b7cf6, #6a4fe0); }
+  .ftype { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
+    flex: none; background: var(--bg-raised); color: var(--hint); font-size: 17px; }
+  .ftype .ico { vertical-align: 0; }
+  .ftype.pdf { color: #ff6b6b; background: rgba(255,107,107,.13); }
+  .ftype.word { color: #60a5fa; background: rgba(96,165,250,.13); }
+  .ftype.xls { color: #34d399; background: rgba(52,211,153,.13); }
+  .ftype.ppt { color: #fb923c; background: rgba(251,146,60,.13); }
+  .ftype.img { color: #c084fc; background: rgba(192,132,252,.13); }
+  .fpick .ic .ftype { width: 38px; height: 38px; font-size: 19px; }
+  .file-card button.dl, .dlb { color: var(--accent); }
+  .wrow .wi .ico { width: 15px; height: 15px; stroke-width: 2.4; vertical-align: 0; }
+  .checkbox .ico { width: 15px; height: 15px; stroke-width: 2.8; vertical-align: 0; }
+  .chat-avatar .ico { width: 28px; height: 28px; vertical-align: 0; }
+  .pin-btn span .ico { vertical-align: -3px; }
+  .gm b .ico { width: 13px; height: 13px; stroke-width: 3; vertical-align: 0; }
+  .sub-done .big .ico, .sdo-empty .big .ico { vertical-align: 0; }
+  .toast span .ico { margin-right: 2px; }
+  .st-dot { display: inline-block; vertical-align: 0; }
+  .pin-btn.on span .ico { color: #fff; }
+  .dl-actions button, .dl-actions a { display: inline-flex; align-items: center; gap: 4px; }
+  .dl-actions .ico { width: 14px; height: 14px; vertical-align: 0; }
+  .wrow.todo .wi { color: #fff; }
+  .chat-avatar { color: #fff; }
+  .dl-actions { flex-wrap: wrap; row-gap: 6px; }
