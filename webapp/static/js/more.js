@@ -62,7 +62,7 @@ async function openSdoSheet() {
 
 function renderSdo(connecting) {
   const box = document.getElementById("sdo-body");
-  const lock = '<div class="lock">🔒 Вход хранится зашифрованным и используется только по твоей команде. Отключить — одной кнопкой в любой момент.</div>';
+  const lock = '<div class="lock">' + icon("shield", "inl") + ' Вход хранится зашифрованным и используется только по твоей команде. Отключить — одной кнопкой в любой момент.</div>';
   if (connecting) {
     box.innerHTML =
       '<h3>Подключить СДО</h3>' +
@@ -72,23 +72,23 @@ function renderSdo(connecting) {
         '<li><span>Скопируй значение и вставь сюда</span></li>' +
       '</ol>' +
       '<input class="searchbox" id="sdo-cookie" placeholder="Вставь MoodleSession…" autocomplete="off" autocapitalize="off" spellcheck="false">' +
-      '<div class="lock">🔒 Это как «оставаться в системе». Значение сразу шифруется, в переписке и логах не остаётся.</div>' +
+      '<div class="lock">' + icon("shield", "inl") + ' Это как «оставаться в системе». Значение сразу шифруется, в переписке и логах не остаётся.</div>' +
       '<button class="primary" id="sdo-save" onclick="connectSdo()">Проверить и сохранить</button>' +
       '<button class="ghost" onclick="renderSdo()">Позже</button>';
     return;
   }
   if (sdoState.state === "ok") {
-    box.innerHTML = '<h3>🎓 СДО</h3>' +
+    box.innerHTML = '<h3>' + icon("cap", "inl acc") + ' СДО</h3>' +
       statusCard("ok", "Подключено, работает", sdoState.shared ? "Вход старосты из настроек бота" : agoText(sdoState.checked_at)) +
-      '<p class="sheet-hint">У дедлайнов из СДО есть кнопка «📤 Сдать»: выбираешь файл — бот загружает его в нужное задание.</p>' +
+      '<p class="sheet-hint">У дедлайнов из СДО есть кнопка «' + icon("upload", "inl") + 'Сдать»: выбираешь файл — бот загружает его в нужное задание.</p>' +
       (sdoState.shared ? '' : '<button class="ghost danger" onclick="disconnectSdo()">Отключить СДО</button>') + pulseBtn();
   } else if (sdoState.state === "expired") {
-    box.innerHTML = '<h3>🎓 СДО</h3>' +
+    box.innerHTML = '<h3>' + icon("cap", "inl acc") + ' СДО</h3>' +
       statusCard("bad", "Вход устарел", "СДО разлогинил сессию — подключи заново", "bad") +
       '<button class="primary" onclick="renderSdo(true)">Подключить заново</button>' +
       '<button class="ghost danger" onclick="disconnectSdo()">Убрать</button>';
   } else {
-    box.innerHTML = '<h3>🎓 СДО</h3>' +
+    box.innerHTML = '<h3>' + icon("cap", "inl acc") + ' СДО</h3>' +
       statusCard("off", "Не подключено", "Дедлайны группы видны и без этого") +
       '<p class="sheet-hint">Подключи свой вход в СДО — и сдавай работы прямо отсюда: выбрал файл → «Сдать» → готово.</p>' +
       lock + '<button class="primary" onclick="renderSdo(true)">Подключить СДО</button>' + pulseBtn();
@@ -97,7 +97,7 @@ function renderSdo(connecting) {
 
 // Староста: пускает ли pulse.mirea.ru сервер бота (посещаемость по датам — потом)
 function pulseBtn() {
-  return sdoState.starosta ? '<button class="ghost" id="pulse-btn" onclick="checkPulse()">🩺 Проверить доступ к Пульсу</button>' : '';
+  return sdoState.starosta ? '<button class="ghost" id="pulse-btn" onclick="checkPulse()">' + icon("pulse", "inl") + ' Проверить доступ к Пульсу</button>' : '';
 }
 
 async function checkPulse() {
@@ -105,7 +105,8 @@ async function checkPulse() {
   btn.disabled = true; btn.textContent = "Проверяю Пульс…";
   try {
     const r = await api("/api/pulsecheck", { method: "POST" });
-    btn.textContent = (r.ok ? "🟢 Пульс пускает сервер" : "🔴 Пульс: " + r.why) + " · HTTP " + r.status;
+    btn.innerHTML = '<span class="st-dot ' + (r.ok ? "ok" : "bad") + '"></span> ' +
+      escapeHtml((r.ok ? "Пульс пускает сервер" : "Пульс: " + r.why) + " · HTTP " + r.status);
   } catch (e) {
     btn.textContent = "Не вышло: " + e.message;
   }
@@ -160,7 +161,7 @@ async function openSubmit(id, work) {
 
 function submitHead() {
   const it = submitting.item;
-  return '<h3>📤 Сдать работу</h3><div class="sub-task"><b>' + escapeHtml(it.subject) + '</b>' +
+  return '<h3>' + icon("upload", "inl acc") + ' Сдать работу</h3><div class="sub-task"><b>' + escapeHtml(it.subject) + '</b>' +
     '<div class="s">' + (it.due_text !== undefined ? escapeHtml(it.due_text)
       : "до " + escapeHtml(it.due_date.split("-").reverse().slice(0, 2).join(".")) + (it.due_time ? " · " + escapeHtml(it.due_time) : "")) +
     '</div></div>';
@@ -172,7 +173,7 @@ function fileSize(bytes) {
 
 function fileIconFor(name) {
   const ext = (name.split(".").pop() || "").toLowerCase();
-  return { pdf: "📕", doc: "📘", docx: "📘", xls: "📊", xlsx: "📊", ppt: "📙", pptx: "📙", zip: "🗜", rar: "🗜", png: "🖼", jpg: "🖼", jpeg: "🖼" }[ext] || "📄";
+  return ext ? fileTypeIcon(name) : fileTypeIcon("");
 }
 
 function pickSubmitFiles() {
@@ -184,7 +185,7 @@ function renderSubmit(state, info) {
   const files = submitting.files, n = files.length, lim = submitting.limit;
   const names = files.map(f => f.name).join(", ");
   if (state === "done") {
-    box.innerHTML = '<div class="sub-done"><div class="big">✅</div><h3>Отправлено</h3>' +
+    box.innerHTML = '<div class="sub-done"><div class="big">' + icon("checkCircle", "xl ok") + '</div><h3>Отправлено</h3>' +
       '<p class="sheet-hint">' + escapeHtml(submitting.item.subject) + ' · ' + escapeHtml(names) +
       (info && info.status ? '<br>Статус в СДО: «' + escapeHtml(info.status) + '»' : '') + '</p>' +
       '<button class="primary" onclick="openLink(' + escapeHtml(JSON.stringify(submitting.item.description)) + ')">Открыть в СДО</button>' +
@@ -193,7 +194,7 @@ function renderSubmit(state, info) {
   }
   if (!n) {
     box.innerHTML = submitHead() +
-      '<div class="fpick" onclick="pickSubmitFiles()"><span class="ic">📎</span>' +
+      '<div class="fpick" onclick="pickSubmitFiles()"><span class="ic">' + icon("clip") + '</span>' +
       '<div><b>' + (lim > 1 ? "Выбрать файлы" : "Выбрать файл") + '</b><div class="s">' +
       (lim > 1 ? "можно сразу до " + lim + " · " : "") + 'до ' + SUBMIT_MAX_MB + ' МБ каждый</div></div><span class="go">Обзор</span></div>' +
       '<button class="primary" disabled>Загрузить в СДО</button>';
@@ -204,9 +205,9 @@ function renderSubmit(state, info) {
     (lim > 1 ? '<div class="fcount">' + Array.from({ length: lim }, (_, i) => '<i class="' + (i < n ? "on" : "") + '"></i>').join("") + '</div>' : '') +
     files.map((f, i) => '<div class="fpick chosen"><span class="ic">' + fileIconFor(f.name) + '</span><div><b>' + escapeHtml(f.name) + '</b>' +
       '<div class="s">' + fileSize(f.size) + '</div></div>' +
-      (busy ? '' : '<button class="x" onclick="submitting.files.splice(' + i + ', 1); renderSubmit()" aria-label="Убрать">✕</button>') + '</div>').join("") +
-    (!busy && n < lim ? '<div class="fpick add" onclick="pickSubmitFiles()">＋ Добавить ещё файл · ' + (lim - n) + ' из ' + lim + ' осталось</div>' : '') +
-    '<div class="lock">⚠️ ' + (n > 1 ? n + " " + plural(n, "файл уйдёт", "файла уйдут", "файлов уйдут") : "Файл уйдёт") +
+      (busy ? '' : '<button class="x" onclick="submitting.files.splice(' + i + ', 1); renderSubmit()" aria-label="Убрать">' + icon("cross") + '</button>') + '</div>').join("") +
+    (!busy && n < lim ? '<div class="fpick add" onclick="pickSubmitFiles()">' + icon("plus", "inl") + ' Добавить ещё файл · ' + (lim - n) + ' из ' + lim + ' осталось</div>' : '') +
+    '<div class="lock">' + icon("warning", "inl") + ' ' + (n > 1 ? n + " " + plural(n, "файл уйдёт", "файла уйдут", "файлов уйдут") : "Файл уйдёт") +
       ' преподавателю от твоего имени. Проверь названия и работу.</div>' +
     '<button class="primary" id="submit-go" onclick="sendSubmission()"' + (busy ? ' disabled' : '') + '>' +
     (busy ? 'Загружаю в СДО…' : 'Отправить на проверку' + (n > 1 ? ' · ' + n + ' ' + plural(n, "файл", "файла", "файлов") : '')) + '</button>' +

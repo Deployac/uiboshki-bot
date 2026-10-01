@@ -71,3 +71,23 @@ def test_no_part_redeclares_anothers_globals():
 def test_sdo_pips_fill_from_left():
     # живой скрин 01.10: «1 из 4 закрыто» подсвечивало последнее деление (закрытые карточки идут в конце)
     assert "i < closed" in JS["js/sdo.js"]
+
+
+def test_icons_used_are_drawn():
+    # свои иконки (js/icons.js) вместо эмодзи: каждая, что зовётся из JS или
+    # разметки, нарисована — иначе на её месте пустое место
+    drawn = set(re.findall(r"^\s+(\w+): '", JS["js/icons.js"], re.M))
+    used = set(re.findall(r'icon\("(\w+)"', ALL_JS)) | set(re.findall(r'href="#i-(\w+)"', HTML))
+    look = JS["js/sdo.js"].split("const WORK_LOOK = {", 1)[1].split("};", 1)[0]
+    used |= set(re.findall(r'\["(\w+)", "', look))
+    cats = JS["js/files.js"].split("const CAT_ICONS = {", 1)[1].split("};", 1)[0]
+    used |= set(re.findall(r': "(\w+)"', cats))
+    missing = {u for u in used if u not in drawn and u not in ("ok", "bad", "warn", "")}
+    assert not missing, f"не нарисованы: {sorted(missing)}"
+
+
+def test_tab_bar_and_menu_use_own_icons():
+    nav = HTML[HTML.index('<nav class="tabs">'):HTML.index("</nav>")]
+    menu = HTML[HTML.index('id="more-menu"'):HTML.index('id="sdo-sheet"')]
+    emoji = re.compile("[\U0001F300-\U0001FAFF☀-➿]")
+    assert not emoji.search(nav) and not emoji.search(menu)

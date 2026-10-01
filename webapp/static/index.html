@@ -20,10 +20,10 @@
   <section class="view active" id="view-today">
     <div id="optional-ask"></div>
     <div class="home-add" id="home-add" style="display:none;">
-      <span class="ic">📲</span>
+      <span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span>
       <span class="txt"><b>На экран «Домой»</b>Открывать как отдельное приложение</span>
       <button onclick="addToHome()">Добавить</button>
-      <button class="x" onclick="hideHomeAdd()" aria-label="Скрыть">✕</button>
+      <button class="x" onclick="hideHomeAdd()" aria-label="Скрыть"><svg class="ico" aria-hidden="true"><use href="#i-cross"/></svg></button>
     </div>
     <div class="weather-pill" id="weather" style="display:none;"></div>
     <div id="hero"><div class="skel" style="height:118px"></div></div>
@@ -42,7 +42,7 @@
       </div>
       <div class="card tap" onclick="switchTab('search')">
         <p class="eyebrow">Поиск</p>
-        <p class="big">🔍</p>
+        <p class="big"><svg class="ico lg" aria-hidden="true"><use href="#i-search"/></svg></p>
         <p class="sub">препод, группа, аудитория</p>
       </div>
     </div>
@@ -56,14 +56,14 @@
     </h2>
     <div class="daychips" id="daychips"></div>
     <div class="lessons" id="day-lessons"></div>
-    <button class="link-btn home-link" id="home-link" style="display:none;" onclick="addToHome()">📲 Добавить на экран «Домой»</button>
+    <button class="link-btn home-link" id="home-link" style="display:none;" onclick="addToHome()"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg> Добавить на экран «Домой»</button>
   </section>
 
   <!-- ── Дедлайны / ДЗ ─────────────────────────────────────────────── -->
   <section class="view" id="view-deadlines">
     <div class="seg" id="dl-seg">
-      <button class="active" data-seg="dl">📋 Дедлайны</button>
-      <button data-seg="hw">📝 ДЗ</button>
+      <button class="active" data-seg="dl"><svg class="ico" aria-hidden="true"><use href="#i-deadlines"/></svg> Дедлайны</button>
+      <button data-seg="hw"><svg class="ico" aria-hidden="true"><use href="#i-note"/></svg> ДЗ</button>
     </div>
     <div id="seg-dl">
       <h2 class="section">Дедлайны <span class="stat" id="deadline-stat"></span></h2>
@@ -83,19 +83,19 @@
       <input class="searchbox" id="target-search" placeholder="Фамилия, группа или аудитория" autocomplete="off">
       <div class="chips-row" id="target-types">
         <button class="active" data-type="0">Все</button>
-        <button data-type="2">👤 Преподаватели</button>
-        <button data-type="1">👥 Группы</button>
-        <button data-type="3">🚪 Аудитории</button>
+        <button data-type="2"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg> Преподаватели</button>
+        <button data-type="1"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg> Группы</button>
+        <button data-type="3"><svg class="ico" aria-hidden="true"><use href="#i-door"/></svg> Аудитории</button>
       </div>
       <div id="target-recent"></div>
       <div class="list" id="target-list"></div>
     </div>
     <div id="target-view" style="display:none;">
-      <button class="back" onclick="closeTarget()">← к поиску</button>
+      <button class="back" onclick="closeTarget()"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg> к поиску</button>
       <div class="target-head">
-        <span class="ic" id="target-ic">👤</span>
+        <span class="ic" id="target-ic"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg></span>
         <div style="min-width:0"><p class="eyebrow" id="target-kind"></p><p class="t-title" id="target-title"></p></div>
-        <button class="pin-btn" id="target-pin" onclick="togglePin()" aria-label="Закрепить"><span>📌</span></button>
+        <button class="pin-btn" id="target-pin" onclick="togglePin()" aria-label="Закрепить"><span><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></span></button>
       </div>
       <h2 class="section">
         <span><span id="tw-label">Эта неделя</span><span class="stat" id="tw-num"></span></span>
@@ -115,44 +115,44 @@
     <input class="searchbox" id="file-search" placeholder="Поиск по названию, предмету, файлу…">
     <div id="file-head"></div>
     <div class="list" id="file-list"><div class="skel" style="height:60px"></div><div class="skel" style="height:60px"></div></div>
-    <p class="sheet-hint" style="margin-top:14px;">📖 — ИИ уже прочитал файл и отвечает по нему. Загрузить новые: /upload в боте.</p>
+    <p class="sheet-hint" style="margin-top:14px;"><svg class="ico inl" aria-hidden="true"><use href="#i-bookOpen"/></svg> — ИИ уже прочитал файл и отвечает по нему. Загрузить новые: /upload в боте.</p>
   </section>
 
   <!-- ── СДО: баллы → предмет → текущий контроль (js/sdo.js) ────────── -->
   <section class="view" id="view-sdo">
-    <h2 class="section"><span>СДО</span><span class="sdo-head-btns"><span class="stat" id="sdo-updated"></span><button class="link-btn" onclick="openSdoSheet()">⚙️ Вход</button></span></h2>
+    <h2 class="section"><span>СДО</span><span class="sdo-head-btns"><span class="stat" id="sdo-updated"></span><button class="link-btn" onclick="openSdoSheet()"><svg class="ico" aria-hidden="true"><use href="#i-gear"/></svg> Вход</button></span></h2>
     <div id="sdo-list"></div>
   </section>
 
   <section class="view" id="view-subject">
-    <button class="back" onclick="sdoBack()">← Баллы</button>
+    <button class="back" onclick="sdoBack()"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg> Баллы</button>
     <div id="subject-body"></div>
   </section>
 
   <section class="view" id="view-tk">
-    <button class="back" id="tk-back" onclick="sdoBack()">← Предмет</button>
+    <button class="back" id="tk-back" onclick="sdoBack()"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg> Предмет</button>
     <div id="tk-body"></div>
   </section>
 
   <section class="view" id="view-task">
-    <button class="back" onclick="sdoBack()">← Текущий контроль</button>
+    <button class="back" onclick="sdoBack()"><svg class="ico" aria-hidden="true"><use href="#i-back"/></svg> Текущий контроль</button>
     <div id="task-body"></div>
   </section>
 
   <!-- ── Чат ───────────────────────────────────────────────────────── -->
   <section class="view" id="view-chat">
-    <h2 class="section">Чат с ИИ ✨ <span class="chat-head-btns"><button class="link-btn" onclick="openChats()">☰ Чаты</button><button class="link-btn" onclick="newChat()">＋ Новый</button></span></h2>
+    <h2 class="section"><span class="ttl">Чат с ИИ <svg class="ico acc" aria-hidden="true"><use href="#i-sparkle"/></svg></span> <span class="chat-head-btns"><button class="link-btn" onclick="openChats()"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg> Чаты</button><button class="link-btn" onclick="newChat()"><svg class="ico" aria-hidden="true"><use href="#i-plus"/></svg> Новый</button></span></h2>
     <select class="filter" id="chat-subject">
-      <option value="">📚 Предмет: любой</option>
+      <option value="">Предмет: любой</option>
     </select>
     <div class="chat-wrap">
       <div class="chat-log" id="chat-log"></div>
       <div class="chat-dock">
         <div id="attach-preview"></div>
         <div class="chat-input-row">
-          <button class="attach" onclick="document.getElementById('chat-file').click()" aria-label="Прикрепить">📎</button>
+          <button class="attach" onclick="document.getElementById('chat-file').click()" aria-label="Прикрепить"><svg class="ico" aria-hidden="true"><use href="#i-clip"/></svg></button>
           <textarea id="chat-input" rows="1" placeholder="Сообщение…"></textarea>
-          <button id="chat-send" onclick="sendChat()" aria-label="Отправить">➤</button>
+          <button id="chat-send" onclick="sendChat()" aria-label="Отправить"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></button>
         </div>
         <input type="file" id="chat-file" accept="image/*,.pdf,.docx,.pptx,.txt" hidden>
       </div>
@@ -171,7 +171,7 @@
       <input class="searchbox" type="time" id="nd-time">
     </div>
     <textarea class="searchbox" id="nd-desc" rows="2" placeholder="Описание — необязательно"></textarea>
-    <p class="sheet-hint" id="nd-hint">👤 Личный — видишь только ты. Общие дедлайны группы добавляет староста.</p>
+    <p class="sheet-hint" id="nd-hint"><svg class="ico inl" aria-hidden="true"><use href="#i-user"/></svg> Личный — видишь только ты. Общие дедлайны группы добавляет староста.</p>
     <button class="primary" id="nd-submit" onclick="submitDeadline()">Добавить</button>
   </div>
 </div>
@@ -186,27 +186,27 @@
     <div class="chips-row" id="fe-cats"></div>
     <p class="sheet-hint">Изменится у всей группы. Текст для ИИ переедет вместе с файлом.</p>
     <button class="primary" id="fe-submit" onclick="submitFileEdit()">Сохранить</button>
-    <button class="file-del" id="fe-delete" onclick="deleteFiles([fileEditing.id], '«' + fileEditing.title + '»')">🗑 Удалить файл</button>
+    <button class="file-del" id="fe-delete" onclick="deleteFiles([fileEditing.id], '«' + fileEditing.title + '»')"><svg class="ico" aria-hidden="true"><use href="#i-trash"/></svg> Удалить файл</button>
   </div>
 </div>
 
 <div class="toast" id="toast"><span id="toast-text"></span><button id="toast-action"></button></div>
 
 <nav class="tabs">
-  <button class="active" data-tab="today" onclick="switchTab('today')"><span class="ic">📅</span>Сегодня</button>
-  <button data-tab="deadlines" onclick="switchTab('deadlines')"><span class="ic">📋</span>Дедлайны</button>
-  <button data-tab="files" onclick="switchTab('files')"><span class="ic">📁</span>Файлы</button>
-  <button data-tab="chat" onclick="switchTab('chat')"><span class="ic">💬</span>Чат</button>
-  <button data-tab="more" id="more-btn" onclick="toggleMore()"><span class="ic">☰</span>Ещё</button>
+  <button class="active" data-tab="today" onclick="switchTab('today')"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-today"/></svg></span>Сегодня</button>
+  <button data-tab="deadlines" onclick="switchTab('deadlines')"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-deadlines"/></svg></span>Дедлайны</button>
+  <button data-tab="files" onclick="switchTab('files')"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span>Файлы</button>
+  <button data-tab="chat" onclick="switchTab('chat')"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg></span>Чат</button>
+  <button data-tab="more" id="more-btn" onclick="toggleMore()"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg></span>Ещё</button>
 </nav>
 
 <div class="more-backdrop" id="more-menu" onclick="if (event.target === this) toggleMore(false)">
   <div class="more-pop">
     <div class="more-grid">
-      <button onclick="toggleMore(false); switchTab('search')"><span class="sq">🔍</span>Поиск</button>
-      <button onclick="toggleMore(false); openSdo()"><span class="sq sdo" id="more-sdo">🎓</span>СДО</button>
-      <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq">🗓</span>Календарь</button>
-      <button onclick="toggleMore(false); addToHome()"><span class="sq">📲</span>Ярлык</button>
+      <button onclick="toggleMore(false); switchTab('search')"><span class="sq t-search"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg></span>Поиск</button>
+      <button onclick="toggleMore(false); openSdo()"><span class="sq sdo" id="more-sdo"><svg class="ico" aria-hidden="true"><use href="#i-cap"/></svg></span>СДО</button>
+      <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq t-cal"><svg class="ico" aria-hidden="true"><use href="#i-calsub"/></svg></span>Календарь</button>
+      <button onclick="toggleMore(false); addToHome()"><span class="sq t-phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span>Ярлык</button>
     </div>
   </div>
 </div>
@@ -227,6 +227,7 @@
 </div>
 
 <script src="js/core.js"></script>
+<script src="js/icons.js"></script>
 <script src="js/home.js"></script>
 <script src="js/deadlines.js"></script>
 <script src="js/files.js"></script>
