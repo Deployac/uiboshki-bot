@@ -89,7 +89,7 @@ function renderHero() {
   } else {
     hero.className = "hero calm";
     const t = d.tomorrow_first;
-    const head = d.lessons.length ? "На сегодня всё 🎉" : "Сегодня пар нет 🎉";
+    const head = (d.lessons.length ? "На сегодня всё " : "Сегодня пар нет ") + icon("party", "mood");
     hero.innerHTML = '<div class="h-eyebrow">' + head + '</div>' + (t
       ? '<div class="h-big">завтра в ' + escapeHtml(t.start) + '</div><div class="h-title">' + escapeHtml(t.title) +
         '</div><div class="h-meta">' + lessonMeta(t) + '</div>'
@@ -108,7 +108,7 @@ async function loadToday() {
   try {
     const me = await api("/api/me");
     const hour = new Date().getHours();
-    document.getElementById("greeting").textContent = greetingFor(hour) + (me.first_name ? ", " + me.first_name : "") + " 👋";
+    document.getElementById("greeting").innerHTML = escapeHtml(greetingFor(hour) + (me.first_name ? ", " + me.first_name : "")) + " " + icon("wave", "mood wave");
   } catch (e) {
     document.getElementById("subtitle").textContent = "Не удалось авторизоваться: " + e.message;
     return;
@@ -125,8 +125,8 @@ async function loadToday() {
     refreshStatuses();
     const dl = todayData.deadlines;
     document.getElementById("today-deadline-count").textContent = dl.active;
-    document.getElementById("today-deadline-next").textContent = dl.soon.length
-      ? dl.soon[0].subject.slice(0, 40) + " · " + dueText(dl.soon[0].days) : "ничего не горит 🎉";
+    document.getElementById("today-deadline-next").innerHTML = dl.soon.length
+      ? escapeHtml(dl.soon[0].subject.slice(0, 40) + " · " + dueText(dl.soon[0].days)) : "ничего не горит " + icon("party", "mood");
     document.getElementById("today-notes").innerHTML = todayData.notes.map(x =>
       '<div class="note-card">' + icon("pin", "inl") + (x.subject ? "<b>" + escapeHtml(x.subject) + ":</b> " : "") + escapeHtml(x.text) + '</div>').join("");
   } catch (e) {
@@ -262,7 +262,7 @@ function scrollToWeek() {
 function renderDay(list, data) {
   list.innerHTML = data.lessons.length
     ? data.lessons.map(l => lessonRow(l, !!l.status)).join("")
-    : '<div class="empty">' + data.weekday + ' — пар нет 🎉</div>';
+    : '<div class="empty">' + data.weekday + ' — пар нет ' + icon("party", "mood") + '</div>';
 }
 
 async function selectDay(btn, silent) {

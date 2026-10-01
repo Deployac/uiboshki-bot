@@ -38,7 +38,7 @@ async function loadDeadlines() {
     document.getElementById("deadline-stat").textContent =
       stat.active + " активных" + (stat.overdue ? " · " + stat.overdue + " просрочено" : "");
     if (!data.items.length) {
-      list.innerHTML = '<div class="empty">Дедлайнов нет 🎉<br>Свой можно добавить кнопкой ＋</div>';
+      list.innerHTML = '<div class="empty">Дедлайнов нет ' + icon("party", "mood") + '<br>Свой можно добавить кнопкой ＋</div>';
       return;
     }
     const groups = { overdue: [], week: [], later: [], done: [] };

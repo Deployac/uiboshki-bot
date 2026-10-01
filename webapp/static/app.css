@@ -753,3 +753,10 @@
   .wrow.todo .wi { color: #fff; }
   .chat-avatar { color: #fff; }
   .dl-actions { flex-wrap: wrap; row-gap: 6px; }
+  /* настроение в тексте — тоже свои: хлопушка и помахать рукой */
+  .ico.mood { color: var(--warn); stroke-width: 1.8; }
+  .ico.wave { color: #fbbf24; transform-origin: 70% 80%; animation: wave 1.6s ease 0.4s 1; }
+  @keyframes wave { 0%, 100% { transform: none; } 20%, 60% { transform: rotate(14deg); } 40%, 80% { transform: rotate(-8deg); } }
+  .hero .ico.mood { color: #fff; }
+  /* файлы: кнопки «скачать / в чат / изменить» — ровной колонкой справа */
+  .file-card > div { flex: 1; }

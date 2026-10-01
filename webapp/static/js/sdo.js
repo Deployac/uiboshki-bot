@@ -92,7 +92,7 @@ function renderSdoList() {
   box.innerHTML =
     '<div class="sc-sum"><div class="e">Закрыто на «3» или зачёт</div>' +
       '<div class="b">' + closed + ' из ' + list.length + ' ' + plural(list.length, "предмета", "предметов", "предметов") + '</div>' +
-      '<div class="m">' + (near ? "ближе всего: " + escapeHtml(near.title) + " — " + needText(near).replace(/<\/?b>/g, "") : "все предметы закрыты 🎉") + '</div>' +
+      '<div class="m">' + (near ? "ближе всего: " + escapeHtml(near.title) + " — " + needText(near).replace(/<\/?b>/g, "") : "все предметы закрыты " + icon("party", "mood")) + '</div>' +
       // деления — шкала: закрытые заполняются слева, а не там, где стоит карточка
       '<div class="pips">' + list.map((c, i) => '<i class="' + (i < closed ? "on" : "") + '"></i>').join("") + '</div></div>' +
     '<div class="legend"><span><i style="background:var(--s-tk)"></i>работы</span><span><i style="background:var(--s-pos)"></i>посещения</span><span><i style="background:var(--s-sk)"></i>экзамен/зачёт</span></div>' +
