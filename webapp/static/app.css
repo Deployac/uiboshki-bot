@@ -268,7 +268,7 @@
   button.primary { width: 100%; background: var(--accent); color: #fff; border: none; border-radius: var(--radius-sm); padding: 13px; font-size: 15px; font-weight: 800; }
   button.primary:disabled { opacity: .5; }
   .toast {
-    position: fixed; left: 14px; right: 14px; bottom: calc(var(--nav-h, 64px) + 12px); z-index: 15;
+    position: fixed; left: 14px; right: 14px; bottom: calc(var(--nav-h, 64px) + 12px); z-index: 40;
     display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px;
     background: #23262f; color: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.4);
     font-size: 14px; transform: translateY(20px); opacity: 0; pointer-events: none;
@@ -551,3 +551,53 @@
     min-height: 42px;
   }
   .chat-input-row button:disabled { opacity: .5; }
+
+  /* ── Меню «Ещё» (☰): плитки над нижней панелью ── */
+  .more-backdrop { position: fixed; left: 0; right: 0; top: 0; bottom: var(--nav-h, 64px); z-index: 25;
+    background: rgba(0,0,0,.45); display: none; align-items: flex-end; justify-content: center; padding: 0 12px 10px; }
+  .more-backdrop.open { display: flex; animation: fadein .15s ease; }
+  .more-pop { width: 100%; max-width: 360px; background: var(--bg-raised); border: 1px solid var(--border);
+    border-radius: 22px; padding: 14px; box-shadow: 0 20px 55px rgba(0,0,0,.5);
+    transform-origin: 90% 100%; animation: popup .18s ease; }
+  @keyframes popup { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+  .more-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 6px; }
+  .more-grid button { background: none; border: none; color: var(--text); font-size: 11px; font-weight: 600;
+    padding: 0; text-align: center; min-width: 0; }
+  .more-grid .sq { position: relative; display: flex; align-items: center; justify-content: center; width: 100%;
+    aspect-ratio: 1; border-radius: 17px; background: rgba(127,127,127,.18); font-size: 26px; margin-bottom: 6px; }
+  .more-grid button:active .sq { transform: scale(.94); }
+  .more-grid .sq.sdo { background: linear-gradient(145deg, #2aa39a, #2366b0); }
+  .more-grid .sq.badge::after { content: ""; position: absolute; top: 6px; right: 6px; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--ok); border: 2px solid var(--bg-raised); }
+  .more-grid .sq.badge.bad::after { background: var(--danger); }
+  nav.tabs button.open { color: var(--accent); }
+
+  /* ── СДО: статус, подключение, сдача ── */
+  .st-card { display: flex; align-items: center; gap: 12px; background: var(--bg-card); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); padding: 14px; margin-bottom: 12px; }
+  .st-card.bad { border-color: rgba(255,99,99,.4); }
+  .st-card b { display: block; font-size: 15px; }
+  .st-card .s, .sub-task .s, .fpick .s { color: var(--hint); font-size: 12.5px; }
+  .st-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; background: var(--hint); }
+  .st-dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .st-dot.bad { background: var(--danger); }
+  .lock { background: rgba(124,127,245,.09); border: 1px solid rgba(124,127,245,.25); border-radius: 12px;
+    padding: 10px 12px; font-size: 12.5px; line-height: 1.4; margin: 0 0 12px; }
+  .steps { list-style: none; counter-reset: s; margin: 0 0 12px; padding: 0; }
+  .steps li { counter-increment: s; display: flex; gap: 10px; font-size: 14px; margin-bottom: 10px; line-height: 1.4; }
+  .steps li::before { content: counter(s); flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
+  #sdo-cookie { margin-bottom: 12px; font-family: ui-monospace, Menlo, monospace; }
+  button.ghost { width: 100%; background: none; border: none; color: var(--hint); font-size: 14px; font-weight: 600; padding: 12px; margin-top: 2px; }
+  button.ghost.danger { color: var(--danger); }
+  .sub-task { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 12px; }
+  .fpick { display: flex; align-items: center; gap: 12px; background: var(--bg-card); border: 1px dashed var(--border);
+    border-radius: var(--radius-sm); padding: 14px; margin-bottom: 12px; }
+  .fpick.chosen { border-style: solid; border-color: var(--accent); }
+  .fpick > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .fpick .ic { font-size: 26px; }
+  .fpick .go { color: var(--accent); font-weight: 700; }
+  .fpick .x { background: none; border: none; color: var(--danger); font-size: 16px; padding: 4px; }
+  .sub-done { text-align: center; padding: 6px 0 2px; }
+  .sub-done .big { font-size: 52px; }
+  .dl-actions button.submit { color: var(--ok); }

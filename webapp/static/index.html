@@ -174,10 +174,36 @@
 <nav class="tabs">
   <button class="active" data-tab="today" onclick="switchTab('today')"><span class="ic">📅</span>Сегодня</button>
   <button data-tab="deadlines" onclick="switchTab('deadlines')"><span class="ic">📋</span>Дедлайны</button>
-  <button data-tab="search" onclick="switchTab('search')"><span class="ic">🔍</span>Поиск</button>
   <button data-tab="files" onclick="switchTab('files')"><span class="ic">📁</span>Файлы</button>
   <button data-tab="chat" onclick="switchTab('chat')"><span class="ic">💬</span>Чат</button>
+  <button data-tab="more" id="more-btn" onclick="toggleMore()"><span class="ic">☰</span>Ещё</button>
 </nav>
+
+<div class="more-backdrop" id="more-menu" onclick="if (event.target === this) toggleMore(false)">
+  <div class="more-pop">
+    <div class="more-grid">
+      <button onclick="toggleMore(false); switchTab('search')"><span class="sq">🔍</span>Поиск</button>
+      <button onclick="toggleMore(false); openSdoSheet()"><span class="sq sdo" id="more-sdo">🎓</span>СДО</button>
+      <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq">🗓</span>Календарь</button>
+      <button onclick="toggleMore(false); addToHome()"><span class="sq">📲</span>На «Домой»</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="sdo-sheet" onclick="if (event.target === this) closeSheet('sdo-sheet')">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div id="sdo-body"></div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="submit-sheet" onclick="if (event.target === this) closeSheet('submit-sheet')">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div id="submit-body"></div>
+    <input type="file" id="submit-file" hidden>
+  </div>
+</div>
 
 <script src="js/core.js"></script>
 <script src="js/home.js"></script>
@@ -185,6 +211,7 @@
 <script src="js/files.js"></script>
 <script src="js/search.js"></script>
 <script src="js/chat.js"></script>
+<script src="js/more.js"></script>
 <script src="js/main.js"></script>
 
 </body>

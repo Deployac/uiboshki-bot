@@ -100,7 +100,11 @@ function haptic(kind) {
 function switchTab(name) {
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById("view-" + name).classList.add("active");
-  document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  const menu = document.getElementById("more-menu");
+  if (menu) menu.classList.remove("open");
+  // Поиск живёт в меню «Ещё» — тогда подсвечена ☰
+  const tab = name === "search" ? "more" : name;
+  document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   haptic();
   if (name === "deadlines") loadDeadlines();
   if (name === "files") loadFiles();

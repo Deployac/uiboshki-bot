@@ -42,7 +42,8 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 (календарь группы, по умолчанию УИБО-03-24 = группа 4928 на зеркале),
 `DATABASE_PATH`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `DEEPSEEK_API_KEY`
 (необязательно), `WEBAPP_URL`, `PORT`, `SDO_SESSION_COOKIE`,
-`SDO_SYNC_INTERVAL_HOURS` (6), `SDO_KEEP_COURSES` (по умолчанию «Учебный отдел»),
+`SDO_SYNC_INTERVAL_HOURS` (6), `SDO_CRYPT_KEY` (необязательно, ключ шифрования
+входов студентов в СДО; без него — производный от `BOT_TOKEN`), `SDO_KEEP_COURSES` (по умолчанию «Учебный отдел»),
 `OPTIONAL_SUBJECTS` (предметы по выбору, по умолчанию «Военная кафедра»: пары
 скрыты, пока человек не ответит «хожу» — `optional_subjects.py`, /optional).
 
@@ -69,6 +70,11 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
     прогон, потом выгрузка кнопкой: файл отправляется старосте, бот берёт
     `file_id` и удаляет сообщение. `files.source` — защита от дублей,
     `files_skipped` — удалённое не вернётся. Выгружено 596 файлов, 535 с текстом.
+- **Свой вход в СДО и сдача работ**: WebApp → ☰ Ещё → СДО, студент вставляет
+  свою MoodleSession (`sdo_accounts.py`, таблица `sdo_sessions`, Fernet;
+  у старосты без своей — общая из `SDO_SESSION_COOKIE`). «📤 Сдать» у
+  дедлайна-задания (`mod/assign`) — `sdo_submit.py`: форма editsubmission →
+  `repository_ajax.php` → savesubmission → при черновиках confirmsubmit.
 - **Файлы** (`file_categories.py`): тип по названию (лекции, практики и лабы,
   КР и тесты, методички, экзамен, другое), естественная сортировка номеров.
   Удалять может только староста (`/delfile`, кнопки в WebApp).

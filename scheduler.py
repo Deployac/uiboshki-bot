@@ -267,6 +267,9 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(sync_sdo_deadlines,      "interval", hours=SDO_SYNC_INTERVAL_HOURS, args=[bot],
                       next_run_time=datetime.now(ZoneInfo(TIMEZONE)) + timedelta(minutes=1))
     scheduler.add_job(keepalive,               "interval", minutes=55)
+    # свои входы студентов в СДО (сдача работ из WebApp) — так же держим живыми
+    from sdo_accounts import keepalive_all
+    scheduler.add_job(keepalive_all,           "interval", minutes=55, args=[bot])
     scheduler.add_job(check_schedule_changes,  "interval", minutes=SCHEDULE_DIFF_CHECK_MINUTES, args=[bot])
     # Справочник для поиска преподавателей/групп/аудиторий: достроить, если
     # обход прервался (редеплой), и обновлять раз в месяц (см. schedule_index).

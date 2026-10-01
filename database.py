@@ -128,6 +128,16 @@ async def init_db():
                 PRIMARY KEY (user_id, subject)
             )
         """)
+        # Вход в СДО у каждого свой (кука MoodleSession, зашифрована —
+        # sdo_accounts.py): сдача работ из WebApp от своего имени.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sdo_sessions (
+                user_id    INTEGER PRIMARY KEY,
+                cookie_enc TEXT NOT NULL,
+                status     TEXT NOT NULL DEFAULT 'ok',
+                checked_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS pinned_targets (
                 user_id     INTEGER NOT NULL,
@@ -917,4 +927,39 @@ async def set_optional_answer(user_id: int, subject: str, attend: bool):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO optional_subjects (user_id, subject, attend) VALUES (?, ?, ?)",
                          (user_id, subject, int(attend)))
+        await db.commit()
+
+
+async def save_sdo_session(user_id: int, cookie_enc: str):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("INSERT OR REPLACE INTO sdo_sessions (user_id, cookie_enc, status, checked_at) "
+                         "VALUES (?, ?, 'ok', datetime('now'))", (user_id, cookie_enc))
+        await db.commit()
+
+
+async def get_sdo_session(user_id: int) -> dict | None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM sdo_sessions WHERE user_id=?", (user_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_sdo_sessions(status: str = "ok") -> list[dict]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM sdo_sessions WHERE status=?", (status,))
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+async def set_sdo_status(user_id: int, status: str):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("UPDATE sdo_sessions SET status=?, checked_at=datetime('now') WHERE user_id=?",
+                         (status, user_id))
+        await db.commit()
+
+
+async def delete_sdo_session(user_id: int):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("DELETE FROM sdo_sessions WHERE user_id=?", (user_id,))
         await db.commit()
