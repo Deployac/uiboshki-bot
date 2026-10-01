@@ -142,16 +142,18 @@ async function disconnectSdo() {
 // ── Сдача работы ──────────────────────────────────────────────────────────
 
 const SUBMIT_MAX_MB = 20;
-let submitting = { item: null, file: null, data: "" };
+const SUBMIT_MAX_FILES = 3;     // за раз (владелец: «до трёх файлов», sdo_submit.MAX_FILES)
+let submitting = { item: null, files: [] };
 
 async function openSubmit(id, work) {
-  // work — задание из «Текущего контроля» (js/sdo.js): {cmid, subject, due_text, description}
+  // work — задание из СДО (js/sdo.js): {cmid, subject, due_text, description, limit}
   const item = work || deadlineIndex[id];
   if (!item) return;
   haptic();
   if (sdoState.state === "off" || sdoState.state === "expired") await loadSdoStatus();
   if (sdoState.state !== "ok") { openSdoSheet(); return; }
-  submitting = { item: item, file: null, data: "" };
+  submitting = { item: item, files: [], limit: Math.max(1, Math.min(SUBMIT_MAX_FILES, item.limit || SUBMIT_MAX_FILES)) };
+  document.getElementById("submit-file").multiple = submitting.limit > 1;
   document.getElementById("submit-sheet").classList.add("open");
   renderSubmit();
 }
@@ -168,55 +170,79 @@ function fileSize(bytes) {
   return bytes > 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1).replace(".", ",") + " МБ" : Math.max(1, Math.round(bytes / 1024)) + " КБ";
 }
 
+function fileIconFor(name) {
+  const ext = (name.split(".").pop() || "").toLowerCase();
+  return { pdf: "📕", doc: "📘", docx: "📘", xls: "📊", xlsx: "📊", ppt: "📙", pptx: "📙", zip: "🗜", rar: "🗜", png: "🖼", jpg: "🖼", jpeg: "🖼" }[ext] || "📄";
+}
+
+function pickSubmitFiles() {
+  document.getElementById("submit-file").click();
+}
+
 function renderSubmit(state, info) {
   const box = document.getElementById("submit-body");
-  const f = submitting.file;
+  const files = submitting.files, n = files.length, lim = submitting.limit;
+  const names = files.map(f => f.name).join(", ");
   if (state === "done") {
     box.innerHTML = '<div class="sub-done"><div class="big">✅</div><h3>Отправлено</h3>' +
-      '<p class="sheet-hint">' + escapeHtml(submitting.item.subject) + ' · ' + escapeHtml(f.name) +
+      '<p class="sheet-hint">' + escapeHtml(submitting.item.subject) + ' · ' + escapeHtml(names) +
       (info && info.status ? '<br>Статус в СДО: «' + escapeHtml(info.status) + '»' : '') + '</p>' +
       '<button class="primary" onclick="openLink(' + escapeHtml(JSON.stringify(submitting.item.description)) + ')">Открыть в СДО</button>' +
       '<button class="ghost" onclick="closeSheet(\'submit-sheet\')">Готово</button></div>';
     return;
   }
-  if (!f) {
+  if (!n) {
     box.innerHTML = submitHead() +
-      '<div class="fpick" onclick="document.getElementById(\'submit-file\').click()"><span class="ic">📎</span>' +
-      '<div><b>Выбрать файл</b><div class="s">до ' + SUBMIT_MAX_MB + ' МБ</div></div><span class="go">Обзор</span></div>' +
+      '<div class="fpick" onclick="pickSubmitFiles()"><span class="ic">📎</span>' +
+      '<div><b>' + (lim > 1 ? "Выбрать файлы" : "Выбрать файл") + '</b><div class="s">' +
+      (lim > 1 ? "можно сразу до " + lim + " · " : "") + 'до ' + SUBMIT_MAX_MB + ' МБ каждый</div></div><span class="go">Обзор</span></div>' +
       '<button class="primary" disabled>Загрузить в СДО</button>';
     return;
   }
   const busy = state === "sending";
   box.innerHTML = submitHead() +
-    '<div class="fpick chosen"><span class="ic">📄</span><div><b>' + escapeHtml(f.name) + '</b>' +
-    '<div class="s">' + fileSize(f.size) + ' · готово к отправке</div></div>' +
-    (busy ? '' : '<button class="x" onclick="submitting.file = null; renderSubmit()" aria-label="Убрать">✕</button>') + '</div>' +
-    '<div class="lock">⚠️ Файл уйдёт преподавателю от твоего имени. Проверь название и работу.</div>' +
+    (lim > 1 ? '<div class="fcount">' + Array.from({ length: lim }, (_, i) => '<i class="' + (i < n ? "on" : "") + '"></i>').join("") + '</div>' : '') +
+    files.map((f, i) => '<div class="fpick chosen"><span class="ic">' + fileIconFor(f.name) + '</span><div><b>' + escapeHtml(f.name) + '</b>' +
+      '<div class="s">' + fileSize(f.size) + '</div></div>' +
+      (busy ? '' : '<button class="x" onclick="submitting.files.splice(' + i + ', 1); renderSubmit()" aria-label="Убрать">✕</button>') + '</div>').join("") +
+    (!busy && n < lim ? '<div class="fpick add" onclick="pickSubmitFiles()">＋ Добавить ещё файл · ' + (lim - n) + ' из ' + lim + ' осталось</div>' : '') +
+    '<div class="lock">⚠️ ' + (n > 1 ? n + " " + plural(n, "файл уйдёт", "файла уйдут", "файлов уйдут") : "Файл уйдёт") +
+      ' преподавателю от твоего имени. Проверь названия и работу.</div>' +
     '<button class="primary" id="submit-go" onclick="sendSubmission()"' + (busy ? ' disabled' : '') + '>' +
-    (busy ? 'Загружаю в СДО…' : 'Отправить на проверку') + '</button>' +
+    (busy ? 'Загружаю в СДО…' : 'Отправить на проверку' + (n > 1 ? ' · ' + n + ' ' + plural(n, "файл", "файла", "файлов") : '')) + '</button>' +
     (busy ? '' : '<button class="ghost" onclick="closeSheet(\'submit-sheet\')">Отмена</button>');
 }
 
-document.getElementById("submit-file").addEventListener("change", e => {
-  const file = e.target.files[0];
+function readAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] || "");
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// Несколько файлов за раз: в «Файлах» iPhone — «Выбрать», в Фото — отметить
+// несколько; если выбрали один, «＋ Добавить ещё файл» добирает остальные.
+document.getElementById("submit-file").addEventListener("change", async e => {
+  const picked = Array.from(e.target.files || []);
   e.target.value = "";
-  if (!file) return;
-  if (file.size > SUBMIT_MAX_MB * 1024 * 1024) { showToast("Файл больше " + SUBMIT_MAX_MB + " МБ"); return; }
-  const reader = new FileReader();
-  reader.onload = () => {
-    submitting.file = { name: file.name || "работа", size: file.size };
-    submitting.data = String(reader.result).split(",")[1] || "";
-    haptic();
-    renderSubmit();
-  };
-  reader.readAsDataURL(file);
+  const room = submitting.limit - submitting.files.length;
+  if (picked.length > room) showToast("Можно ещё " + room + " — остальные не взял");
+  for (const file of picked.slice(0, room)) {
+    if (file.size > SUBMIT_MAX_MB * 1024 * 1024) { showToast("«" + file.name + "» больше " + SUBMIT_MAX_MB + " МБ"); continue; }
+    submitting.files.push({ name: file.name || "работа", size: file.size, data: await readAsBase64(file) });
+  }
+  haptic();
+  renderSubmit();
 });
 
 async function sendSubmission() {
   renderSubmit("sending");
   try {
     const res = await api("/api/sdo/submit", { method: "POST", body: JSON.stringify({
-      deadline_id: submitting.item.id || 0, cmid: submitting.item.cmid || 0, name: submitting.file.name, data: submitting.data }) });
+      deadline_id: submitting.item.id || 0, cmid: submitting.item.cmid || 0,
+      files: submitting.files.map(f => ({ name: f.name, data: f.data })) }) });
     haptic("success");
     renderSubmit("done", res);
     if (submitting.item.cmid && typeof refreshTk === "function") refreshTk();

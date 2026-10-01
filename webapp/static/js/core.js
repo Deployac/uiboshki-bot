@@ -103,7 +103,7 @@ function switchTab(name) {
   const menu = document.getElementById("more-menu");
   if (menu) menu.classList.remove("open");
   // Поиск и СДО живут в меню «Ещё» — тогда подсвечена ☰
-  const tab = ["search", "sdo", "subject", "tk"].includes(name) ? "more" : name;
+  const tab = ["search", "sdo", "subject", "tk", "task"].includes(name) ? "more" : name;
   document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   haptic();
   if (name === "deadlines") loadDeadlines();

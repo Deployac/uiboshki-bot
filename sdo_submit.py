@@ -27,6 +27,7 @@ from config import SDO_BASE_URL
 logger = logging.getLogger(__name__)
 
 MAX_BYTES = 20 * 1024 * 1024
+MAX_FILES = 3            # за раз из WebApp (владелец: «до трёх файлов»)
 CMID_RE = re.compile(r"/mod/assign/view\.php\?(?:[^#]*&)?id=(\d+)")
 
 
@@ -97,6 +98,7 @@ def parse_edit_page(html: str) -> dict:
     ctx = re.search(r"\"context\":\{\"id\":\"?(\d+)", html) or re.search(r"\"contextid\":\"?(\d+)", html)
     client = re.search(r"\"client_id\":\"([0-9a-z]+)\"", html)
     maxbytes = re.search(r"\"maxbytes\":\"?(-?\d+)", html)
+    maxfiles = re.search(r"\"maxfiles\":\"?(-?\d+)", html)
     if not (repo_id and ctx and fields.get("sesskey")):
         raise SubmitError("не разобрал форму сдачи в СДО — сдай на сайте")
     return {
@@ -108,6 +110,7 @@ def parse_edit_page(html: str) -> dict:
         "ctx_id": ctx.group(1),
         "client_id": client.group(1) if client else "",
         "maxbytes": int(maxbytes.group(1)) if maxbytes else 0,
+        "maxfiles": int(maxfiles.group(1)) if maxfiles else 0,
     }
 
 
@@ -168,12 +171,17 @@ async def _upload(client: httpx.AsyncClient, page: dict, name: str, data: bytes)
             raise SubmitError("не вышло заменить старый файл: " + str(res["error"])[:200])
 
 
-async def submit_file(cookie: str, cmid: int, name: str, data: bytes) -> dict:
-    """Загрузить файл в задание cmid. → {"status": текст статуса в СДО, "url": ...}"""
+async def submit_file(cookie: str, cmid: int, name: str = "", data: bytes = b"",
+                      files: list[tuple[str, bytes]] | None = None) -> dict:
+    """Загрузить файл(ы) в задание cmid одним ответом (до MAX_FILES за раз, но
+    не больше, чем разрешает задание). → {"status": текст статуса в СДО, "url": ...}"""
     from sdo_parser import SdoSessionExpired, get_checked
-    if not data:
+    files = files or [(name, data)]
+    if not files or any(not d for _, d in files):
         raise SubmitError("пустой файл")
-    if len(data) > MAX_BYTES:
+    if len(files) > MAX_FILES:
+        raise SubmitError(f"за раз — не больше {MAX_FILES} файлов")
+    if any(len(d) > MAX_BYTES for _, d in files):
         raise SubmitError("файл больше 20 МБ")
     url = f"{SDO_BASE_URL}/mod/assign/view.php?id={cmid}"
     async with httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=60) as client:
@@ -187,9 +195,12 @@ async def submit_file(cookie: str, cmid: int, name: str, data: bytes) -> dict:
                 logger.warning(f"СДО: нет формы сдачи в задании {cmid} (итоговый URL {resp.url}): {why}")
                 raise SubmitError("СДО не даёт прикрепить файл"
                                   + (f": {why}" if why else " — сдача закрыта или срок вышел. Проверь задание на сайте"))
-            if page["maxbytes"] > 0 and len(data) > page["maxbytes"]:
+            if page["maxbytes"] > 0 and any(len(d) > page["maxbytes"] for _, d in files):
                 raise SubmitError(f"в этом задании файл не больше {page['maxbytes'] // (1024 * 1024) or 1} МБ")
-            await _upload(client, page, name, data)
+            if page["maxfiles"] > 0 and len(files) > page["maxfiles"]:
+                raise SubmitError(f"в этом задании можно прикрепить не больше {page['maxfiles']} файл(ов)")
+            for fname, fdata in files:
+                await _upload(client, page, fname, fdata)
             form = dict(page["fields"], submitbutton="Сохранить")
             resp = await client.post(page["action"], data=form)
             if "/login/index.php" in str(resp.url):

@@ -852,11 +852,17 @@ class SdoConnect(BaseModel):
     cookie: str
 
 
+class SdoFile(BaseModel):
+    name: str
+    data: str  # base64
+
+
 class SdoSubmit(BaseModel):
     deadline_id: int = 0
     cmid: int = 0
-    name: str
-    data: str  # base64
+    name: str = ""
+    data: str = ""  # base64 — один файл (старый формат)
+    files: list[SdoFile] = []
 
 
 @app.get("/api/sdo/status")
@@ -911,13 +917,16 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     cookie = await sdo_accounts.cookie_for(user["id"])
     if not cookie:
         raise HTTPException(status_code=403, detail="сначала подключи СДО: ☰ Ещё → СДО")
+    items = body.files or [SdoFile(name=body.name, data=body.data)]
+    files = []
     try:
-        raw = base64.b64decode(body.data, validate=False)
+        for it in items:
+            clean = re.sub(r'[\\/:*?"<>|]+', "_", it.name).strip() or "работа"
+            files.append((clean[:120], base64.b64decode(it.data, validate=False)))
     except Exception:
         raise HTTPException(status_code=400, detail="файл повреждён")
-    name = re.sub(r'[\\/:*?"<>|]+', "_", body.name).strip() or "работа"
     try:
-        result = await sdo_submit.submit_file(cookie, cmid, name[:120], raw)
+        result = await sdo_submit.submit_file(cookie, cmid, files=files)
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
         raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
@@ -971,6 +980,87 @@ async def api_sdo_course(course_id: int, user: dict = CurrentUser):
     except Exception as e:
         logger.warning(f"Баллы СДО, курс {course_id}: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+
+
+# ── Задание СДО: описание, файлы преподавателя, сдача ────────────────────────
+# Файлы из СДО лежат за входом студента (pluginfile.php), а Telegram скачивает
+# по обычной ссылке — даём подписанную на 10 минут: /sdl/<токен>/<имя>.
+
+def _sdl_token(user_id: int, path: str, exp: int) -> str:
+    import base64
+    import hashlib
+    import hmac
+    payload = base64.urlsafe_b64encode(f"{user_id}|{exp}|{path}".encode()).decode().rstrip("=")
+    sig = hmac.new(BOT_TOKEN.encode(), f"sdl:{payload}".encode(), hashlib.sha256).hexdigest()[:32]
+    return f"{payload}.{sig}"
+
+
+def _sdl_parse(token: str) -> tuple[int, str] | None:
+    import base64
+    import hashlib
+    import hmac
+    import time
+    payload, _, sig = token.partition(".")
+    good = hmac.new(BOT_TOKEN.encode(), f"sdl:{payload}".encode(), hashlib.sha256).hexdigest()[:32]
+    if not sig or not hmac.compare_digest(sig, good):
+        return None
+    try:
+        uid, exp, path = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)).decode().split("|", 2)
+    except Exception:
+        return None
+    if int(exp) < time.time() or not path.startswith("/pluginfile.php/"):
+        return None
+    return int(uid), path
+
+
+@app.get("/api/sdo/task/{cmid}")
+async def api_sdo_task(cmid: int, request: Request, user: dict = CurrentUser):
+    import time
+    from urllib.parse import quote, urlparse
+    import sdo_grades
+    from database import set_sdo_status
+    from sdo_parser import SdoSessionExpired
+    cookie = await _sdo_cookie(user["id"])
+    try:
+        task = await sdo_grades.task_detail(cookie, cmid)
+    except SdoSessionExpired:
+        await set_sdo_status(user["id"], "expired")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
+    except Exception as e:
+        logger.warning(f"Задание СДО {cmid}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+    base = (WEBAPP_URL or str(request.base_url)).rstrip("/")
+    exp = int(time.time()) + 600
+    for f in task["files"] + task["mine"]:
+        path = urlparse(f.pop("url")).path
+        f["dl"] = f"{base}/sdl/{_sdl_token(user['id'], path, exp)}/{quote(f['name'], safe='')}"
+    return task
+
+
+@app.get("/sdl/{token}/{name}")
+async def sdo_download(token: str, name: str):
+    """Файл из СДО входом того, кому выдана ссылка (через Telegram.WebApp.downloadFile)."""
+    import mimetypes
+    from urllib.parse import quote
+    from sdo_accounts import client_for, cookie_for
+    from sdo_parser import SdoSessionExpired, get_checked
+    from config import SDO_BASE_URL
+    parsed = _sdl_parse(token)
+    if not parsed:
+        raise HTTPException(403, "Ссылка устарела — нажми «📥» ещё раз")
+    uid, path = parsed
+    cookie = await cookie_for(uid)
+    if not cookie:
+        raise HTTPException(403, "Вход в СДО не подключён")
+    try:
+        async with client_for(cookie, timeout=60) as client:
+            resp = await get_checked(client, SDO_BASE_URL + path + "?forcedownload=1")
+    except SdoSessionExpired:
+        raise HTTPException(403, "Вход в СДО устарел")
+    if resp.status_code != 200 or len(resp.content) > 50 * 1024 * 1024:
+        raise HTTPException(404, "Файл не скачался из СДО")
+    return Response(resp.content, media_type=resp.headers.get("content-type") or mimetypes.guess_type(name)[0] or "application/octet-stream",
+                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name, safe='')}"})
 
 
 @app.post("/api/pulsecheck")

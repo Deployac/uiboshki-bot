@@ -60,7 +60,8 @@ function showSdoView(name) {
 
 function sdoBack() {
   haptic();
-  if (sdoView === "tk") showSdoView("subject");
+  if (sdoView === "task") showSdoView("tk");
+  else if (sdoView === "tk") showSdoView("subject");
   else showSdoView("sdo");
 }
 
@@ -213,10 +214,94 @@ function renderTk() {
 function tapWork(i) {
   const w = sdoCourse.works[i];
   if (!w) return;
-  if (w.can_submit && w.status !== "ok" && w.status !== "wait") {
-    openSubmit(0, { cmid: w.cmid, subject: w.name, description: w.url,
-      due_text: (sdoCourse.title || "") + (w.due ? " · до " + (w.due || "").replace(/^[а-яё]+,\s*/i, "") : "") });
-  } else {
-    openLink(w.url);
+  if (w.module === "assign") openTask(w);
+  else openLink(w.url);          // тесты — на сайте СДО
+}
+
+// ── Задание: описание, файлы преподавателя, сдача ─────────────────────────
+
+let sdoTask = null;
+
+async function openTask(w) {
+  haptic();
+  sdoTask = null;
+  showSdoView("task");
+  const box = document.getElementById("task-body");
+  box.innerHTML = '<h2 class="section" style="margin-top:6px"><span>' + escapeHtml(w.name) + '</span></h2>' +
+    '<div class="skel" style="height:120px"></div><div class="skel" style="height:160px"></div>';
+  try {
+    sdoTask = Object.assign(await api("/api/sdo/task/" + w.cmid), { work: w, loaded: Date.now() });
+    if (sdoView === "task") renderTask();
+  } catch (e) {
+    box.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '<br><br>' +
+      '<button class="link-btn" onclick="openLink(' + escapeHtml(JSON.stringify(w.url)) + ')">Открыть в СДО</button></div>';
   }
+}
+
+const TASK_TAG = { ok: ["ok", "✓ зачтено"], low: ["bad", "ниже порога"], wait: ["", "⏳ ждёт оценки"], todo: ["warn", ""],
+  offline: ["", "🏫 сдаётся на занятии"], soon: ["", "🔒 ещё закрыто"], miss: ["bad", "срок прошёл"] };
+
+function renderTask() {
+  const t = sdoTask, w = t.work;
+  const tag = TASK_TAG[w.status] || ["", ""];
+  const remain = w.status === "todo" && t.remaining ? "⏳ " + escapeHtml(t.remaining.replace(/ осталось$/, "")) : tag[1];
+  const fileRow = (f, i, mine) => '<div class="t-file"><span class="ic">' + fileIconFor(f.name) + '</span>' +
+    '<span class="nm">' + escapeHtml(f.name) + '</span>' +
+    '<button class="dlb" onclick="downloadSdoFile(' + i + ', ' + mine + ', this)" aria-label="Скачать">📥</button></div>';
+  document.getElementById("task-body").innerHTML =
+    '<h2 class="section" style="margin-top:6px"><span>' + escapeHtml(t.title || w.name) + '</span>' +
+      '<span class="stat">до ' + fmtNum(w.max || 0) + (w.pass_mark != null ? ' · зачёт от ' + fmtNum(w.pass_mark) : '') + '</span></h2>' +
+    '<div class="card">' +
+      (t.due ? '<div class="t-due"><div><div class="eyebrow">Срок сдачи</div><b>' + shortDate(t.due) + '</b></div>' +
+        (remain ? '<span class="t-tag ' + tag[0] + '">' + remain + '</span>' : '') + '</div>' : '') +
+      '<div class="t-tags">' + (t.status ? '<span class="t-tag">' + escapeHtml(t.status) + '</span>' : '') +
+        '<span class="t-tag">' + (w.grade != null ? "Оценка " + fmtNum(w.grade) + " / " + fmtNum(w.max) : "Не оценено") + '</span></div>' +
+      (t.description ? '<p class="t-desc">' + escapeHtml(t.description).replace(/\n/g, "<br>") + '</p>' : '') + '</div>' +
+    (t.files.length ? '<h2 class="section">Файлы задания' + (t.files.length > 1 ? '<button class="link-btn" onclick="downloadAllSdo(this)">📥 Скачать все · ' + t.files.length + '</button>' : '') + '</h2>' +
+      '<div class="card pad">' + t.files.map((f, i) => fileRow(f, i, false)).join("") + '</div>' : '') +
+    (t.mine.length ? '<h2 class="section">Мой ответ</h2><div class="card pad">' + t.mine.map((f, i) => fileRow(f, i, true)).join("") + '</div>' : '') +
+    (t.can_submit ? '<button class="primary t-go" onclick="submitFromTask()">📤 ' + (t.mine.length ? "Сдать ещё / заменить" : "Сдать работу") +
+      (t.limit > 1 ? ' · до ' + t.limit + ' ' + plural(t.limit, "файла", "файлов", "файлов") : '') + '</button>' :
+      (w.status === "offline" ? '<p class="sheet-hint" style="text-align:center">Эту работу сдают на занятии, не через СДО.</p>' : '')) +
+    '<button class="ghost" onclick="openLink(' + escapeHtml(JSON.stringify(t.url)) + ')">Открыть в СДО</button>';
+}
+
+function submitFromTask() {
+  const t = sdoTask;
+  openSubmit(0, { cmid: t.cmid, subject: t.title || t.work.name, description: t.url, limit: t.limit,
+    due_text: (sdoCourse ? sdoCourse.title : "") + (t.due ? " · до " + shortDate(t.due) : "") });
+}
+
+// 📥 — Telegram.WebApp.downloadFile (Bot API 8.0): на iPhone «Сохранить в
+// Файлы», на Android — в Загрузки. Файл бот берёт из СДО входом студента.
+function sdoDownload(f) {
+  return new Promise(resolve => {
+    if (!(tg && tg.downloadFile && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) { openLink(f.dl); return resolve(false); }
+    try { tg.downloadFile({ url: f.dl, file_name: f.name }, ok => resolve(!!ok)); }
+    catch (e) { openLink(f.dl); resolve(false); }
+  });
+}
+
+// ссылки на файлы живут 10 минут — экран открыт дольше, берём свежие
+async function freshTask() {
+  if (Date.now() - sdoTask.loaded < 9 * 60000) return;
+  try { sdoTask = Object.assign(await api("/api/sdo/task/" + sdoTask.cmid), { work: sdoTask.work, loaded: Date.now() }); } catch (e) {}
+}
+
+async function downloadSdoFile(i, mine, btn) {
+  await freshTask();
+  const f = (mine ? sdoTask.mine : sdoTask.files)[i];
+  if (btn) btn.classList.add("sending");
+  if (await sdoDownload(f)) haptic("success");
+  if (btn) btn.classList.remove("sending");
+}
+
+// «Скачать все» — по очереди: Telegram спрашивает про каждый файл, архивом не умеет
+async function downloadAllSdo(btn) {
+  btn.disabled = true;
+  await freshTask();
+  let n = 0;
+  for (const f of sdoTask.files) { if (await sdoDownload(f)) n++; }
+  btn.disabled = false;
+  if (n) showToast("📥 Скачано: " + n + " из " + sdoTask.files.length);
 }
