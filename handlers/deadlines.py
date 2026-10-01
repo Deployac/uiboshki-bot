@@ -14,7 +14,7 @@ from database import (
     add_deadline, get_active_deadlines, mark_deadline_done, set_deadline_done,
     delete_deadline, upsert_user, get_deadline_stats, get_deadline, is_shared_deadline,
 )
-from config import STAROSTA_ID, GROUP_CHAT_ID
+from config import STAROSTA_ID, STAROSTA_IDS, is_starosta, GROUP_CHAT_ID
 from scheduler import DEADLINE_POST_QUESTION
 from keyboards import MAIN_KB, CANCEL_KB
 from utils import esc, parse_day_month, today_msk, esc_attr
@@ -307,10 +307,10 @@ async def cmd_del(message: Message):
         await message.answer("❌ Дедлайн с таким ID не найден.")
         return
 
-    is_shared = existing["created_by"] in (0, STAROSTA_ID)
+    is_shared = existing["created_by"] in (0, *STAROSTA_IDS)
     is_owner  = existing["created_by"] == message.from_user.id
     if is_shared:
-        if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+        if STAROSTA_ID and not is_starosta(message.from_user.id):
             await message.answer("❌ Это общий дедлайн — удалить может только староста.")
             return
     elif not is_owner:
@@ -336,7 +336,7 @@ def should_skip(name: str) -> bool:
 
 @router.message(Command("importdeadlines"))
 async def cmd_import_deadlines(message: Message):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     await message.answer("📤 Пришли файл <b>deadlines.json</b>", parse_mode="HTML")
@@ -344,7 +344,7 @@ async def cmd_import_deadlines(message: Message):
 
 @router.message(Command("syncsdo"))
 async def cmd_sync_sdo(message: Message):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
 
@@ -401,7 +401,7 @@ async def _old_sdo_deadlines(items: list[dict]) -> list[dict]:
 
 @router.message(Command("sdoclean"))
 async def cmd_sdo_clean(message: Message):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     from database import get_sdo_deadlines
@@ -426,7 +426,7 @@ async def cmd_sdo_clean(message: Message):
 
 @router.callback_query(F.data.startswith("sdoclean:"))
 async def sdo_clean_confirm(callback: CallbackQuery):
-    if STAROSTA_ID and callback.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(callback.from_user.id):
         await callback.answer("Только для старосты", show_alert=True)
         return
     if callback.data == "sdoclean:no":
@@ -448,7 +448,7 @@ async def sdo_clean_confirm(callback: CallbackQuery):
 
 @router.callback_query(F.data == "dlpost:yes")
 async def deadline_post_confirm(callback: CallbackQuery):
-    if STAROSTA_ID and callback.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(callback.from_user.id):
         await callback.answer("Только для старосты", show_alert=True)
         return
     if not GROUP_CHAT_ID:
@@ -467,7 +467,7 @@ async def deadline_post_confirm(callback: CallbackQuery):
 
 @router.callback_query(F.data == "dlpost:no")
 async def deadline_post_decline(callback: CallbackQuery):
-    if STAROSTA_ID and callback.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(callback.from_user.id):
         await callback.answer("Только для старосты", show_alert=True)
         return
     text = callback.message.html_text

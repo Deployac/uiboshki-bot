@@ -40,7 +40,8 @@ branch** (в приложении GitHub на iOS такой кнопки нет
 WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в процессе
 бота (FastAPI + uvicorn, `webapp/server.py`, `bot.start_webapp`).
 
-Переменные окружения (см. `config.py`): `BOT_TOKEN`, `STAROSTA_ID`,
+Переменные окружения (см. `config.py`): `BOT_TOKEN`, `STAROSTA_ID` (можно
+несколько через запятую — второй аккаунт; первый основной, `is_starosta()`),
 `GROUP_CHAT_ID` (пока не задан — лента «Подслушано» выключена), `ICAL_URL`
 (календарь группы, по умолчанию УИБО-03-24 = группа 4928 на зеркале),
 `DATABASE_PATH`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `DEEPSEEK_API_KEY`

@@ -5,7 +5,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from database import create_vote, get_active_vote, add_vote_answer, get_vote_results, close_vote
-from config import STAROSTA_ID
+from config import STAROSTA_ID, STAROSTA_IDS
 from utils import esc
 
 router = Router()
@@ -89,7 +89,7 @@ async def cmd_closevote(message: Message):
         await message.answer("Нет активного голосования.")
         return
     # Раньше закрыть чужое голосование мог кто угодно.
-    if STAROSTA_ID and message.from_user.id not in (vote["created_by"], STAROSTA_ID):
+    if STAROSTA_ID and message.from_user.id not in (vote["created_by"], *STAROSTA_IDS):
         await message.answer("❌ Закрыть голосование может только его автор или староста.")
         return
     await close_vote(vote["id"])

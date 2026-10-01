@@ -29,7 +29,7 @@ from database import (
     get_last_feed_post_time, add_feed_post, set_feed_post_message_id,
     get_feed_post, delete_feed_post, set_feed_reaction, get_feed_reaction_counts,
 )
-from config import GROUP_CHAT_ID, FEED_COOLDOWN_MINUTES, STAROSTA_ID
+from config import GROUP_CHAT_ID, FEED_COOLDOWN_MINUTES, STAROSTA_ID, is_starosta
 from utils import esc
 
 logger = logging.getLogger(__name__)
@@ -162,7 +162,7 @@ async def handle_reaction(callback: CallbackQuery):
 
 @router.message(Command("delpost"))
 async def cmd_delpost(message: Message, bot: Bot):
-    if STAROSTA_ID and message.from_user.id != STAROSTA_ID:
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     parts = message.text.split()

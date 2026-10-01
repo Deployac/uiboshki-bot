@@ -1,7 +1,7 @@
 import secrets
 
 import aiosqlite
-from config import DATABASE_PATH, STAROSTA_ID
+from config import DATABASE_PATH, STAROSTA_ID, STAROSTA_IDS
 from utils import today_msk
 
 
@@ -380,8 +380,15 @@ _DEADLINE_COLS = ("d.id, d.subject, d.description, d.due_date, d.due_time, d.cre
                   "d.external_id, d.manual_edit")
 
 
+def _shared_in() -> tuple[str, tuple]:
+    """«created_by IN (0, старосты…)» — общие дедлайны: от СДО (0) и от любого
+    аккаунта старосты (STAROSTA_ID через запятую)."""
+    ids = tuple(STAROSTA_IDS)
+    return "(0" + ", ?" * len(ids) + ")", ids
+
+
 def is_shared_deadline(d: dict) -> bool:
-    return d.get("created_by") in (0, STAROSTA_ID)
+    return d.get("created_by") in (0, *STAROSTA_IDS)
 
 
 async def get_active_deadlines(viewer_id: int, include_done: bool = False) -> list[dict]:
@@ -396,9 +403,9 @@ async def get_active_deadlines(viewer_id: int, include_done: bool = False) -> li
                        WHERE dd.deadline_id = d.id AND dd.user_id = ?
                    ) AS done
             FROM deadlines d
-            WHERE (d.created_by = ? OR d.created_by IN (0, ?))
+            WHERE (d.created_by = ? OR d.created_by IN {_shared_in()[0]})
         """
-        params = [viewer_id, viewer_id, STAROSTA_ID]
+        params = [viewer_id, viewer_id, *_shared_in()[1]]
         if not include_done:
             query += """
                 AND NOT EXISTS (
@@ -425,23 +432,23 @@ async def get_deadlines_soon(days=3, viewer_id: int | None = None, shared_only: 
         if shared_only:
             query = f"""
                 SELECT {_DEADLINE_COLS} FROM deadlines d
-                WHERE d.created_by IN (0, ?)
+                WHERE d.created_by IN {_shared_in()[0]}
                 AND d.due_date BETWEEN ? AND date(?, ? || ' days')
                 AND NOT EXISTS (SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)
                 ORDER BY d.due_date, d.due_time
             """
-            params = (STAROSTA_ID, today, today, str(days), STAROSTA_ID)
+            params = (*_shared_in()[1], today, today, str(days), STAROSTA_ID)
         else:
             if viewer_id is None:
                 raise ValueError("viewer_id обязателен при shared_only=False")
             query = f"""
                 SELECT {_DEADLINE_COLS} FROM deadlines d
-                WHERE (d.created_by = ? OR d.created_by IN (0, ?))
+                WHERE (d.created_by = ? OR d.created_by IN {_shared_in()[0]})
                 AND d.due_date BETWEEN ? AND date(?, ? || ' days')
                 AND NOT EXISTS (SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)
                 ORDER BY d.due_date, d.due_time
             """
-            params = (viewer_id, STAROSTA_ID, today, today, str(days), viewer_id)
+            params = (viewer_id, *_shared_in()[1], today, today, str(days), viewer_id)
         cursor = await db.execute(query, params)
         return [dict(r) for r in await cursor.fetchall()]
 
@@ -451,8 +458,8 @@ async def get_deadline_stats(viewer_id: int) -> dict:
     get_deadlines_soon)."""
     today = today_msk().isoformat()
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        visible = "(d.created_by = ? OR d.created_by IN (0, ?))"
-        vparams = (viewer_id, STAROSTA_ID)
+        visible = f"(d.created_by = ? OR d.created_by IN {_shared_in()[0]})"
+        vparams = (viewer_id, *_shared_in()[1])
         done_expr = "EXISTS(SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)"
 
         total = (await (await db.execute(
