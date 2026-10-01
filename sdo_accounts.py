@@ -18,7 +18,7 @@ import os
 import re
 
 import httpx
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from config import BOT_TOKEN, SDO_BASE_URL, SDO_SESSION_COOKIE, STAROSTA_ID, is_starosta
 
@@ -27,12 +27,52 @@ logger = logging.getLogger(__name__)
 COOKIE_RE = re.compile(r"^[A-Za-z0-9,\-]{16,128}$")
 
 
-def _fernet() -> Fernet:
-    key = os.getenv("SDO_CRYPT_KEY", "")
-    if not key:
-        digest = hashlib.sha256(b"uiboshki-sdo-cookie:" + (BOT_TOKEN or "").encode()).digest()
-        key = base64.urlsafe_b64encode(digest).decode()
-    return Fernet(key.encode())
+def _bot_token_key() -> bytes:
+    digest = hashlib.sha256(b"uiboshki-sdo-cookie:" + (BOT_TOKEN or "").encode()).digest()
+    return base64.urlsafe_b64encode(digest)
+
+
+def _passphrase_key(phrase: str) -> bytes:
+    """Ключ из секретной фразы владельца (SDO_CRYPT_PASSPHRASE в Railway):
+    scrypt — медленная функция, перебором фразу не подобрать. Соль своя для
+    бота: одна и та же фраза в другом проекте даст другой ключ."""
+    raw = hashlib.scrypt(phrase.encode(), salt=b"uiboshki-bot/sdo-cookies/v1", n=2 ** 14, r=8, p=1, dklen=32)
+    return base64.urlsafe_b64encode(raw)
+
+
+def _keys() -> list[bytes]:
+    """Ключи по старшинству: первым шифруем, любым — расшифровываем. Так
+    можно сменить ключ (задать фразу) без потери уже подключённых СДО —
+    старые записи перешифровываются при проверке входа (keepalive_all)."""
+    keys = []
+    if os.getenv("SDO_CRYPT_KEY"):
+        keys.append(os.getenv("SDO_CRYPT_KEY").encode())
+    if os.getenv("SDO_CRYPT_PASSPHRASE"):
+        keys.append(_passphrase_key(os.getenv("SDO_CRYPT_PASSPHRASE")))
+    keys.append(_bot_token_key())
+    return keys
+
+
+def _fernet() -> MultiFernet:
+    return MultiFernet([Fernet(k) for k in _keys()])
+
+
+def key_source() -> str:
+    """Откуда ключ — для экрана «Безопасность» (без самого ключа)."""
+    if os.getenv("SDO_CRYPT_KEY"):
+        return "key"
+    if os.getenv("SDO_CRYPT_PASSPHRASE"):
+        return "passphrase"
+    return "bot_token"
+
+
+def needs_rotation(token: str) -> bool:
+    """Запись зашифрована не основным ключом — перешифровать."""
+    try:
+        Fernet(_keys()[0]).decrypt(token.encode())
+        return False
+    except (InvalidToken, ValueError):
+        return True
 
 
 def encrypt(cookie: str) -> str:
@@ -101,6 +141,9 @@ async def keepalive_all(bot=None):
     from database import get_sdo_sessions, set_sdo_status
     for row in await get_sdo_sessions("ok"):
         cookie = decrypt(row["cookie_enc"])
+        if cookie and needs_rotation(row["cookie_enc"]):
+            from database import save_sdo_session
+            await save_sdo_session(row["user_id"], encrypt(cookie))   # на новый ключ
         try:
             alive = bool(cookie) and await check(cookie)
         except Exception as e:

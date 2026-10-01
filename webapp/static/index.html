@@ -207,6 +207,7 @@
       <button onclick="toggleMore(false); openSdo()"><span class="sq sdo" id="more-sdo"><svg class="ico" aria-hidden="true"><use href="#i-cap"/></svg></span>СДО</button>
       <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq t-cal"><svg class="ico" aria-hidden="true"><use href="#i-calsub"/></svg></span>Календарь</button>
       <button onclick="toggleMore(false); addToHome()"><span class="sq t-phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span>Ярлык</button>
+      <button onclick="toggleMore(false); openSecurity()"><span class="sq t-sec"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span>Безопасность</button>
     </div>
   </div>
 </div>
@@ -215,6 +216,13 @@
   <div class="sheet">
     <div class="sheet-grip"></div>
     <div id="sdo-body"></div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="security-sheet" onclick="if (event.target === this) closeSheet('security-sheet')">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div id="security-body"></div>
   </div>
 </div>
 
