@@ -10,7 +10,7 @@ from config import BOT_TOKEN, STAROSTA_ID, WEBAPP_PORT, WEBAPP_URL
 from database import init_db
 from handlers import register_handlers
 from scheduler import start_scheduler
-from middleware import MenuInterruptMiddleware, OptionalSubjectsMiddleware
+from middleware import MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -64,6 +64,7 @@ BOT_COMMANDS = [
 STAROSTA_COMMANDS = BOT_COMMANDS + [
     BotCommand(command="announce", description="📣 Рассылка группе"),
     BotCommand(command="sdofiles", description="📥 Файлы из СДО"),
+    BotCommand(command="stats", description="📊 Статистика"),
     BotCommand(command="pulsecheck", description="🩺 Пускает ли Пульс"),
     BotCommand(command="backup", description="💾 Копия базы"),
 ]
@@ -138,6 +139,7 @@ async def main():
     # проглатывалось как обычный текстовый ввод. См. middleware.py.
     dp.message.outer_middleware(MenuInterruptMiddleware())
     dp.update.outer_middleware(OptionalSubjectsMiddleware())
+    dp.message.outer_middleware(StatsMiddleware())
     dp.error.register(notify_starosta_on_error)
 
     await init_db()

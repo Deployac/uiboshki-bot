@@ -128,6 +128,16 @@ async def init_db():
                 PRIMARY KEY (user_id, subject)
             )
         """)
+        # Статистика (stats.py, /stats у старосты): только «кто, что, когда»
+        # — без текстов вопросов, файлов и оценок. Старше 180 дней удаляется.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                user_id INTEGER NOT NULL,
+                kind    TEXT NOT NULL,
+                at      TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS events_at ON events(at)")
         # Вход в СДО у каждого свой (кука MoodleSession, зашифрована —
         # sdo_accounts.py): сдача работ из WebApp от своего имени.
         await db.execute("""
@@ -970,3 +980,32 @@ async def delete_sdo_session(user_id: int):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("DELETE FROM sdo_sessions WHERE user_id=?", (user_id,))
         await db.commit()
+
+
+async def add_event(user_id: int, kind: str):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("INSERT INTO events (user_id, kind) VALUES (?, ?)", (user_id, kind))
+        await db.commit()
+
+
+async def events_since(days: int) -> list[tuple[int, str, str]]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute(
+            "SELECT user_id, kind, at FROM events WHERE at >= datetime('now', ?)", (f"-{int(days)} days",))
+        return await cursor.fetchall()
+
+
+async def purge_events(keep_days: int = 180):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("DELETE FROM events WHERE at < datetime('now', ?)", (f"-{int(keep_days)} days",))
+        await db.commit()
+
+
+async def count_users() -> int:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        return (await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())[0]
+
+
+async def count_sdo_connected() -> int:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        return (await (await db.execute("SELECT COUNT(*) FROM sdo_sessions WHERE status='ok'")).fetchone())[0]

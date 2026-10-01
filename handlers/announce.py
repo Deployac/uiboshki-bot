@@ -466,3 +466,39 @@ async def cmd_pulsecheck(message: Message):
         return
     import pulse_check
     await message.answer(pulse_check.text(await pulse_check.check()))
+
+
+
+STATS_PERIODS = (7, 30, 180)
+
+
+def _stats_kb(days: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=("• " if d == days else "") + {7: "7 дней", 30: "30 дней", 180: "семестр"}[d],
+                             callback_data=f"stats:{d}") for d in STATS_PERIODS]])
+
+
+async def _send_stats(bot, chat_id: int, days: int):
+    import stats
+    from aiogram.types import BufferedInputFile
+    png, text = await stats.report(days)
+    await bot.send_photo(chat_id, BufferedInputFile(png, filename=f"stats_{days}.png"),
+                         caption=text, parse_mode="HTML", reply_markup=_stats_kb(days))
+
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message):
+    """Статистика бота картинкой (stats.py) — только староста."""
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
+        return
+    await _send_stats(message.bot, message.chat.id, 30)
+
+
+@router.callback_query(F.data.startswith("stats:"))
+async def cb_stats(callback: CallbackQuery):
+    if STAROSTA_ID and not is_starosta(callback.from_user.id):
+        await callback.answer()
+        return
+    days = int(callback.data.split(":")[1])
+    await callback.answer("Считаю…")
+    await _send_stats(callback.bot, callback.message.chat.id, days if days in STATS_PERIODS else 30)
