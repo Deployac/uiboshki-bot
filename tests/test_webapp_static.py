@@ -66,3 +66,8 @@ def test_no_part_redeclares_anothers_globals():
         for kind, ident in re.findall(r'^(?:async\s+)?(function|const|let|var)\s+(\w+)', text, re.M):
             assert ident not in seen, f"{ident} объявлен и в {seen[ident]}, и в {name}"
             seen[ident] = name
+
+
+def test_sdo_pips_fill_from_left():
+    # живой скрин 01.10: «1 из 4 закрыто» подсвечивало последнее деление (закрытые карточки идут в конце)
+    assert "i < closed" in JS["js/sdo.js"]
