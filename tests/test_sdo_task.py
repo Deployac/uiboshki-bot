@@ -32,6 +32,26 @@ def test_parse_task_page():
     assert t["pass"] == 3 and t["can_submit"] and t["due"] == "четверг, 15 октября 2026, 23:59"
 
 
+# Moodle 4: заголовок — h1 в шапке страницы, описание и файлы — в activity-header
+# внутри #region-main, но ДО <div role="main"> (там только таблица состояния).
+TASK_M4 = f"""<html><body><header id="page-header"><h1>Практическое задание 1</h1></header>
+<section id="region-main"><div class="activity-header" data-for="page-activity-header">
+<div class="activity-information"><div class="activity-dates">Срок сдачи: 30 сентября 2026, 16:26</div></div>
+<div class="activity-description" id="intro"><div class="box generalbox"><div class="no-overflow"><p>Решить задачи из файла.</p></div></div>
+<div id="assign_files_tree1"><ul><li><a href="{PF}%D0%9F%D0%97-1.docx?forcedownload=1">ПЗ-1.docx</a></li></ul></div></div></div>
+<div role="main"><span id="maincontent"></span>
+<table><tr><th>Состояние ответа на задание</th><td>Ответ на задание должен быть представлен вне сайта</td></tr>
+<tr><th>Состояние оценивания</th><td>Не оценено</td></tr></table></div></section></body></html>"""
+
+
+def test_parse_task_page_moodle4_header():
+    t = sdo_grades.parse_task_page(TASK_M4)
+    assert t["title"] == "Практическое задание 1"
+    assert t["description"] == "Решить задачи из файла."
+    assert [f["name"] for f in t["files"]] == ["ПЗ-1.docx"]
+    assert t["mine"] == []
+
+
 @pytest.mark.asyncio
 async def test_submit_three_files_in_one_answer(monkeypatch):
     from tests.test_sdo_submit import COOKIE, FakeMoodle
