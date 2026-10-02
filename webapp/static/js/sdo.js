@@ -27,6 +27,18 @@ function needText(c) {
   return (c.kind === "credit" ? "до зачёта" : "до «" + escapeHtml(c.need_label) + "»") + " ещё <b>" + fmtNum(c.need) + "</b>";
 }
 
+// Легенда — только те цвета, что реально есть в полосках: раньше было три
+// подписи на пять цветов (трудовая и достижения без подписи, дизайн-ревью, п. 4)
+const LEGEND = [["var(--s-tk)", "работы"], ["var(--s-pos)", "посещения"], ["var(--s-sk)", "экзамен/зачёт"],
+  ["var(--s-td)", "трудовая деятельность"], ["var(--s-dost)", "достижения"], ["var(--s-dop)", "доп. баллы"]];
+
+function legendHtml(list) {
+  const used = new Set();
+  list.forEach(c => c.categories.forEach(k => { if (k.score > 0) used.add(catColor(k.name)); }));
+  const items = LEGEND.filter(([color]) => used.has(color));
+  return items.length ? '<div class="legend">' + items.map(([color, label]) => '<span><i style="background:' + color + '"></i>' + label + '</span>').join("") + '</div>' : "";
+}
+
 // Полоска суммы: доли категорий от 130 и пороги
 function scoreBar(c, cls) {
   const seg = c.categories.filter(k => k.score > 0)
@@ -95,7 +107,7 @@ function renderSdoList() {
       '<div class="m">' + (near ? "ближе всего: " + escapeHtml(near.title) + " — " + needText(near).replace(/<\/?b>/g, "") : "все предметы закрыты " + icon("party", "mood")) + '</div>' +
       // деления — шкала: закрытые заполняются слева, а не там, где стоит карточка
       '<div class="pips">' + list.map((c, i) => '<i class="' + (i < closed ? "on" : "") + '"></i>').join("") + '</div></div>' +
-    '<div class="legend"><span><i style="background:var(--s-tk)"></i>работы</span><span><i style="background:var(--s-pos)"></i>посещения</span><span><i style="background:var(--s-sk)"></i>экзамен/зачёт</span></div>' +
+    legendHtml(list) +
     list.map(c =>
       '<div class="sc-card tap" onclick="openSubject(' + c.id + ')"><div class="sc-top"><div class="t"><span class="sc-kind ' + (c.kind === "credit" ? "za" : "ex") + '">' +
         (c.kind === "credit" ? "ЗАЧ" : "ЭКЗ") + '</span><br>' + escapeHtml(c.title) + '</div>' +

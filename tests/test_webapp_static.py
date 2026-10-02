@@ -137,3 +137,39 @@ def test_home_starts_instantly_from_saved_day():
     assert "snap.today.date === isoDate(new Date())" in home          # только за сегодня
     assert "tg.initDataUnsafe.user" in home
     assert "renderDay(list, todayData)" in home
+
+
+# ── Дизайн-ревью, пункты 1–5 (v5.5.0) ──────────────────────────────────────
+
+CSS = (STATIC / "app.css").read_text(encoding="utf-8")
+
+
+def test_chat_opens_at_last_message():
+    # п. 1: чат с историей открывался сверху, на самых старых сообщениях
+    assert "scrollChatToEnd()" in JS["js/core.js"].split("function switchTab")[1].split("\n}\n")[0]
+    chat = JS["js/chat.js"]
+    assert "function scrollChatToEnd()" in chat and "if (!chatLog.length) return;" in chat
+
+
+def test_security_says_starosta_sees_who():
+    # п. 2: с v5.1.0 староста видит в /stats, кто пользуется, — экран «Безопасность» говорит об этом
+    assert "Староста видит, кто именно" in JS["js/more.js"]
+
+
+def test_light_theme_text_is_darker():
+    # п. 3: в светлой теме зелёные/оранжевые надписи читались плохо — тексту свои цвета
+    assert not re.search(r"(?<![-\w])color: var\(--(ok|warn|accent-2|danger)\)", CSS)
+    light = CSS.split(':root[data-theme="light"] { --switch-off')[1].split("}")[0]
+    for var in ("--ok-text", "--warn-text", "--accent-2-text", "--danger-text"):
+        assert var in light
+
+
+def test_sdo_legend_lists_every_colour_in_bars():
+    # п. 4: в полосках пять цветов, в легенде было три
+    sdo = JS["js/sdo.js"]
+    assert "legendHtml(list)" in sdo and '"трудовая деятельность"' in sdo and '"достижения"' in sdo
+
+
+def test_search_filters_stay_in_one_row():
+    # п. 5: «Аудитории» на узком iPhone уезжали на вторую строку
+    assert re.search(r"#target-types \{ flex-wrap: nowrap; overflow-x: auto;", CSS)
