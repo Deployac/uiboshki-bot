@@ -346,14 +346,18 @@ async def api_deadlines(include_done: bool = False, user: dict = CurrentUser):
     from database import get_active_deadlines, get_deadline_stats, is_shared_deadline
     from handlers.announce import is_editor
     from sdo_submit import can_submit
+    from database import get_user_deadline_reminders
+    from deadline_reminders import label as dl_label
     items = await get_active_deadlines(user["id"], include_done=include_done)
     editor = await is_editor(user["id"])
+    reminders = await get_user_deadline_reminders(user["id"])
     for d in items:
         d["personal"] = not is_shared_deadline(d)
         d["mine"] = d.get("created_by") == user["id"]
         # Править/удалять: свой личный — автор, общий — староста и зам.
         d["can_edit"] = (d["personal"] and d["mine"]) or (not d["personal"] and editor)
         d["can_submit"] = can_submit(d)
+        d["reminders"] = [{"at": at, "label": dl_label(at)} for at in reminders.get(d["id"], [])]
     stats = await get_deadline_stats(user["id"])
     return {"items": items, "stats": stats}
 
@@ -445,6 +449,42 @@ async def api_homework(user: dict = CurrentUser):
 
 class ToggleBody(BaseModel):
     done: bool
+
+
+class RemindBody(BaseModel):
+    preset: str | None = None      # 1d / 3h / 1h
+    at: str | None = None          # своё время, «ГГГГ-ММ-ДДTЧЧ:ММ» (МСК)
+
+
+async def _visible_deadline(deadline_id: int, user_id: int) -> dict:
+    from database import get_active_deadlines
+    for d in await get_active_deadlines(user_id, include_done=True):
+        if d["id"] == deadline_id:
+            return d
+    raise HTTPException(status_code=404, detail="дедлайн не найден")
+
+
+@app.post("/api/deadlines/{deadline_id}/remind")
+async def api_deadline_remind(deadline_id: int, body: RemindBody, user: dict = CurrentUser):
+    """Своё напоминание о дедлайне (deadline_reminders.py)."""
+    import deadline_reminders
+    from database import add_deadline_reminder, get_user_deadline_reminders
+    d = await _visible_deadline(deadline_id, user["id"])
+    try:
+        at = deadline_reminders.resolve(d, body.preset, body.at)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if len((await get_user_deadline_reminders(user["id"])).get(deadline_id, [])) >= 5:
+        raise HTTPException(status_code=400, detail="хватит пяти напоминаний на дедлайн")
+    await add_deadline_reminder(user["id"], deadline_id, at)
+    return {"ok": True, "at": at, "label": deadline_reminders.label(at)}
+
+
+@app.delete("/api/deadlines/{deadline_id}/remind")
+async def api_deadline_unremind(deadline_id: int, at: str, user: dict = CurrentUser):
+    from database import delete_deadline_reminder
+    await delete_deadline_reminder(user["id"], deadline_id, at)
+    return {"ok": True}
 
 
 @app.post("/api/deadlines/{deadline_id}/toggle")

@@ -216,6 +216,17 @@ async def init_db():
                 updated_at  TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Свои напоминания о дедлайне (deadline_reminders.py): кто, о каком, когда
+        # (время МСК «ГГГГ-ММ-ДД ЧЧ:ММ»); sent — уже пришло.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS deadline_reminders (
+                user_id     INTEGER NOT NULL,
+                deadline_id INTEGER NOT NULL,
+                remind_at   TEXT NOT NULL,
+                sent        INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, deadline_id, remind_at)
+            )
+        """)
         # Последний удачный календарь группы (schedule_parser.fetch_schedule_raw):
         # если зеркало МИРЭА не отвечает, а бот только что перезапустился —
         # показываем его, а не ошибку.
@@ -940,6 +951,54 @@ async def save_schedule_snapshot(date_str: str, events: list):
                 events_json = excluded.events_json,
                 updated_at  = excluded.updated_at
         """, (date_str, json.dumps(events, ensure_ascii=False)))
+        await db.commit()
+
+
+async def add_deadline_reminder(user_id: int, deadline_id: int, remind_at: str):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("INSERT OR IGNORE INTO deadline_reminders (user_id, deadline_id, remind_at) VALUES (?, ?, ?)",
+                         (user_id, deadline_id, remind_at))
+        await db.commit()
+
+
+async def delete_deadline_reminder(user_id: int, deadline_id: int, remind_at: str):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("DELETE FROM deadline_reminders WHERE user_id=? AND deadline_id=? AND remind_at=?",
+                         (user_id, deadline_id, remind_at))
+        await db.commit()
+
+
+async def get_user_deadline_reminders(user_id: int) -> dict[int, list[str]]:
+    """Будущие (ещё не пришедшие) напоминания человека: дедлайн → времена."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        rows = await (await db.execute(
+            "SELECT deadline_id, remind_at FROM deadline_reminders WHERE user_id=? AND sent=0 ORDER BY remind_at",
+            (user_id,))).fetchall()
+    out: dict[int, list[str]] = {}
+    for did, at in rows:
+        out.setdefault(did, []).append(at)
+    return out
+
+
+async def due_deadline_reminders(now: str) -> list[dict]:
+    """Напоминания, время которых пришло: с дедлайном и отметкой «сделал»."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute("""
+            SELECT r.user_id, r.deadline_id, r.remind_at, d.subject, d.description, d.due_date, d.due_time,
+                   EXISTS(SELECT 1 FROM deadline_done x WHERE x.deadline_id = r.deadline_id AND x.user_id = r.user_id) AS done
+            FROM deadline_reminders r JOIN deadlines d ON d.id = r.deadline_id
+            WHERE r.sent = 0 AND r.remind_at <= ?
+        """, (now,))).fetchall()
+        return [dict(r) for r in rows]
+
+
+async def mark_deadline_reminder_sent(user_id: int, deadline_id: int, remind_at: str):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("UPDATE deadline_reminders SET sent=1 WHERE user_id=? AND deadline_id=? AND remind_at=?",
+                         (user_id, deadline_id, remind_at))
+        # старше месяца — не нужны
+        await db.execute("DELETE FROM deadline_reminders WHERE sent=1 AND remind_at < datetime('now', '-30 days')")
         await db.commit()
 
 

@@ -312,6 +312,8 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(send_group_morning_digest,   "cron", hour=SCHEDULE_HOUR,          minute=SCHEDULE_MINUTE,          args=[bot])
     scheduler.add_job(send_deadline_reminders, "cron", hour=DEADLINE_REMINDER_HOUR, minute=DEADLINE_REMINDER_MINUTE, args=[bot])
     scheduler.add_job(check_lesson_reminders,  "cron", minute="*",                  args=[bot])
+    from deadline_reminders import send_due as send_deadline_custom_reminders   # свои напоминания о дедлайне
+    scheduler.add_job(send_deadline_custom_reminders, "cron", minute="*",        args=[bot])
     # Первый синк — через минуту после запуска: после деплоя СДО иначе молчал
     # до 6 часов, и сессия Moodle успевала истечь. Плюс лёгкий запрос в СДО
     # каждый час, чтобы сессия не гасла без обращений (sdo_parser.keepalive).
