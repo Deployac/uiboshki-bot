@@ -4,6 +4,10 @@ Inline-режим: в любом чате пишешь «@UiboshkiBot» — и �
 набрать фамилию преподавателя, группу или аудиторию — придёт их расписание
 (справочник schedule_index). Включается один раз в BotFather: /setinline.
 
+Если задан WEBAPP_URL — карточки картинками (schedule_card.py, тёмные, в
+стиле приложения): Telegram сам забирает их по подписанной ссылке /card/…
+с сервера бота. Без WEBAPP_URL — текстом, как раньше.
+
 Карточки собираются только когда их спрашивают; расписание чужих — не больше
 трёх и с ограничением по времени, чтобы Telegram успел получить ответ.
 """
@@ -14,7 +18,8 @@ import logging
 
 from aiogram import Router
 from aiogram.types import (
-    InlineKeyboardButton, InlineKeyboardMarkup, InlineQuery, InlineQueryResultArticle, InputTextMessageContent,
+    InlineKeyboardButton, InlineKeyboardMarkup, InlineQuery, InlineQueryResultArticle, InlineQueryResultPhoto,
+    InputTextMessageContent,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,8 +53,31 @@ def _article(rid: str, title: str, description: str, text: str) -> InlineQueryRe
     )
 
 
+def _photo(rid: str, url: str, title: str, description: str, caption: str) -> InlineQueryResultPhoto:
+    return InlineQueryResultPhoto(
+        id=hashlib.md5(rid.encode()).hexdigest(), photo_url=url, thumbnail_url=url,
+        title=title, description=description[:120], caption=caption, reply_markup=_app_kb(),
+    )
+
+
+def _card_base() -> str:
+    from config import WEBAPP_URL
+    return WEBAPP_URL.rstrip("/")
+
+
 async def _own_results(only: str | None) -> list:
     from config import GROUP_NAME
+    if base := _card_base():
+        import schedule_card
+        out = []
+        for key, title, desc in (("today", f"📅 Сегодня — {GROUP_NAME}", "пары на сегодня"),
+                                 ("tomorrow", f"🌙 Завтра — {GROUP_NAME}", "пары на завтра"),
+                                 ("week", f"🗓 Неделя — {GROUP_NAME}", "вся неделя")):
+            if only and key != only:
+                continue
+            url = schedule_card.card_url(base, key)
+            out.append(_photo(f"own:{key}:{url}", url, title, desc, title))
+        return out
     from schedule_parser import get_today_schedule, get_tomorrow_schedule, get_week_schedule
     cards = [("today", f"📅 Сегодня — {GROUP_NAME}", "пары на сегодня", get_today_schedule),
              ("tomorrow", f"🌙 Завтра — {GROUP_NAME}", "пары на завтра", get_tomorrow_schedule),
@@ -67,6 +95,14 @@ async def _target_results(query: str) -> list:
     import schedule_index
     from handlers.schedule import _TARGET_EMOJI, render_target_schedule
     found = (await schedule_index.search(query, limit=3))[:3]
+    if base := _card_base():
+        import schedule_card
+        out = []
+        for t in found:
+            url = schedule_card.card_url(base, "target", t["type"], t["id"])
+            title = f"{_TARGET_EMOJI[t['type']]} {t['title']}"
+            out.append(_photo(f"t:{url}", url, title, "расписание на неделю", title))
+        return out
 
     async def one(t):
         try:

@@ -97,6 +97,46 @@ async def health():
     return {"ok": True}
 
 
+# ── Картинки расписания для inline-режима ───────────────────────────────────
+# Telegram забирает картинку по URL сам, без initData, поэтому ссылка
+# подписана (schedule_card.sign). Готовые картинки — в памяти на 10 минут.
+_card_cache: dict[str, tuple[float, bytes]] = {}
+
+
+@app.get("/card/{key}.jpg")
+async def schedule_card_image(key: str, sig: str = ""):
+    import asyncio
+    import time
+    from datetime import datetime
+    import schedule_card
+    from config import BOT_USERNAME, GROUP_NAME
+    from utils import TZ
+    parsed = schedule_card.parse_key(key, sig)
+    if not parsed:
+        raise HTTPException(403, "Неверная ссылка")
+    hit = _card_cache.get(key)
+    if hit and hit[0] > time.time():
+        return Response(hit[1], media_type="image/jpeg")
+    kind, target_type, target_id = parsed
+    now = datetime.now(TZ)
+    if kind == "target":
+        import schedule_index
+        from mirea_schedule_api import fetch_ical
+        raw = await fetch_ical(target_id, target_type)
+        if raw is None:
+            raise HTTPException(502, "Расписание не загрузилось")
+        title = await schedule_index.get_title(target_type, target_id) or "Расписание"
+        data = await asyncio.to_thread(schedule_card.build_target, raw, title, now, BOT_USERNAME)
+    else:
+        from schedule_parser import fetch_schedule_raw
+        raw = await fetch_schedule_raw()
+        data = await asyncio.to_thread(schedule_card.build_own, raw, kind, now, GROUP_NAME, BOT_USERNAME)
+    if len(_card_cache) > 200:
+        _card_cache.clear()
+    _card_cache[key] = (time.time() + 600, data)
+    return Response(data, media_type="image/jpeg")
+
+
 # ── Аутентификация ──────────────────────────────────────────────────────────
 
 async def get_current_user(request: Request, x_telegram_init_data: str = Header(default="")) -> dict:
