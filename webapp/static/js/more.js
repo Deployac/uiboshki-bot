@@ -407,7 +407,10 @@ function renderNotify() {
         ntRow("Только если есть пары", "в свободный день — тишина", "skip_empty")) +
       ntCard("clock", "Перед парой", "своё время для первой пары и после перемены", "lessons", "lesson_days",
         s.remind.map(ntRemind).join("")) +
-      ntCard("deadlines", "Дедлайны", "в " + s.deadline_time + " — что сдать в ближайшие 3 дня", "deadlines", "deadline_days");
+      ntCard("deadlines", "Дедлайны", "в " + s.deadline_time + " — что сдать в ближайшие 3 дня", "deadlines", "deadline_days") +
+      '<div class="nt-card' + (p.weekly ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("calendar") + '</span>' +
+        '<div><b>Обзор недели</b><p>в воскресенье в 19:00 — пары по дням и что сдать</p></div>' +
+        ntSwitch(p.weekly, "toggleNotify('weekly')") + '</div></div>';
   }
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';
 }
