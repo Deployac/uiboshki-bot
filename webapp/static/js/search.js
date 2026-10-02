@@ -189,7 +189,7 @@ function renderTargetWeek() {
   const idx = week.days.indexOf(day);
   document.getElementById("target-lessons").innerHTML = day.lessons.length
     ? day.lessons.map(l => lessonRow(l, !!l.status)).join("")
-    : '<div class="empty">' + DAY_FULL[idx] + " — пар нет " + icon("party", "mood") + "</div>";
+    : capyEmpty(DAY_FULL[idx] + " — пар нет");
 }
 
 function shiftTargetWeek(delta) {

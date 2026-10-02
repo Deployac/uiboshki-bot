@@ -878,3 +878,11 @@
   .ob-dots i.on { width: 22px; border-radius: 4px; background: var(--accent); }
   .ob-next { width: 100%; max-width: 360px; }
   @keyframes obIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  /* пустые экраны с капибарой (core.js: capyEmpty) */
+  .capy-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 34px 16px 30px; }
+  .capy-empty .ico.capy { width: 74px; height: 70px; color: #c8915a; opacity: .9; margin-bottom: 8px;
+                          animation: capyBob 3.2s ease-in-out infinite; }
+  .capy-empty b { color: var(--text); font-size: 15.5px; }
+  .capy-empty span { font-size: 13px; }
+  @keyframes capyBob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-4px) rotate(-2deg); } }
+  @media (prefers-reduced-motion: reduce) { .capy-empty .ico.capy, .view, .onboard.open, .ob-card { animation: none; } }

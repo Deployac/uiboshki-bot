@@ -283,7 +283,7 @@ function renderDay(list, data) {
   lastDayData = data;
   list.innerHTML = data.lessons.length
     ? data.lessons.map(l => lessonRow(l, !!l.status, true)).join("")
-    : '<div class="empty">' + data.weekday + ' — пар нет ' + icon("party", "mood") + '</div>';
+    : capyEmpty(data.weekday + " — пар нет", "Отдыхай или догоняй дедлайны");
 }
 
 async function selectDay(btn, silent) {

@@ -239,7 +239,7 @@ function workMeta(w) {
 function renderTk() {
   const c = sdoCourse;
   const box = document.getElementById("tk-body");
-  if (!c.works || !c.works.length) { box.innerHTML = '<div class="empty">Работ в текущем контроле пока нет</div>'; return; }
+  if (!c.works || !c.works.length) { box.innerHTML = capyEmpty("Работ в текущем контроле пока нет", "Как только преподаватель их добавит — появятся тут"); return; }
   const detailed = !!c.works[0].status;   // страницы заданий уже подгружены
   const works = c.works.map(w => Object.assign({}, w, { status: w.status || (w.grade != null ? (w.passed ? "ok" : "low") : "none") }));
   const tk = c.categories.find(k => k.tk) || { score: works.reduce((a, w) => a + (w.grade || 0), 0), max: works.reduce((a, w) => a + (w.max || 0), 0) };
