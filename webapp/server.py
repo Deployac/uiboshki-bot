@@ -931,7 +931,7 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
         cmid = sdo_submit.cmid_of(d["description"])
     cookie = await sdo_accounts.cookie_for(user["id"])
     if not cookie:
-        raise HTTPException(status_code=403, detail="сначала подключи СДО: ☰ Ещё → СДО")
+        raise HTTPException(status_code=403, detail="сначала подключи СДО: вкладка СДО → Вход")
     items = body.files or [SdoFile(name=body.name, data=body.data)]
     files = []
     try:
@@ -944,7 +944,7 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
         result = await sdo_submit.submit_file(cookie, cmid, files=files)
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
-        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
     except sdo_submit.SubmitError as e:
         raise HTTPException(status_code=400, detail=str(e))
     logger.info(f"СДО: {user['id']} сдал файл в задание {cmid}")
@@ -973,7 +973,7 @@ async def api_sdo_grades(fresh: bool = False, user: dict = CurrentUser):
         return await sdo_grades.overview(user["id"], cookie, fresh=fresh)
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
-        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
     except Exception as e:
         logger.warning(f"Баллы СДО: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
@@ -991,7 +991,7 @@ async def api_sdo_course(course_id: int, user: dict = CurrentUser):
         raise HTTPException(status_code=404, detail="курс не найден")
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
-        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
     except Exception as e:
         logger.warning(f"Баллы СДО, курс {course_id}: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
@@ -1040,7 +1040,7 @@ async def api_sdo_task(cmid: int, request: Request, user: dict = CurrentUser):
         task = await sdo_grades.task_detail(cookie, cmid)
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
-        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: ☰ Ещё → СДО")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
     except Exception as e:
         logger.warning(f"Задание СДО {cmid}: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
