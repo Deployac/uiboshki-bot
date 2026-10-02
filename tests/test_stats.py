@@ -64,7 +64,7 @@ async def test_stats_command_only_for_starosta(db, monkeypatch):
     from aiogram import Bot, Dispatcher
     from aiogram.fsm.storage.memory import MemoryStorage
     from aiogram.types import Chat, Message, Update, User
-    from handlers import announce
+    from handlers import announce, deadlines
     from tests.conftest import STAROSTA_ID
     from tests.test_solver_render import RecordingSession
 
@@ -81,6 +81,7 @@ async def test_stats_command_only_for_starosta(db, monkeypatch):
 
     bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=Session())
     dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(deadlines.router)   # как в handlers/__init__.py: раньше announce
     dp.include_router(announce.router)
     try:
         for i, uid in enumerate((222, STAROSTA_ID)):
@@ -89,5 +90,8 @@ async def test_stats_command_only_for_starosta(db, monkeypatch):
             await dp.feed_update(bot, Update(update_id=int(time.time()) + i, message=msg))
     finally:
         announce.router._parent_router = None
+        deadlines.router._parent_router = None
     assert [chat for chat, _ in bot.session.photos] == [STAROSTA_ID]
+    # остальным /stats по-прежнему показывает их дедлайны
+    assert any("Статистика дедлайнов" in text for text, _ in bot.session.sent)
     assert "Статистика за 30 дн." in bot.session.photos[0][1]
