@@ -552,3 +552,13 @@ def test_submit_sheet_shows_accepted_types():
     change = more.split('getElementById("submit-file").addEventListener("change"')[1].split("\n});\n")[0]
     assert "submitExtOk(" in change and "submitMaxMb()" in change      # чужой тип отсекаем до загрузки
     assert re.search(r"\.sub-rules \{[^}]*border-radius", CSS) and ".sub-rules .exts span.ext" in CSS
+
+
+# ── Листы смахиваются вниз (владелец: «Что нового» не смахивался) ──
+
+def test_sheets_close_by_swipe_down():
+    core = JS["js/core.js"]
+    assert 'closest(".sheet-backdrop.open .sheet")' in core
+    assert "d.sheet.scrollTop > 0" in core                         # прокрутка листа — не свайп
+    assert 'closeSheet(d.sheet.closest(".sheet-backdrop").id)' in core
+    assert "{ passive: false }" in core and "e.preventDefault()" in core   # фон под листом не листается

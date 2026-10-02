@@ -150,6 +150,45 @@ document.addEventListener("keydown", (e) => {
   const t = e.target;
   if (e.key === "Enter" && t && t.tagName === "INPUT" && t.classList.contains("searchbox")) t.blur();
 });
+// Листы снизу смахиваются вниз, как в Telegram, — раньше закрывались только
+// кнопкой («Что нового» — только «Круто», заметил владелец), а палец листал
+// страницу под листом. Тянем, только когда лист промотан до верха.
+const sheetDrag = { s: null };
+document.addEventListener("touchstart", (e) => {
+  const sheet = e.target.closest && e.target.closest(".sheet-backdrop.open .sheet");
+  sheetDrag.s = sheet ? { sheet: sheet, y0: e.touches[0].clientY, t0: Date.now(), dy: 0, on: false } : null;
+}, { passive: true });
+document.addEventListener("touchmove", (e) => {
+  const t = e.target.closest ? e.target : null;
+  if (t && t.closest(".sheet-backdrop.open") && !t.closest(".sheet")) { e.preventDefault(); return; }   // фон не листаем
+  const d = sheetDrag.s;
+  if (!d) return;
+  const dy = e.touches[0].clientY - d.y0;
+  if (!d.on) {
+    if (Math.abs(dy) < 8) return;
+    if (dy < 0 || d.sheet.scrollTop > 0) { sheetDrag.s = null; return; }   // это прокрутка листа, не свайп
+    d.on = true;
+    d.sheet.style.transition = "none";
+  }
+  e.preventDefault();
+  d.dy = Math.max(0, dy);
+  d.sheet.style.transform = "translateY(" + d.dy + "px)";
+}, { passive: false });
+document.addEventListener("touchend", () => {
+  const d = sheetDrag.s;
+  sheetDrag.s = null;
+  if (!d || !d.on) return;
+  const fast = d.dy > 40 && d.dy / Math.max(1, Date.now() - d.t0) > 0.6;
+  d.sheet.style.transition = "transform .18s ease";
+  if (d.dy > 110 || fast) {
+    d.sheet.style.transform = "translateY(100%)";
+    setTimeout(() => { closeSheet(d.sheet.closest(".sheet-backdrop").id); d.sheet.style.transform = ""; d.sheet.style.transition = ""; }, 180);
+  } else {
+    d.sheet.style.transform = "";
+    setTimeout(() => { d.sheet.style.transition = ""; }, 200);
+  }
+});
+
 document.addEventListener("touchstart", (e) => {
   const a = document.activeElement;
   if (!a || !/^(INPUT|TEXTAREA)$/.test(a.tagName)) return;
