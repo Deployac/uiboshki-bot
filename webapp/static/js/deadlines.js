@@ -38,7 +38,7 @@ async function loadDeadlines() {
     document.getElementById("deadline-stat").textContent =
       stat.active + " активных" + (stat.overdue ? " · " + stat.overdue + " просрочено" : "");
     if (!data.items.length) {
-      list.innerHTML = '<div class="empty">Дедлайнов нет ' + icon("party", "mood") + '<br>Свой можно добавить кнопкой ＋</div>';
+      list.innerHTML = capyEmpty("Дедлайнов нет — можно выдохнуть", "Свой можно добавить кнопкой ＋");
       return;
     }
     const groups = { overdue: [], week: [], later: [], done: [] };
@@ -263,7 +263,7 @@ async function loadHomework() {
   const list = document.getElementById("hw-list");
   try {
     const data = await api("/api/homework");
-    if (!data.items.length) { list.innerHTML = '<div class="empty">Доска ДЗ пока пустая</div>'; return; }
+    if (!data.items.length) { list.innerHTML = capyEmpty("Доска ДЗ пока пустая", "Староста добавит задания — они появятся тут"); return; }
     list.innerHTML = data.items.map(h => {
       const when = h.lesson_date ? '<span class="chip warn">к ' + h.lesson_date.slice(8, 10) + "." + h.lesson_date.slice(5, 7) + '</span>' : "";
       const file = h.has_file ? '<div class="dl-actions"><button onclick="openHwFile(' + h.id + ', this)">' + icon("clip") + ' Открыть файл</button></div>' : "";

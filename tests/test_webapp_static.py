@@ -108,3 +108,9 @@ def test_onboarding_once_and_not_on_deep_links():
     assert "CloudStorage" in more and "onboarded_v1" in more        # один раз, и на другом телефоне тоже
     assert "if (!deepLink) maybeOnboard();" in main                 # из уведомления — без знакомства
     assert 'id="onboard"' in HTML
+
+
+def test_happy_empty_states_with_capybara():
+    assert "function capyEmpty(" in JS["js/core.js"]
+    for f in ("js/deadlines.js", "js/home.js", "js/files.js", "js/sdo.js", "js/search.js"):
+        assert "capyEmpty(" in JS[f], f

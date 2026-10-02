@@ -130,6 +130,13 @@ function switchTab(name) {
 
 // ── Утилиты ───────────────────────────────────────────────────────────────
 
+// Пустой экран «по-хорошему» (пар нет, всё сдано, дедлайнов нет) — с
+// капибарой с логотипа, а не просто серой строкой.
+function capyEmpty(title, sub) {
+  return '<div class="empty capy-empty">' + icon("capy", "capy") + '<b>' + title + '</b>' +
+    (sub ? '<span>' + sub + '</span>' : '') + '</div>';
+}
+
 function escapeHtml(s) {
   return (s || "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"

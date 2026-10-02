@@ -154,7 +154,8 @@ async function loadFiles(q) {
     fileItems.forEach(f => fileIndex[f.id] = f);
     if (fileSubject !== null && !fileItems.some(f => f.subject === fileSubject)) fileSubject = null;
     if (!fileItems.length) {
-      list.innerHTML = '<div class="empty">' + (fileQuery ? "Ничего не нашлось" : "Файлов пока нет — загрузи их в боте: /upload") + '</div>';
+      list.innerHTML = fileQuery ? '<div class="empty">Ничего не нашлось</div>'
+        : capyEmpty("Файлов пока нет", "Загрузи их в боте: /upload");
       document.getElementById("file-head").innerHTML = "";
       syncFileBack();
       return;
