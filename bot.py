@@ -13,6 +13,9 @@ from scheduler import start_scheduler
 from middleware import MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+# httpx на INFO пишет полный адрес каждого запроса — с sesskey СДО в query.
+# Секрету в логах не место (и шума меньше).
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 # Минимальный алертинг без внешних сервисов: любая необработанная ошибка

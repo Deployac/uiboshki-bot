@@ -32,16 +32,56 @@ from config import BOT_TOKEN, STAROSTA_ID, STAROSTA_IDS, is_starosta, WEBAPP_URL
 from webapp.auth import InitDataError, validate_init_data
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+# httpx на INFO пишет полный адрес каждого запроса — с sesskey СДО в query.
+# Секрету в логах не место (и шума меньше).
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="uiboshki-bot webapp")
 
+def _allowed_origins() -> list[str]:
+    """Приложение открывается со своего же адреса — чужим сайтам API не нужен.
+    Без WEBAPP_URL (локальный запуск) — как раньше, любые."""
+    from urllib.parse import urlsplit
+    if not WEBAPP_URL:
+        return ["*"]
+    u = urlsplit(WEBAPP_URL)
+    return [f"{u.scheme}://{u.netloc}"]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_allowed_origins(),
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Сколько можно прислать в одном запросе: сдача работ — до 3 файлов по 20 МБ
+# (в base64 ~80 МБ), чат с вложением — 10 МБ (~14 МБ), остальное — мелочь.
+BODY_LIMITS = (("/api/sdo/submit", 90 * 1024 * 1024), ("/api/chat", 16 * 1024 * 1024))
+BODY_LIMIT_DEFAULT = 1024 * 1024
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Заголовки безопасности и ограничение размера запроса.
+    - nosniff: браузер не «угадывает» тип файла (картинка не станет скриптом);
+    - no-referrer: подписанные ссылки /dl и /sdl не утекают в Referer;
+    - no-store для API и ссылок на файлы: ответы с баллами и файлами не
+      оседают в кэше устройства/прокси."""
+    from fastapi.responses import JSONResponse
+    length = request.headers.get("content-length")
+    if length and length.isdigit():
+        limit = next((n for p, n in BODY_LIMITS if request.url.path.startswith(p)), BODY_LIMIT_DEFAULT)
+        if int(length) > limit:
+            return JSONResponse({"detail": "слишком большой запрос"}, status_code=413)
+    resp = await call_next(request)
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "no-referrer")
+    resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.url.path.startswith(("/api/", "/dl/", "/sdl/")):
+        resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -400,6 +440,9 @@ async def api_deadline_add(body: NewDeadline, user: dict = CurrentUser):
     """Свой (личный) дедлайн из WebApp — как /add в боте: виден только
     автору. Общие дедлайны группы по-прежнему заводит староста/СДО."""
     from database import add_deadline
+    import ratelimit
+    if not ratelimit.allow("deadline", user["id"]):
+        raise HTTPException(429, "Слишком много дедлайнов подряд — подожди пару минут")
     subject, due, due_time, desc = _validate_deadline(body)
     did = await add_deadline(subject, desc, due, due_time, user["id"])
     return {"ok": True, "id": did}
@@ -551,6 +594,9 @@ async def api_send_file(file_id: int, user: dict = CurrentUser):
     """Кнопка «Открыть»: бот шлёт файл в личку. Раньше фронт открывал
     диплинк t.me/<бот>?start=file_<id>, и в чате копились «/start file_…»."""
     from handlers.start import send_file_to
+    import ratelimit
+    if not ratelimit.allow("send", user["id"]):
+        raise HTTPException(429, "Много файлов подряд — подожди минутку")
     if not await send_file_to(tg_bot(), user["id"], file_id):
         raise HTTPException(404, "Файл не найден")
     return {"ok": True}
@@ -618,6 +664,9 @@ async def download_file(file_id: int, name: str, exp: int, sig: str):
 @app.post("/api/homework/{hw_id}/send")
 async def api_send_hw(hw_id: int, user: dict = CurrentUser):
     from handlers.start import send_hw_to
+    import ratelimit
+    if not ratelimit.allow("send", user["id"]):
+        raise HTTPException(429, "Много файлов подряд — подожди минутку")
     if not await send_hw_to(tg_bot(), user["id"], hw_id):
         raise HTTPException(404, "Файл ДЗ не найден")
     return {"ok": True}
