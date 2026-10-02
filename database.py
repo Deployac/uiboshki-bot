@@ -211,6 +211,16 @@ async def init_db():
                 updated_at  TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Последний удачный календарь группы (schedule_parser.fetch_schedule_raw):
+        # если зеркало МИРЭА не отвечает, а бот только что перезапустился —
+        # показываем его, а не ошибку.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS schedule_backup (
+                id       INTEGER PRIMARY KEY CHECK (id = 1),
+                data     BLOB NOT NULL,
+                saved_at TEXT NOT NULL
+            )
+        """)
         # ── Заметки на конкретный день/пару ──────────────────────────────────
         await db.execute("""
             CREATE TABLE IF NOT EXISTS lesson_notes (
@@ -892,6 +902,19 @@ async def save_schedule_snapshot(date_str: str, events: list):
                 updated_at  = excluded.updated_at
         """, (date_str, json.dumps(events, ensure_ascii=False)))
         await db.commit()
+
+
+async def save_schedule_backup(data: bytes, saved_at: str):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("INSERT OR REPLACE INTO schedule_backup (id, data, saved_at) VALUES (1, ?, ?)",
+                         (data, saved_at))
+        await db.commit()
+
+
+async def load_schedule_backup() -> tuple[bytes, str] | None:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        row = await (await db.execute("SELECT data, saved_at FROM schedule_backup WHERE id = 1")).fetchone()
+        return (bytes(row[0]), row[1]) if row else None
 
 
 # ── Заметки на день/пару ─────────────────────────────────────────────────────

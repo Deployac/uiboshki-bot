@@ -836,3 +836,4 @@
   nav.tabs button.sdo-off.active { box-shadow: 0 4px 10px rgba(185, 74, 74, .22); }
   nav.tabs button.sdo-ok .ico { width: 27px; height: 25px; }
   nav.tabs button.sdo-ok:not(.active) .ic { opacity: .9; }
+  .stale-pill { background: rgba(154,160,172,.12); border-color: var(--border); color: var(--hint); font-weight: 500; }
