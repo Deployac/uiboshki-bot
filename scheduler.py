@@ -302,9 +302,10 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(sync_sdo_deadlines,      "interval", hours=SDO_SYNC_INTERVAL_HOURS, args=[bot],
                       next_run_time=datetime.now(ZoneInfo(TIMEZONE)) + timedelta(minutes=1))
     scheduler.add_job(keepalive,               "interval", minutes=55)
-    # свои входы студентов в СДО (сдача работ из WebApp) — так же держим живыми
-    from sdo_accounts import keepalive_all
-    scheduler.add_job(keepalive_all,           "interval", minutes=55, args=[bot])
+    # Входы студентов в СДО — вразнобой: раз в минуту проверяются те, чья
+    # очередь (50–59 мин случайно, потом 55), а не все разом (sdo_accounts.py)
+    from sdo_accounts import keepalive_due
+    scheduler.add_job(keepalive_due,           "interval", minutes=1, args=[bot])
     from database import purge_events          # статистика старше 180 дней не нужна
     scheduler.add_job(purge_events,            "cron", hour=4, minute=20)
     scheduler.add_job(check_schedule_changes,  "interval", minutes=SCHEDULE_DIFF_CHECK_MINUTES, args=[bot])

@@ -76,7 +76,8 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
     `files_skipped` — удалённое не вернётся. Выгружено 596 файлов, 535 с текстом.
 - **Свой вход в СДО и сдача работ**: WebApp → вкладка «СДО» внизу (кнопка «Вход»), студент вставляет
   свою MoodleSession (`sdo_accounts.py`, таблица `sdo_sessions`, Fernet;
-  у старосты без своей — общая из `SDO_SESSION_COOKIE`). «📤 Сдать» у
+  у старосты без своей — общая из `SDO_SESSION_COOKIE`; проверка входов вразнобой —
+  `keepalive_due`: 50–59 мин случайно первые 3 раза, потом 55). «📤 Сдать» у
   дедлайна-задания (`mod/assign`) — `sdo_submit.py`: форма editsubmission →
   `repository_ajax.php` → savesubmission → при черновиках confirmsubmit.
 - **Баллы БРС** (`sdo_grades.py`, `js/sdo.js`): журнал курса
