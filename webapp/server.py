@@ -1064,13 +1064,19 @@ async def api_sdo_grades(fresh: bool = False, user: dict = CurrentUser):
     from sdo_parser import SdoSessionExpired
     cookie = await _sdo_cookie(user["id"])
     try:
-        return await sdo_grades.overview(user["id"], cookie, fresh=fresh)
+        data = await sdo_grades.overview(user["id"], cookie, fresh=fresh)
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
         raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
     except Exception as e:
         logger.warning(f"Баллы СДО: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+    try:
+        import sdo_history          # точка истории баллов на сегодня (график на экране предмета)
+        await sdo_history.record(user["id"], data.get("courses") or [])
+    except Exception as e:
+        logger.info(f"история баллов: {e}")
+    return data
 
 
 @app.get("/api/sdo/grades/{course_id}")
@@ -1080,7 +1086,7 @@ async def api_sdo_course(course_id: int, user: dict = CurrentUser):
     from sdo_parser import SdoSessionExpired
     cookie = await _sdo_cookie(user["id"])
     try:
-        return await sdo_grades.course_detail(user["id"], cookie, course_id)
+        data = await sdo_grades.course_detail(user["id"], cookie, course_id)
     except LookupError:
         raise HTTPException(status_code=404, detail="курс не найден")
     except SdoSessionExpired:
@@ -1089,6 +1095,12 @@ async def api_sdo_course(course_id: int, user: dict = CurrentUser):
     except Exception as e:
         logger.warning(f"Баллы СДО, курс {course_id}: {type(e).__name__}: {e}")
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+    try:
+        import sdo_history
+        data = {**data, "history": await sdo_history.series(user["id"], course_id, data.get("score"))}
+    except Exception as e:
+        logger.info(f"история баллов: {e}")
+    return data
 
 
 # ── Задание СДО: описание, файлы преподавателя, сдача ────────────────────────

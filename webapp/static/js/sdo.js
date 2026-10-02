@@ -197,7 +197,35 @@ function renderSubject() {
     '<div class="card"><div class="sd-head"><span class="n">' + fmtNum(c.score) + '</span><span class="of">из ' + fmtNum(c.max) + '</span>' +
       '<div class="st">' + (c.final ? escapeHtml(c.final) : (c.kind === "credit" ? "зачёт" : "экзамен")) + '<b' + (c.closed ? ' class="ok"' : '') + '>' + needText(c).replace(/<\/?b>/g, "") + '</b></div></div>' +
       '<div class="gbar"><div class="gtrack">' + seg + '</div>' + marks + '</div>' +
-      '<div class="cats">' + rows + '</div>' + (c.works_total ? zachRow(c) : '') + '</div>';
+      '<div class="cats">' + rows + '</div>' + (c.works_total ? zachRow(c) : '') + '</div>' + historyCard(c);
+}
+
+// График «как росли баллы» (sdo_history.py: точка в день, когда смотришь баллы).
+function historyCard(c) {
+  const h = c.history;
+  if (!h || !h.points || !h.points.length) return "";
+  const pts = h.points, d = h.week_delta;
+  const delta = d === null || d === undefined ? "" :
+    '<span class="hist-delta' + (d > 0 ? " up" : "") + '">' + (d > 0 ? "+" : "") + fmtNum(d) + ' за неделю</span>';
+  if (pts.length < 2) {
+    return '<div class="card hist"><div class="hist-head"><b>Как растут баллы</b>' + delta + '</div>' +
+      '<p class="sheet-hint">График появится, когда наберётся история: бот запоминает сумму раз в день, когда ты смотришь баллы.</p></div>';
+  }
+  const W = 320, H = 110, pad = 6;
+  const t0 = Date.parse(pts[0][0]), t1 = Date.parse(pts[pts.length - 1][0]) || t0 + 1;
+  const x = t => pad + (W - 2 * pad) * (t1 === t0 ? 1 : (Date.parse(t) - t0) / (t1 - t0));
+  const y = v => H - pad - (H - 2 * pad) * Math.min(1, v / c.max);
+  const line = pts.map(p => x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1)).join(" ");
+  const area = pad + "," + (H - pad) + " " + line + " " + x(pts[pts.length - 1][0]).toFixed(1) + "," + (H - pad);
+  const marks = (c.marks || []).map(m => '<line x1="0" x2="' + W + '" y1="' + y(m.at).toFixed(1) + '" y2="' + y(m.at).toFixed(1) +
+    '" class="hist-mark"/><text x="' + (W - 2) + '" y="' + (y(m.at) - 3).toFixed(1) + '" class="hist-lbl">' + escapeHtml(m.label) + '</text>').join("");
+  const last = pts[pts.length - 1];
+  const fmtDay = iso => { const p = iso.split("-"); return +p[2] + "." + p[1]; };
+  return '<div class="card hist"><div class="hist-head"><b>Как растут баллы</b>' + delta + '</div>' +
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" class="hist-svg" preserveAspectRatio="none">' + marks +
+      '<polygon points="' + area + '" class="hist-area"/><polyline points="' + line + '" class="hist-line"/>' +
+      '<circle cx="' + x(last[0]).toFixed(1) + '" cy="' + y(last[1]).toFixed(1) + '" r="3.5" class="hist-dot"/></svg>' +
+    '<div class="hist-axis"><span>' + fmtDay(pts[0][0]) + '</span><span>сейчас ' + fmtNum(last[1]) + '</span></div></div>';
 }
 
 // ── Текущий контроль ──────────────────────────────────────────────────────
