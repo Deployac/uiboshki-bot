@@ -6,9 +6,12 @@
 Проверка — раз в минуту (scheduler.py: send_deadline_custom_reminders).
 """
 
+import logging
 from datetime import datetime, timedelta
 
 from utils import TZ
+
+logger = logging.getLogger(__name__)
 
 PRESETS = {"1d": timedelta(days=1), "3h": timedelta(hours=3), "1h": timedelta(hours=1)}
 FMT = "%Y-%m-%d %H:%M"
@@ -70,5 +73,5 @@ async def send_due(bot, now: datetime | None = None):
         try:
             await bot.send_message(r["user_id"], text, parse_mode="HTML",
                                    reply_markup=app_button("📋 Открыть дедлайны", "deadlines"))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.info(f"напоминание о дедлайне не дошло до {r['user_id']}: {e!r}")  # обычно — бот заблокирован

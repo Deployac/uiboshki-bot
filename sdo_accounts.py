@@ -188,8 +188,8 @@ async def _check_one(row: dict, bot=None, now: datetime | None = None):
                 "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
                 "Подключи заново: приложение → СДО → Вход.",
                 reply_markup=app_button("🎓 Подключить СДО", "sdo"))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.info(f"СДО: не смог сказать {uid}, что вход устарел: {e!r}")
 
 
 async def keepalive_due(bot=None, now: datetime | None = None):

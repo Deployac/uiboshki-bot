@@ -12,6 +12,7 @@
 Расписание чужой группы/преподавателя (поиск) — без фильтра.
 """
 
+import logging
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -26,7 +27,8 @@ async def hidden_for(user_id: int) -> frozenset:
     from database import get_optional_answers
     try:
         answers = await get_optional_answers(user_id)
-    except Exception:
+    except Exception as e:
+        logging.getLogger(__name__).warning(f"предметы по выбору: ответы {user_id} не прочитались: {e!r}")
         answers = {}
     return frozenset(s for s in OPTIONAL_SUBJECTS if not answers.get(s))
 

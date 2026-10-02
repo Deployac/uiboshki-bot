@@ -116,8 +116,8 @@ async def stop_dialog(message: Message, state: FSMContext, bot: Bot, interrupted
     for mid in msg_ids:
         try:
             await bot.delete_message(message.chat.id, mid)
-        except:
-            pass
+        except Exception:
+            pass  # сообщение уже удалено или старше 48 ч — не страшно
 
     await message.answer("✅ Диалог завершён.", reply_markup=MAIN_KB)
 
@@ -312,14 +312,15 @@ async def handle_plain_text(message: Message, state: FSMContext):
     try:
         answer = await solve_text(text, backend=backend)
         if not answer or len(answer.strip()) < 10:
-            await wait.delete()
+            # раньше «решаю…» молча пропадало — человек оставался без ответа
+            await wait.edit_text("🤷 ИИ вернул пустой ответ — попробуй переформулировать или /solve")
             return
         await wait.delete()
         await add_solver_history(message.from_user.id, text, answer)
         await answer_model_text(message, answer)
     except Exception as e:
-        logger.error(e)
-        await wait.delete()
+        logger.error(f"решалка (свободный текст): {e!r}")
+        await wait.edit_text("❌ ИИ сейчас не ответил — попробуй ещё раз через минуту")
 
 
 # ── Решалка по лекциям (Gemini, Фаза 9) ─────────────────────────────────────

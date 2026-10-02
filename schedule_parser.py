@@ -90,7 +90,8 @@ async def fetch_schedule_raw(force: bool = False) -> bytes:
             try:
                 from database import load_schedule_backup
                 saved = await load_schedule_backup()
-            except Exception:
+            except Exception as be:
+                logger.warning(f"запасная копия расписания не прочиталась: {be!r}")
                 saved = None
             if not saved:
                 raise

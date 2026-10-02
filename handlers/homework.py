@@ -1,6 +1,7 @@
 """Доска ДЗ в боте: /hw (по предметам), /addhw (предмет → текст или файл →
 дата пары). Хранение — database/homework.py."""
 
+import logging
 from datetime import date
 
 from aiogram import Router, F
@@ -13,6 +14,7 @@ from database import add_hw, delete_hw, get_hw_by_subject, get_hw_subjects, init
 from utils import esc, parse_day_month, today_msk, utc_to_msk_date
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 def parse_lesson_date(raw: str, today: date | None = None) -> tuple[bool, str | None]:
@@ -98,8 +100,9 @@ async def hw_subject(callback: CallbackQuery):
                     await callback.message.answer_photo(item["file_id"], caption=item["content"] or "")
                 else:
                     await callback.message.answer_document(item["file_id"], caption=item["content"] or "")
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"ДЗ {item.get('id')}: файл не отправился: {e!r}")
+                await callback.message.answer("⚠️ Один файл ДЗ не отправился — попроси старосту залить его заново.")
 
 
 @router.callback_query(F.data == "hw_back")
