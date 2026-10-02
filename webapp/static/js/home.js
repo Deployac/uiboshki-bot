@@ -36,11 +36,12 @@ function lessonMeta(l) {
   return (l.kind ? kindDot(l.kind) + escapeHtml(l.kind) + (rest.length ? " · " : "") : "") + rest.join(" · ");
 }
 
-function lessonRow(l, withStatus) {
-  const cls = withStatus && l.status ? " " + l.status : "";
+// tap — пара своей группы: нажал → её текущий контроль в СДО (openLessonSdo).
+function lessonRow(l, withStatus, tap) {
+  const cls = (withStatus && l.status ? " " + l.status : "") + (tap ? " tap" : "");
   const now = withStatus && l.status === "now" ? '<div class="l-now">● идёт сейчас</div>' : "";
   const pairs = l.pairs > 1 ? " · " + l.pairs + " пары подряд" : "";
-  return '<div class="lesson' + cls + '">' +
+  return '<div class="lesson' + cls + '"' + (tap ? ' data-t="' + escapeHtml(l.title) + '" onclick="openLessonSdo(this.dataset.t)"' : '') + '>' +
     '<div class="l-time"><b>' + escapeHtml(l.start) + '</b><span>' + escapeHtml(l.end) + '</span></div>' +
     '<div class="l-body"><div class="l-title">' + escapeHtml(l.title) + '</div>' +
     '<div class="l-meta">' + lessonMeta(l) + escapeHtml(pairs) + '</div>' +
@@ -65,7 +66,7 @@ function refreshStatuses() {
   document.getElementById("today-head").style.display = noPairs ? "none" : "";
   document.getElementById("today-lessons").style.display = noPairs ? "none" : "";
   document.getElementById("today-lessons").innerHTML = todayData.lessons.length
-    ? todayData.lessons.map(l => lessonRow(l, true)).join("")
+    ? todayData.lessons.map(l => lessonRow(l, true, true)).join("")
     : '<div class="empty">Расписание сейчас не загрузилось</div>';
 }
 
@@ -265,7 +266,7 @@ function scrollToWeek() {
 
 function renderDay(list, data) {
   list.innerHTML = data.lessons.length
-    ? data.lessons.map(l => lessonRow(l, !!l.status)).join("")
+    ? data.lessons.map(l => lessonRow(l, !!l.status, true)).join("")
     : '<div class="empty">' + data.weekday + ' — пар нет ' + icon("party", "mood") + '</div>';
 }
 

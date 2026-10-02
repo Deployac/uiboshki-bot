@@ -104,6 +104,44 @@ function renderSdoList() {
         (c.works_total ? zachRow(c) : '') + '</div>').join("");
 }
 
+// ── С пары на главной — сразу в её текущий контроль ──────────────────────
+// Название пары в расписании и курса в СДО пишут по-разному (скобки, метка
+// семестра, сокращения) — сравниваем по словам; лучший курс, если совпало
+// не меньше 60% слов пары.
+
+function courseWords(t) {
+  return (t || "").toLowerCase().replace(/ё/g, "е").replace(/\[[^\]]*\]|\([^)]*\)/g, " ")
+    .split(/[^a-zа-я0-9]+/).filter(w => w.length > 2);
+}
+
+function matchCourse(title, courses) {
+  const want = courseWords(title);
+  if (!want.length) return null;
+  let best = null, bestScore = 0;
+  courses.forEach(c => {
+    const have = new Set(courseWords(c.title));
+    const hit = want.filter(w => have.has(w)).length;
+    const score = hit / Math.max(want.length, have.size);
+    if (score > bestScore) { best = c; bestScore = score; }
+  });
+  return bestScore >= 0.6 ? best : null;
+}
+
+async function openLessonSdo(title) {
+  haptic();
+  if (!sdoData) {
+    try { sdoData = await api("/api/sdo/grades"); }
+    catch (e) {
+      if (/подключи/.test(e.message)) { openSdo(); return; }   // покажет «Подключить СДО»
+      showToast("СДО не ответил: " + e.message); return;
+    }
+  }
+  const c = matchCourse(title, sdoData.courses);
+  if (!c) { showToast("В СДО нет журнала с баллами по этому предмету"); return; }
+  await openSubject(c.id);
+  if (sdoView === "subject" && sdoCourse && sdoCourse.works_total) openTk();
+}
+
 // ── Предмет подробно ──────────────────────────────────────────────────────
 
 async function openSubject(id) {
