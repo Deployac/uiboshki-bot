@@ -114,3 +114,9 @@ def test_happy_empty_states_with_capybara():
     assert "function capyEmpty(" in JS["js/core.js"]
     for f in ("js/deadlines.js", "js/home.js", "js/files.js", "js/sdo.js", "js/search.js"):
         assert "capyEmpty(" in JS[f], f
+
+
+def test_telegram_back_closes_sheets_first():
+    main = JS["js/main.js"]
+    assert "closeTopSheet" in main and "MutationObserver" in main
+    assert "NESTED().forEach(fn => tg.BackButton.offClick(fn))" in main     # без двойного «назад»
