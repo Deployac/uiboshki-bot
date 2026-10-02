@@ -33,5 +33,6 @@ def test_match_course_by_words():
 def test_own_lessons_tappable_search_not():
     home = (Path(__file__).parent.parent / "webapp/static/js/home.js").read_text()
     search = (Path(__file__).parent.parent / "webapp/static/js/search.js").read_text()
-    assert "lessonRow(l, true, true)" in home and "lessonRow(l, !!l.status, true)" in home
+    assert "lessonRow(l, !!l.status, true)" in home          # «Эта неделя» — нажимается
+    assert "lessonRow(l, true)" in home and "lessonRow(l, true, true)" not in home   # «Сегодня» — нет
     assert "lessonRow(l, !!l.status)" in search    # чужое расписание — без перехода в свой СДО

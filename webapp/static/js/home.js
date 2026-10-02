@@ -36,7 +36,8 @@ function lessonMeta(l) {
   return (l.kind ? kindDot(l.kind) + escapeHtml(l.kind) + (rest.length ? " · " : "") : "") + rest.join(" · ");
 }
 
-// tap — пара своей группы: нажал → её текущий контроль в СДО (openLessonSdo).
+// tap — пара своей группы в «Эта неделя»: нажал → её текущий контроль в СДО
+// (openLessonSdo). В «Сегодня» — нет: там случайно тыкают, листая.
 function lessonRow(l, withStatus, tap) {
   const cls = (withStatus && l.status ? " " + l.status : "") + (tap ? " tap" : "");
   const now = withStatus && l.status === "now" ? '<div class="l-now">● идёт сейчас</div>' : "";
@@ -66,7 +67,7 @@ function refreshStatuses() {
   document.getElementById("today-head").style.display = noPairs ? "none" : "";
   document.getElementById("today-lessons").style.display = noPairs ? "none" : "";
   document.getElementById("today-lessons").innerHTML = todayData.lessons.length
-    ? todayData.lessons.map(l => lessonRow(l, true, true)).join("")
+    ? todayData.lessons.map(l => lessonRow(l, true)).join("")
     : '<div class="empty">Расписание сейчас не загрузилось</div>';
 }
 
