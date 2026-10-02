@@ -82,7 +82,7 @@ async def test_chat_without_deepseek_key_uses_gemini_and_returns_pretty_html(db,
 
     monkeypatch.setattr(ai_solver, "DEEPSEEK_API_KEY", "")
     monkeypatch.setattr(ai_solver, "solve_with_history", fake_history)
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
 
     client = TestClient(server.app)
     resp = client.post(
@@ -102,7 +102,7 @@ async def test_chat_without_deepseek_key_uses_gemini_and_returns_pretty_html(db,
 def _chat_client(monkeypatch):
     import webapp.server as server
     from fastapi.testclient import TestClient
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     return TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
 
 
@@ -161,7 +161,7 @@ async def test_chat_rejects_unsupported_and_too_big(db, monkeypatch):
         "history": hist, "attachment": {"name": "a.exe", "mime": "application/x-msdownload", "data": "AAAA"}})
     assert resp.status_code == 415 and "PDF" in resp.json()["detail"]
 
-    monkeypatch.setattr(server, "MAX_ATTACHMENT_BYTES", 3)
+    monkeypatch.setattr(server.chat, "MAX_ATTACHMENT_BYTES", 3)
     resp = client.post("/api/chat", headers=headers, json={
         "history": hist, "attachment": {"name": "a.txt", "mime": "text/plain",
                                         "data": base64.b64encode(b"long text").decode()}})

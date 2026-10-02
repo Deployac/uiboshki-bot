@@ -91,7 +91,7 @@ async def test_webapp_grades(db, monkeypatch):
     import sdo_accounts
     import webapp.server as server
     from tests.test_webapp_home import BOT_TOKEN, _make_init_data
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     sdo_grades._cache.clear()
 
     async def courses(client):

@@ -50,7 +50,7 @@ async def test_webapp_asks_and_hides_until_attend(db, monkeypatch):
 
     monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", raw)
     monkeypatch.setattr(schedule_parser, "get_group_subjects", subjects)
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     c, h = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
     day = lambda: [l["title"] for l in c.get("/api/day", params={"date": DAY.isoformat()}, headers=h).json()["lessons"]]
 

@@ -50,7 +50,7 @@ async def test_webapp_request_is_tracked(db, monkeypatch):
     from fastapi.testclient import TestClient
     import webapp.server as server
     from tests.test_webapp_home import BOT_TOKEN, _make_init_data
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     monkeypatch.setattr(stats, "_last", {})
     c = TestClient(server.app)
     assert c.get("/api/me", headers={"X-Telegram-Init-Data": _make_init_data()}).status_code == 200

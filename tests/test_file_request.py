@@ -99,9 +99,9 @@ async def test_download_link_is_signed_and_expires(db, monkeypatch):
         async def download_file(self, path):
             return BytesIO(b"%PDF-1.4 test")
 
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
-    monkeypatch.setattr(server, "WEBAPP_URL", "https://app.example")
-    monkeypatch.setattr(server, "tg_bot", lambda: FakeBot())
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "WEBAPP_URL", "https://app.example")
+    monkeypatch.setattr(server.deps, "tg_bot", lambda: FakeBot())
     c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
     link = c.post(f"/api/files/{fid}/link", headers=headers).json()
     assert link["file_name"] == "Основы ЛК1.pdf"
@@ -130,7 +130,7 @@ async def test_webapp_chat_answers_file_request_without_ai(db, monkeypatch):
         raise AssertionError("просьба о файле не должна уходить к ИИ")
 
     monkeypatch.setattr(ai_solver, "chat_with_reasoning", no_ai)
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
     data = c.post("/api/chat", headers=headers, json={"history": [
         {"role": "user", "content": "Скинь 1 лк по уч деят на предпрят"}], "subject": ""}).json()
@@ -155,7 +155,7 @@ async def test_webapp_chat_returns_lecture_sources(db, monkeypatch):
         return {"content": "Дебет — левая сторона счёта.", "reasoning": ""}
 
     monkeypatch.setattr(ai_solver, "chat_with_reasoning", fake_chat)
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
     data = c.post("/api/chat", headers=headers, json={"history": [
         {"role": "user", "content": "Что такое дебет?"}], "subject": UCH}).json()

@@ -55,7 +55,7 @@ async def test_api_remind(db, monkeypatch):
     from fastapi.testclient import TestClient
     import webapp.server as server
     from tests.test_webapp_home import BOT_TOKEN, _make_init_data
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     did = await db.add_deadline("Курсовая", "", "2099-10-05", "18:00", 0)
     c = TestClient(server.app)
     h = {"X-Telegram-Init-Data": _make_init_data()}

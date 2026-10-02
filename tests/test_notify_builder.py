@@ -139,7 +139,7 @@ async def test_api_notify(db, monkeypatch):
     async def fake_raw():
         return RAW
 
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", fake_raw)
     c = TestClient(server.app)
     h = {"X-Telegram-Init-Data": _make_init_data()}

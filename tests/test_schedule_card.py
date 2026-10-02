@@ -62,7 +62,7 @@ def test_card_endpoint(monkeypatch):
         return b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"
 
     monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", raw)
-    server._card_cache.clear()
+    server.schedule._card_cache.clear()
     c = TestClient(server.app)
     url = schedule_card.card_url("http://testserver", "week").replace("http://testserver", "")
     r = c.get(url)

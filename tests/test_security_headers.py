@@ -8,7 +8,7 @@ def client(db, monkeypatch):
     import ratelimit
     import webapp.server as server
     from tests.test_webapp_home import BOT_TOKEN, _make_init_data
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     ratelimit.reset()
     return TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
 
@@ -42,9 +42,9 @@ def test_deadline_rate_limit(client):
 
 def test_cors_only_own_origin(monkeypatch):
     import webapp.server as server
-    monkeypatch.setattr(server, "WEBAPP_URL", "https://uiboshki-bot-production.up.railway.app/app?x=1")
+    monkeypatch.setattr(server.deps, "WEBAPP_URL", "https://uiboshki-bot-production.up.railway.app/app?x=1")
     assert server._allowed_origins() == ["https://uiboshki-bot-production.up.railway.app"]
-    monkeypatch.setattr(server, "WEBAPP_URL", "")
+    monkeypatch.setattr(server.deps, "WEBAPP_URL", "")
     assert server._allowed_origins() == ["*"]
 
 
