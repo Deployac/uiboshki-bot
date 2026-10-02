@@ -20,37 +20,54 @@ from file_categories import category_of, natural_key
 
 NUMBERED = ("lecture", "practice", "control")
 
-_KEY = (r"лекци[а-яё]*|лк|тем[аы]?|практ[а-яё]*|пр|лаб[а-яё]*|лр|семинар[а-яё]*|занят[а-яё]*|работ[а-яё]*|кр|"
-        r"контрольн[а-яё]*|тест[а-яё]*|задани[а-яё]*|модул[а-яё]*|раздел[а-яё]*|часть|ч\.")
-# «Лекция 3», «ЛК3», «Тема №2», «ПР_4», «Практическое занятие № 5», «Практика11 12» (11–12),
-# «Практическая работа 5 6» / «5-6» / «5 и 6» — две практики в одном файле
-_RANGE = r"(\d{1,2})(?:\s*(?:[-–—,]|и)\s*|\s+)(\d{1,2})(?![\da-z])"
-_NUM = re.compile(r"(?<![а-яёa-z])(?:" + _KEY + r")(?:\s+[а-яё]+)?\s*[№#]?\s*(?:" + _RANGE + r"|(\d{1,2})(?!\d))", re.I)
+# Служебное слово + номер: «Лекция 3», «ЛК03», «Тема №2», «ПР_4», «Пр.з. 5»,
+# «Практическое занятие № 5», «Семинар 1». Без «часть», «задание», «модуль»:
+# «часть 1.1», «Задание 3 курс» — не номера занятий.
+_KEY = (r"лекци[а-яё]*|лк|тем[аы]?|практ[а-яё]*|пр(?:\.\s*з\.?)?|лаб[а-яё]*|лр|семинар[а-яё]*|занят[а-яё]*|"
+        r"работ[а-яё]*|кр|контрольн[а-яё]*|тест[а-яё]*")
+# два номера подряд — два занятия в одном файле: «5 6», «5-6», «5 и 6», «Практика11 12»
+_RANGE = r"(\d{1,2})(?:\s*(?:[-–—,]|и)\s*|\s+)(\d{1,2})(?![\da-z]|[.,]\d)"
+_ONE = r"(\d{1,2})(?![\d]|[.,]\d)"          # «1.1» — не номер
+_NUM = re.compile(r"(?<![а-яёa-z])(" + _KEY + r")(?:\s+[а-яё]+)?\s*[№#]?\s*0?(?:" + _RANGE + "|" + _ONE + ")", re.I)
 _EXT = re.compile(r"\.(pdf|docx?|pptx?|xlsx?|odt|odp|rtf|txt|zip|rar|7z|png|jpe?g)$", re.I)
-_PREFIX = re.compile(r"^\s*(?:" + _KEY + r")(?:\s+[а-яё]+)?\s*[№#]?\s*(?:" + _RANGE + r"|\d{1,2}(?!\d))\s*[.:)\-–—]*\s*", re.I)
-_GENERIC = re.compile(r"^(?:презентац\w*|материал\w*|файл|слайды|конспект|лекци\w*|практ\w*|"
-                      r"задани\w*|к\s+лекции|к\s+практике)$", re.I)
+_LEAD = re.compile(r"^(?:\d{1,2}[.)]\s+|слайд[а-яё]*\s+)", re.I)        # «2. Лекция 2 …», «Слайд Тема 2 …»
+_TEMA = re.compile(r"^тема\s*№?\s*(\d{1,2})[.,]?\s+лекци[яи]\s*№?\s*(\d{1,2})(?!\d)\s*(.*)$", re.I)
+_ACRONYM = re.compile(r"^(?=[^\s]*[А-ЯЁA-Z][^\s]*[А-ЯЁA-Z])[А-ЯЁA-Zа-яё]{2,7}(?=$|[\s(\-–—:,.])")
+_GENERIC = re.compile(r"^(?:лекци[а-яё]*|практическ[а-яё]*(?:\s+заняти[а-яё]*)?|заняти[а-яё]*|материал[а-яё]*|"
+                      r"слайд[а-яё]*|конспект[а-яё]*|файл|к\s+лекци[а-яё]*|к\s+практик[а-яё]*)$", re.I)
+_PRESENT = re.compile(r"^презентаци[а-яё]*(?:\s+(?:к|по|для)\s+(?:лекци|практик|заняти|тем)[а-яё]*)?$", re.I)
+TOPIC_MAX = 100
 
 
 def clean(title: str) -> str:
     """Подчёркивания → пробелы, без расширения и лишних пробелов/знаков по краям."""
     t = _EXT.sub("", (title or "").strip())
     t = re.sub(r"[_]+", " ", t)
-    t = re.sub(r"\s+", " ", t).strip(" .-–—:")
+    t = re.sub(r"\s+", " ", t).strip(" -–—:")
     return t[:1].upper() + t[1:] if t else t
+
+
+def _label(m) -> str:
+    a, b, one = m.group(2), m.group(3), m.group(4)
+    if one:
+        return str(int(one))
+    return f"{int(a)}–{int(b)}" if int(b) == int(a) + 1 else str(int(a))
+
+
+def _best(text: str):
+    """Номер занятия: полная форма («Практическая работа 7») важнее сокращения
+    («ПР1 часть 1 (Практическая работа 1)» — это работа 1 из 14)."""
+    ms = list(_NUM.finditer(text.replace("_", " ")))
+    if not ms:
+        return None
+    full = [m for m in ms if len(re.sub(r"[^а-яё]", "", m.group(1).lower())) >= 4]
+    return (full or ms)[0]
 
 
 def number_of(title: str) -> str | None:
     """Номер из названия: «3», а для двух подряд — «5–6» («Практика 5 6»)."""
-    m = _NUM.search((title or "").replace("_", " "))
-    if not m:
-        return None
-    a, b, one = m.group(1), m.group(2), m.group(3)
-    if one:
-        return str(int(one))
-    if int(b) == int(a) + 1:
-        return f"{int(a)}–{int(b)}"
-    return str(int(a))           # «Практика 1 Знакомство 7» сюда не попадёт, а «Тема 2 3D» — номер 2
+    m = _best(title or "")
+    return _label(m) if m else None
 
 
 def word_for(cat: str, title: str) -> str:
@@ -58,23 +75,71 @@ def word_for(cat: str, title: str) -> str:
     if cat == "lecture":
         return "Лекция"
     if cat == "practice":
-        return "Лабораторная" if re.search(r"лаб|(?<![а-яё])лр(?![а-яё])", low) else "Практика"
+        if re.search(r"лаб|(?<![а-яё])лр(?![а-яё])", low):
+            return "Лабораторная"
+        return "Семинар" if "семинар" in low else "Практика"
     return "Тест" if "тест" in low else "Контрольная"
+
+
+def _topic(rest: str) -> str:
+    """Тема из хвоста после «Лекция 3»: без служебных слов, сокращения предмета
+    в начале («ООАиП - …», «МБП …») и пояснения в скобках в начале
+    («(к лекции 1) – …», «(доп) – …» — уходит в конец)."""
+    t = rest.lstrip(" .:-–—)").rstrip(" .:-–—")
+    for _ in range(4):
+        before = t
+        t = re.sub(r"^\((?:к|по)\s+[^)]*\)\s*[-–—:.]*\s*", "", t, flags=re.I)          # «(к лекции 1)»
+        m = re.match(r"^\(([^)]{1,30})\)\s*[-–—:.]*\s*(.+)$", t)                      # «(доп) - Тема»
+        if m:
+            t = f"{m.group(2)} ({m.group(1)})"
+        a = _ACRONYM.match(t)
+        if a and len(t) > a.end():
+            t = t[a.end():]
+        elif a:
+            t = ""
+        t = re.sub(r"^(?:тема|по теме)\s*[:.]?\s+", "", t, flags=re.I)
+        t = t.strip(" .:-–—")
+        if t == before:
+            break
+    if not t or _GENERIC.match(t) or t.isdigit():
+        return ""
+    if _PRESENT.match(t):
+        return "Презентация"
+    t = t[:1].upper() + t[1:]
+    return t if len(t) <= TOPIC_MAX else t[:TOPIC_MAX - 1].rstrip() + "…"
 
 
 def topic_of(title: str) -> str:
     """Тема без «Лекция 3.» в начале; пусто, если там только общее слово."""
-    t = clean(title)
-    for _ in range(2):      # «Презентация_тема_2»: сначала служебное слово, потом «тема 2»
-        t = _PREFIX.sub("", t, count=1).strip(" .-–—:")
-        t = re.sub(r"^(?:тема|по теме)\s*[:.]?\s*", "", t, flags=re.I).strip(" .-–—:")
-        # «Презентация к лекции», «Конспект пределы» → без служебного слова
-        t = re.sub(r"^(?:презентац\w*|конспект\w*|слайды|материал\w*)(?:\s+(?:к|по|для)\s+(?:лекци\w*|практ\w*|"
-                   r"занят\w*|тем\w*))?\s*[.:\-–—]*\s*", "", t, flags=re.I).strip(" .-–—:")
-    if not t or _GENERIC.match(t) or t.isdigit():
-        return ""
-    t = t[:1].upper() + t[1:]
-    return t if len(t) <= 70 else t[:67].rstrip() + "…"
+    t = _LEAD.sub("", clean(title))
+    t = re.sub(r"^(?:презентаци[а-яё]*|конспект[а-яё]*|слайд[а-яё]*)\s+", "", t, flags=re.I)
+    m = _best(t)
+    if m and m.start() == 0:
+        t = t[m.end():]
+    return _topic(t)
+
+
+def rename_one(title: str, cat: str, file_name: str = "") -> str | None:
+    """Новое название занятия или None — номер не найден или из названия
+    нельзя сделать понятное без потери смысла (тогда только чистка)."""
+    t = _LEAD.sub("", clean(title))
+    tema = _TEMA.match(t)
+    if tema:
+        topic = _topic(tema.group(3))
+        return f"Тема {int(tema.group(1))}, лекция {int(tema.group(2))}" + (f". {topic}" if topic else "")
+    m = _best(t)
+    if not m:
+        return None
+    rest = t[m.end():]
+    if m.start() == 0 or re.match(r"^(?:презентаци[а-яё]*|конспект[а-яё]*)\s+$", t[:m.start()], re.I):
+        topic = _topic(rest)
+    else:
+        # номер в середине: «Моделирование БП ЛК01 Лекции», «… Кудрявцева И.Г. ПР01».
+        # Переименовываем, только если после номера ничего важного нет.
+        topic = _topic(rest)
+        if topic and topic != "Презентация":
+            return None
+    return f"{word_for(cat, title + ' ' + (file_name or ''))} {_label(m)}" + (f". {topic}" if topic else "")
 
 
 def tidy_titles(files: list[dict]) -> dict[int, str]:
@@ -85,33 +150,27 @@ def tidy_titles(files: list[dict]) -> dict[int, str]:
         groups.setdefault((f.get("subject") or "", category_of(f)), []).append(f)
     out: dict[int, str] = {}
     for (_, cat), items in groups.items():
-        if cat not in NUMBERED:
-            for f in items:
-                new = clean(f["title"])
-                if new and new != f["title"]:
-                    out[f["id"]] = new
-            continue
-        numbered = {f["id"]: number_of(f["title"]) or number_of(f.get("file_name") or "") for f in items}
-        if not any(numbered.values()):
-            # номеров нет ни у кого — по порядку выгрузки (id растёт по курсу СДО)
-            for i, f in enumerate(sorted(items, key=lambda f: f["id"]), 1):
-                numbered[f["id"]] = str(i)
+        named = {}
+        if cat in NUMBERED:
+            named = {f["id"]: rename_one(f["title"], cat, f.get("file_name") or "") for f in items}
+            nums = [f for f in items if named[f["id"]]]
+            if not nums and cat == "lecture" and len(items) >= 2:
+                # лекции без номеров вовсе — по порядку выгрузки (он идёт по курсу в СДО)
+                for i, f in enumerate(sorted(items, key=lambda f: f["id"]), 1):
+                    topic = topic_of(f["title"])
+                    named[f["id"]] = f"Лекция {i}" + (f". {topic}" if topic else "")
         for f in items:
-            n = numbered[f["id"]]
-            if not n:
-                new = clean(f["title"])          # у соседей номера есть, а у него нет — не выдумываем
-            else:
-                topic = topic_of(f["title"])
-                new = f"{word_for(cat, f['title'] + ' ' + (f.get('file_name') or ''))} {n}" + (f". {topic}" if topic else "")
+            new = named.get(f["id"]) or clean(f["title"])
             if new and new != f["title"]:
                 out[f["id"]] = new
-    # одинаковые названия в одном предмете (PDF и презентация одной лекции) — с типом файла
+    # одинаковые названия в одном предмете (PDF и презентация одной лекции) — с типом
+    # файла, если типы разные; одинаковые файлы-дубли из СДО так и остаются
     by_name: dict[tuple, list[int]] = {}
     for f in files:
         by_name.setdefault((f.get("subject") or "", out.get(f["id"], f["title"])), []).append(f["id"])
     ext = {f["id"]: (_EXT.search(f.get("file_name") or "") or [None, ""])[1].lower() for f in files}
     for (_, name), ids in by_name.items():
-        if len(ids) > 1:
+        if len(ids) > 1 and len({ext[i] for i in ids}) > 1:
             for fid in ids:
                 if ext[fid]:
                     out[fid] = f"{name} ({ext[fid].upper()})"
