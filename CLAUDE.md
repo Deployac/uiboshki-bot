@@ -145,7 +145,9 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 - **Статистика** (`stats.py`, `/stats` у старосты): таблица `events` (кто,
   что, когда — без содержимого), события по пути запроса WebApp
   (`EVENT_PATHS`, в `get_current_user`) и сообщениям боту (`StatsMiddleware`);
-  картинка — Pillow, шрифт DejaVu в `assets/fonts`. Старше 180 дней — удаляется.
+  картинка — Pillow, шрифт DejaVu в `assets/fonts`. Под картинкой кнопка «👥 Кто
+  пользуется» (`stats.people`): имя (ссылкой на профиль) и ник, последний заход,
+  дней с заходами, чем пользуется — без содержимого. Старше 180 дней — удаляется.
 - **Уведомления** (`notify_prefs.py`, WebApp ☰ Ещё → Уведомления, `/api/notify`):
   JSON в `users.notify` поверх `DEFAULTS` — что слать и в какие дни, погода,
   «другой корпус» (корпус — в скобках в LOCATION, свой = самый частый),

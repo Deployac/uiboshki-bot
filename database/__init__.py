@@ -29,6 +29,7 @@ from database.users import (
     get_user,
     get_optional_answers,
     set_optional_answer,
+    get_all_users,
     count_users,
 )
 from database.deadlines import (
@@ -148,6 +149,7 @@ __all__ = ["DATABASE_PATH",
     "get_user",
     "get_optional_answers",
     "set_optional_answer",
+    "get_all_users",
     "count_users",
     "add_deadline",
     "edit_deadline",

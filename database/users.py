@@ -129,6 +129,14 @@ async def set_optional_answer(user_id: int, subject: str, attend: bool):
         await db.commit()
 
 
+async def get_all_users() -> list[dict]:
+    """Все, кто запускал бота: id, ник, имя (для «кто пользуется» в /stats)."""
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT user_id, username, full_name, joined_at FROM users")
+        return [dict(r) for r in await cursor.fetchall()]
+
+
 async def count_users() -> int:
     async with connect() as db:
         return (await (await db.execute("SELECT COUNT(*) FROM users")).fetchone())[0]
