@@ -119,7 +119,8 @@ async def test_lesson_reminder_respects_days(db, monkeypatch):
 
     for uid in (1, 2):
         await upsert_user(uid, "", "X")
-    await set_notify(2, {"lesson_days": [0, 1, 2, 4]})
+    await set_notify(1, {"remind_first": 15})
+    await set_notify(2, {"lesson_days": [0, 1, 2, 4], "remind_first": 15})
     monkeypatch.setattr(scheduler, "datetime", FakeDatetime)
     monkeypatch.setattr(scheduler, "fetch_schedule_raw", fake_raw)
     monkeypatch.setattr(scheduler, "parse_events_for_date", lambda raw, day: ev)
@@ -152,3 +153,59 @@ async def test_api_notify(db, monkeypatch):
     r = c.post("/api/notify", headers=h, json={"subscribed": False, "reminder_minutes": 30}).json()
     assert r["subscribed"] is False and r["reminder_minutes"] == 30
     assert c.post("/api/notify", headers=h, json={"reminder_minutes": 7}).status_code == 400
+    r = c.post("/api/notify", headers=h, json={"prefs": {"remind_first": 180, "remind_short": 0, "remind_long": 500}}).json()
+    assert (r["prefs"]["remind_first"], r["prefs"]["remind_short"], r["prefs"]["remind_long"]) == (180, 0, 10)
+    assert [x["key"] for x in r["remind"]] == ["remind_first", "remind_short", "remind_long"]
+
+
+def _day(*spans, tz=None):
+    out = []
+    for summary, h1, m1, h2, m2 in spans:
+        out.append({"summary": summary, "location": "", "teacher": "", "time": "",
+                    "time_start": datetime(2026, 10, 1, h1, m1, tzinfo=tz),
+                    "time_end": datetime(2026, 10, 1, h2, m2, tzinfo=tz)})
+    return out
+
+
+def test_reminder_scenarios():
+    # 1-я пара, через 10 мин 2-я (короткая перемена), через 30 мин 3-я (большой перерыв)
+    day = _day(("ЛК Физика", 9, 0, 10, 30), ("ПР Физика", 10, 40, 12, 10),
+               ("ЛК Матан", 12, 40, 14, 10), ("СР Практика", 7, 0, 8, 0))
+    plan = notify_prefs.plan_reminders(day, notify_prefs.merge({}))
+    assert [(e["summary"], m, k) for e, m, k in plan] == [
+        ("ЛК Физика", 60, "remind_first"), ("ПР Физика", 5, "remind_short"), ("ЛК Матан", 10, "remind_long")]
+    # «своё» время и выключенный сценарий
+    plan = notify_prefs.plan_reminders(day, notify_prefs.merge({"remind_first": 180, "remind_short": 0}))
+    assert [(e["summary"], m) for e, m, _ in plan] == [("ЛК Физика", 180), ("ЛК Матан", 10)]
+    assert notify_prefs.merge({"remind_long": 999})["remind_long"] == 10      # больше предела — умолчание
+    assert notify_prefs.minutes_text(180) == "3 ч" and notify_prefs.minutes_text(90) == "1 ч 30 мин"
+
+
+@pytest.mark.asyncio
+async def test_first_pair_reminder_hour_before(db, monkeypatch):
+    import scheduler
+    from database import upsert_user
+    now = datetime(2026, 10, 1, 8, 0, tzinfo=scheduler.TZ)   # пара в 9:00, по умолчанию — за 1 ч
+
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    async def fake_raw():
+        return b""
+
+    sent = []
+
+    class FakeBot:
+        async def send_message(self, uid, text, **kw):
+            sent.append(text)
+
+    await upsert_user(1, "", "X")
+    monkeypatch.setattr(scheduler, "datetime", FakeDatetime)
+    monkeypatch.setattr(scheduler, "fetch_schedule_raw", fake_raw)
+    monkeypatch.setattr(scheduler, "parse_events_for_date",
+                        lambda raw, d: _day(("ЛК Физика", 9, 0, 10, 30), ("ПР Физика", 10, 40, 12, 10), tz=scheduler.TZ))
+    monkeypatch.setattr(scheduler, "_sent_reminders", set())
+    await scheduler.check_lesson_reminders(FakeBot())
+    assert len(sent) == 1 and "Через 1 ч первая пара" in sent[0]

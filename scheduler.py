@@ -188,33 +188,34 @@ async def check_lesson_reminders(bot: Bot):
             if not user:
                 continue
             import notify_prefs
-            if not notify_prefs.allowed(notify_prefs.merge(user.get("notify")), "lessons", today.weekday()):
+            prefs = notify_prefs.merge(user.get("notify"))
+            if not notify_prefs.allowed(prefs, "lessons", today.weekday()):
                 continue
             await apply_for(uid)
             events = parse_events_for_date(raw, today)
-            remind_mins = user.get("reminder_minutes", 15)
-            remind_time = now + timedelta(minutes=remind_mins)
 
-            for e in events:
-                if not e["time_start"] or is_self_study(e["summary"]):
-                    continue   # сам. работа (практика на удалёнке) — без напоминаний
+            # У каждой пары свой сценарий: первая за день, после короткой
+            # перемены или после большого перерыва — и своё «за сколько».
+            for e, remind_mins, kind in notify_prefs.plan_reminders(events, prefs):
                 t = e["time_start"]
-                diff = abs((t - remind_time).total_seconds())
-                if diff <= 60:
-                    key = (today, uid, t.strftime("%H:%M"), remind_mins)
-                    if key in _sent_reminders:
-                        continue
-                    _sent_reminders.add(key)
-                    try:
-                        await bot.send_message(
-                            uid,
-                            f"⏰ <b>Через {remind_mins} мин пара</b>\n\n"
-                            + format_lesson(e),
-                            parse_mode="HTML",
-                            reply_markup=app_button("📅 Расписание", "today"),
-                        )
-                    except Exception as ex:
-                        logger.warning(f"Reminder error {uid}: {ex}")
+                diff = abs((t - (now + timedelta(minutes=remind_mins))).total_seconds())
+                if diff > 60:
+                    continue
+                key = (today, uid, t.strftime("%H:%M"), remind_mins)
+                if key in _sent_reminders:
+                    continue
+                _sent_reminders.add(key)
+                label = "первая пара" if kind == "remind_first" else "пара"
+                try:
+                    await bot.send_message(
+                        uid,
+                        f"⏰ <b>Через {notify_prefs.minutes_text(remind_mins)} {label}</b>\n\n"
+                        + format_lesson(e),
+                        parse_mode="HTML",
+                        reply_markup=app_button("📅 Расписание", "today"),
+                    )
+                except Exception as ex:
+                    logger.warning(f"Reminder error {uid}: {ex}")
     except Exception as e:
         logger.error(f"check_lesson_reminders: {e}")
 

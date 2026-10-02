@@ -338,6 +338,49 @@ function ntCard(ic, title, sub, key, daysKey, extra) {
     (on ? ntDays(daysKey) + (extra || "") : "") + '</div>';
 }
 
+// Сценарий напоминания: «выкл», пресеты и «своё» (поле ввода минут).
+let notifyCustom = null;   // ключ сценария, у которого сейчас открыто поле «своё»
+
+function minText(m) {
+  const h = Math.floor(m / 60), mm = m % 60;
+  return [h ? h + " ч" : "", mm ? mm + " мин" : ""].filter(Boolean).join(" ");
+}
+
+function ntRemind(r) {
+  const v = notifyState.prefs[r.key];
+  const own = v && !r.presets.includes(v);
+  const chip = (val, text, on) => '<button class="' + (on ? "on" : "") + '" onclick="setRemind(\'' + r.key + '\',' + val + ')">' + text + '</button>';
+  let html = '<div class="nt-remind"><div class="nt-sub">' + r.title + '</div><div class="nt-mins">' +
+    chip(0, "выкл", v === 0) + r.presets.map(m => chip(m, minText(m), v === m)).join("") +
+    '<button class="' + (own ? "on" : "") + '" onclick="openRemindCustom(\'' + r.key + '\')">' + (own ? minText(v) : "своё") + '</button></div>';
+  if (notifyCustom === r.key) {
+    html += '<div class="nt-custom"><input type="number" inputmode="numeric" min="1" max="' + r.max + '" id="remind-input" ' +
+      'placeholder="минут до пары, до ' + r.max + '" value="' + (own ? v : "") + '">' +
+      '<button onclick="saveRemindCustom(\'' + r.key + '\',' + r.max + ')">OK</button></div>';
+  }
+  return html + '</div>';
+}
+
+function setRemind(key, val) {
+  notifyCustom = null;
+  const prefs = {}; prefs[key] = val;
+  saveNotify({ prefs: prefs });
+}
+
+function openRemindCustom(key) {
+  haptic();
+  notifyCustom = notifyCustom === key ? null : key;
+  renderNotify();
+  const inp = document.getElementById("remind-input");
+  if (inp) inp.focus();
+}
+
+function saveRemindCustom(key, max) {
+  const n = parseInt(document.getElementById("remind-input").value, 10);
+  if (!(n >= 1 && n <= max)) { showToast("Число минут от 1 до " + max); return; }
+  setRemind(key, n);
+}
+
 function renderNotify() {
   const s = notifyState, p = s.prefs;
   const box = document.getElementById("notify-body");
@@ -353,9 +396,8 @@ function renderNotify() {
         ntRow("Погода", "строчка с погодой в начале", "weather") +
         ntRow("Другой корпус", campus, "campus") +
         ntRow("Только если есть пары", "в свободный день — тишина", "skip_empty")) +
-      ntCard("clock", "Перед парой", "напоминание за " + s.reminder_minutes + " мин", "lessons", "lesson_days",
-        '<div class="nt-mins">' + s.reminder_choices.map(m =>
-          '<button class="' + (m === s.reminder_minutes ? "on" : "") + '" onclick="setNotifyMinutes(' + m + ')">за ' + m + ' мин</button>').join("") + '</div>') +
+      ntCard("clock", "Перед парой", "своё время для первой пары и после перемены", "lessons", "lesson_days",
+        s.remind.map(ntRemind).join("")) +
       ntCard("deadlines", "Дедлайны", "в " + s.deadline_time + " — что сдать в ближайшие 3 дня", "deadlines", "deadline_days");
   }
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';
@@ -369,7 +411,6 @@ async function saveNotify(body) {
 }
 
 function toggleNotifyMaster() { saveNotify({ subscribed: !notifyState.subscribed }); }
-function setNotifyMinutes(m) { saveNotify({ reminder_minutes: m }); }
 
 function toggleNotify(key) {
   const prefs = {}; prefs[key] = !notifyState.prefs[key];

@@ -164,7 +164,7 @@ async def test_lesson_reminder_dedupe_resets_next_day(monkeypatch):
         return [USER.id]
 
     async def fake_get_user(uid):
-        return {"user_id": uid, "reminder_minutes": 15}
+        return {"user_id": uid, "reminder_minutes": 15, "notify": '{"remind_first": 15}'}
 
     sent = []
 
@@ -213,7 +213,7 @@ async def test_no_reminder_for_self_study(monkeypatch):
         return [USER.id]
 
     async def fake_get_user(uid):
-        return {"user_id": uid, "reminder_minutes": 15}
+        return {"user_id": uid, "reminder_minutes": 15, "notify": '{"remind_first": 15}'}
 
     sent = []
 

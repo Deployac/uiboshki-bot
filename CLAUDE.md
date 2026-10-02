@@ -111,7 +111,9 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 - **Уведомления** (`notify_prefs.py`, WebApp ☰ Ещё → Уведомления, `/api/notify`):
   JSON в `users.notify` поверх `DEFAULTS` — что слать и в какие дни, погода,
   «другой корпус» (корпус — в скобках в LOCATION, свой = самый частый),
-  «только если есть пары». Общий выключатель — `users.subscribed`.
+  «только если есть пары», напоминание перед парой по сценарию (`REMIND`:
+  первая пара / после короткой перемены / после большого перерыва,
+  `plan_reminders`). Общий выключатель — `users.subscribed`.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

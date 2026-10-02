@@ -820,3 +820,10 @@
   .campus-pill { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px 6px; padding: 7px 12px; border-radius: 999px;
                  background: rgba(255,178,56,.14); border: 1px solid rgba(255,178,56,.35); color: var(--warn); font-size: 13px; font-weight: 600; }
   .campus-pill .ico { width: 15px; height: 15px; }
+  .nt-remind { padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--border); }
+  .nt-remind .nt-mins { margin-top: 8px; }
+  .nt-sub { font-size: 14px; font-weight: 600; }
+  .nt-custom { display: flex; gap: 8px; margin-top: 8px; }
+  .nt-custom input { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
+                     background: var(--bg); color: var(--text); font-size: 16px; }
+  .nt-custom button { flex: none; padding: 0 16px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-weight: 700; }

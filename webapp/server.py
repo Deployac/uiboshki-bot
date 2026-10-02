@@ -1112,6 +1112,7 @@ async def _notify_view(uid: int) -> dict:
         home = None
     return {"subscribed": bool(user.get("subscribed", 1)), "reminder_minutes": user.get("reminder_minutes") or 15,
             "reminder_choices": list(notify_prefs.REMINDER_CHOICES), "prefs": notify_prefs.merge(user.get("notify")),
+            "remind": [{"key": k, **v} for k, v in notify_prefs.REMIND.items()],
             "home_campus": home, "morning_time": f"{SCHEDULE_HOUR}:{SCHEDULE_MINUTE:02d}",
             "deadline_time": f"{DEADLINE_REMINDER_HOUR}:{DEADLINE_REMINDER_MINUTE:02d}"}
 
