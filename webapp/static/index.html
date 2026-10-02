@@ -44,10 +44,10 @@
         <p class="big" id="today-deadline-count">—</p>
         <p class="sub" id="today-deadline-next">ближайшие</p>
       </div>
-      <div class="card tap" onclick="switchTab('search')">
-        <p class="eyebrow">Поиск</p>
-        <p class="big"><svg class="ico lg" aria-hidden="true"><use href="#i-search"/></svg></p>
-        <p class="sub">препод, группа, аудитория</p>
+      <div class="card tap sdo-tile" onclick="openSdo()">
+        <p class="eyebrow">Баллы СДО</p>
+        <p class="big" id="home-sdo-big"><span class="skel"></span></p>
+        <p class="sub" id="home-sdo-sub">…</p>
       </div>
     </div>
 
@@ -119,8 +119,9 @@
     <h2 class="section">Файлы</h2>
     <input class="searchbox" id="file-search" enterkeyhint="search" placeholder="Поиск по названию, предмету, файлу…">
     <div id="file-head"></div>
+    <!-- Подсказка над списком — видна и в папке предмета (дизайн-ревью, п. 14) -->
+    <p class="sheet-hint files-hint" id="files-hint"><svg class="ico inl" aria-hidden="true"><use href="#i-sparkle"/></svg>Нажми на файл с пометкой — ИИ сделает конспект. Новые файлы: /upload в боте.</p>
     <div class="list" id="file-list"><div class="skel" style="height:60px"></div><div class="skel" style="height:60px"></div></div>
-    <p class="sheet-hint" style="margin-top:14px;"><svg class="ico inl" aria-hidden="true"><use href="#i-bookOpen"/></svg> — ИИ прочитал файл: отвечает по нему, а нажмёшь на файл — сделает конспект (<svg class="ico inl" aria-hidden="true"><use href="#i-sparkle"/></svg> — конспект уже есть). Загрузить новые: /upload в боте.</p>
   </section>
 
   <!-- ── СДО: баллы → предмет → текущий контроль (js/sdo.js) ────────── -->
@@ -171,6 +172,7 @@
     <div class="sheet-grip"></div>
     <h3 id="nd-title">Новый дедлайн</h3>
     <input class="searchbox" id="nd-subject" placeholder="Что сдать? Например: лаба 3 по анализу данных" maxlength="200">
+    <div class="chips-row quick-dates" id="nd-quick"></div>
     <div class="row2">
       <input class="searchbox" type="date" id="nd-date">
       <input class="searchbox" type="time" id="nd-time">
@@ -214,13 +216,18 @@
 
 <div class="more-backdrop" id="more-menu" onclick="if (event.target === this) toggleMore(false)">
   <div class="more-pop">
+    <!-- 10 плиток по 4 в ряд, неполный ряд — по центру (дизайн-ревью, п. 18) -->
     <div class="more-grid">
-      <button onclick="toggleMore(false); switchTab('files')"><span class="sq t-files"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span>Файлы</button>
-      <button onclick="toggleMore(false); switchTab('deadlines')"><span class="sq t-dl"><svg class="ico" aria-hidden="true"><use href="#i-deadlines"/></svg></span>Дедлайны</button>
-      <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq t-cal"><svg class="ico" aria-hidden="true"><use href="#i-calsub"/></svg></span>Календарь</button>
-      <button onclick="toggleMore(false); addToHome()"><span class="sq t-phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span>Ярлык</button>
-      <button onclick="toggleMore(false); openNotify()"><span class="sq t-bell"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg></span>Уведомления</button>
-      <button onclick="toggleMore(false); openSecurity()"><span class="sq t-sec"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span>Безопасность</button>
+      <button onclick="toggleMore(false); switchTab('files')"><span class="sq t-files"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span><span class="lbl">Файлы</span></button>
+      <button onclick="toggleMore(false); openDeadlinesSeg('dl')"><span class="sq t-dl"><svg class="ico" aria-hidden="true"><use href="#i-deadlines"/></svg></span><span class="lbl">Дедлайны</span></button>
+      <button onclick="toggleMore(false); openHomework()"><span class="sq t-hw"><svg class="ico" aria-hidden="true"><use href="#i-note"/></svg></span><span class="lbl">ДЗ</span></button>
+      <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq t-cal"><svg class="ico" aria-hidden="true"><use href="#i-calsub"/></svg></span><span class="lbl">Календарь</span></button>
+      <button onclick="toggleMore(false); openNotify()"><span class="sq t-bell"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg></span><span class="lbl">Уведомления</span></button>
+      <button onclick="toggleMore(false); openSecurity()"><span class="sq t-sec"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><span class="lbl">Безопасность</span></button>
+      <button onclick="toggleMore(false); addToHome()"><span class="sq t-phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span><span class="lbl">Ярлык</span></button>
+      <button onclick="toggleMore(false); showWhatsNew()"><span class="sq t-news"><svg class="ico" aria-hidden="true"><use href="#i-sparkle"/></svg></span><span class="lbl">Что нового</span></button>
+      <button onclick="toggleMore(false); openConfigLink(CHANNEL_URL)"><span class="sq t-channel"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></span><span class="lbl">Канал бота</span></button>
+      <button onclick="toggleMore(false); openConfigLink(CONTACT_URL)"><span class="sq t-contact"><svg class="ico" aria-hidden="true"><use href="#i-message"/></svg></span><span class="lbl">Написать нам</span></button>
     </div>
   </div>
 </div>

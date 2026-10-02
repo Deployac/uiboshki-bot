@@ -128,9 +128,12 @@ async def index_page():
     # годится для копии бота у другой группы
     import json
     from html import escape
-    from config import BOT_USERNAME, GROUP_NAME
-    cfg = json.dumps({"group": GROUP_NAME, "bot": BOT_USERNAME}, ensure_ascii=False).replace("</", "<\\/")
-    html = html.replace("УИБО-03-24", escape(GROUP_NAME)).replace(
+    import config
+    # канал бота и «написать нам» — для плиток меню «Ещё» (дизайн-ревью, п. 18)
+    cfg = json.dumps({"group": config.GROUP_NAME, "bot": config.BOT_USERNAME,
+                      "channel": config.CHANNEL_URL, "contact": config.CONTACT_URL},
+                     ensure_ascii=False).replace("</", "<\\/")
+    html = html.replace("УИБО-03-24", escape(config.GROUP_NAME)).replace(
         '<script src="js/core.js"', f'<script>window.APP_CONFIG = {cfg};</script>\n<script src="js/core.js"', 1)
     return Response(_ASSET_RE.sub(versioned, html), media_type="text/html",
                     headers={"Cache-Control": "no-cache"})

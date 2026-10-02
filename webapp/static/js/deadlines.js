@@ -11,24 +11,36 @@ function daysUntil(iso) {
 function dueBadge(item) {
   if (item.done) return '<span class="chip ok">' + icon("check") + ' готово</span>';
   const days = daysUntil(item.due_date);
-  let cls = "ok", label;
-  if (days < 0) { cls = "danger"; label = "просрочено"; }
-  else if (days === 0) { cls = "danger"; label = "сегодня"; }
-  else if (days === 1) { cls = "warn"; label = "завтра"; }
-  else if (days <= 3) { cls = "warn"; label = "через " + days + " дн."; }
-  else { const d = new Date(item.due_date + "T00:00:00"); label = d.getDate() + "." + String(d.getMonth() + 1).padStart(2, "0"); }
-  return '<span class="chip ' + cls + '">' + label + (item.due_time ? " · " + escapeHtml(item.due_time) : "") + '</span>';
+  const cls = days <= 0 ? "danger" : (days <= 3 ? "warn" : "ok");
+  // Срок по-человечески: «чт, 8 окт · через 6 дн.» вместо «8.10» (дизайн-ревью, п. 15).
+  // Просрочено вчера — как раньше «просрочено · 18:00», давно — «пн, 28 сен · 4 дн. назад».
+  const label = days === -1 ? "просрочено" + (item.due_time ? " · " + item.due_time : "")
+    : humanDate(item.due_date, { time: item.due_time });
+  return '<span class="chip ' + cls + '">' + escapeHtml(label) + '</span>';
 }
 
-document.querySelectorAll("#dl-seg button").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll("#dl-seg button").forEach(x => x.classList.toggle("active", x === b));
-  const hw = b.dataset.seg === "hw";
+// Сегмент вкладки: "dl" — дедлайны, "hw" — доска ДЗ
+function setDlSeg(seg) {
+  document.querySelectorAll("#dl-seg button").forEach(x => x.classList.toggle("active", x.dataset.seg === seg));
+  const hw = seg === "hw";
   document.getElementById("seg-dl").style.display = hw ? "none" : "block";
   document.getElementById("seg-hw").style.display = hw ? "block" : "none";
   document.getElementById("fab-add").style.display = hw ? "none" : "block";
-  haptic();
   if (hw) loadHomework();
+}
+
+document.querySelectorAll("#dl-seg button").forEach(b => b.addEventListener("click", () => {
+  setDlSeg(b.dataset.seg);
+  haptic();
 }));
+
+// Из меню «Ещё»: сразу нужный сегмент (дизайн-ревью, п. 18) — плитки «Дедлайны» и «ДЗ»
+function openDeadlinesSeg(seg) {
+  switchTab("deadlines");
+  setDlSeg(seg);
+}
+
+function openHomework() { openDeadlinesSeg("hw"); }
 
 async function loadDeadlines() {
   const list = document.getElementById("deadline-list");
@@ -203,6 +215,48 @@ function confirmDialog(text) {
 
 let editingId = null;
 
+// Быстрые даты над полем даты — одним нажатием вместо календаря
+// (дизайн-ревью, п. 16). Третья пилюля — ближайший следующий понедельник;
+// если он совпал с «Завтра» (сегодня вс) или «Через неделю» (сегодня пн) —
+// вместо него ближайшая пятница, чтобы не было двух одинаковых дат.
+const QD_DOW = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+
+function quickDates(now) {
+  const at = n => new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
+  const ahead = dow => (dow - now.getDay() + 7) % 7 || 7;      // строго после сегодня
+  const named = d => QD_DOW[d.getDay()] + ", " + d.getDate() + " " + MONTHS_SHORT[d.getMonth()];
+  let mon = ahead(1);
+  if (mon === 1 || mon === 7) mon = ahead(5);
+  return [
+    { label: "Сегодня", date: isoDate(at(0)) },
+    { label: "Завтра", date: isoDate(at(1)) },
+    { label: named(at(mon)), date: isoDate(at(mon)) },
+    { label: "Через неделю", date: isoDate(at(7)) },
+  ];
+}
+
+function renderQuickDates() {
+  document.getElementById("nd-quick").innerHTML = quickDates(new Date()).map(q =>
+    '<button type="button" data-date="' + q.date + '" onclick="pickQuickDate(this)">' + q.label + '</button>'
+  ).join("");
+  syncQuickDates();
+}
+
+function pickQuickDate(btn) {
+  haptic();
+  document.getElementById("nd-date").value = btn.dataset.date;
+  syncQuickDates();
+}
+
+// Подсветка идёт за полем: выбрал дату руками — горит совпавшая пилюля или никакая.
+function syncQuickDates() {
+  const value = document.getElementById("nd-date").value;
+  document.querySelectorAll("#nd-quick button").forEach(b => b.classList.toggle("active", b.dataset.date === value));
+}
+
+document.getElementById("nd-date").addEventListener("input", syncQuickDates);
+document.getElementById("nd-date").addEventListener("change", syncQuickDates);
+
 // Одна форма на «добавить» и «изменить»: openAddSheet() — новый личный,
 // openAddSheet(id) — правка (свой личный или, для старосты, общий).
 function openAddSheet(id) {
@@ -226,6 +280,7 @@ function openAddSheet(id) {
     document.getElementById("nd-date").value = isoDate(d);
     document.getElementById("nd-time").value = "23:59";
   }
+  renderQuickDates();
   document.getElementById("add-sheet").classList.add("open");
   setTimeout(() => document.getElementById("nd-subject").focus(), 150);
 }
@@ -267,7 +322,7 @@ async function loadHomework() {
     const data = await api("/api/homework");
     if (!data.items.length) { list.innerHTML = capyEmpty("Доска ДЗ пока пустая", "Староста добавит задания — они появятся тут"); return; }
     list.innerHTML = data.items.map(h => {
-      const when = h.lesson_date ? '<span class="chip warn">к ' + h.lesson_date.slice(8, 10) + "." + h.lesson_date.slice(5, 7) + '</span>' : "";
+      const when = h.lesson_date ? '<span class="chip warn">к паре · ' + escapeHtml(humanDate(h.lesson_date)) + '</span>' : "";   // п. 15
       const file = h.has_file ? '<div class="dl-actions"><button onclick="openHwFile(' + h.id + ', this)">' + icon("clip") + ' Открыть файл</button></div>' : "";
       return '<div class="hw-card"><div class="hw-subj">' + escapeHtml(h.subject) + '</div>' +
         (h.content ? '<div class="hw-text">' + escapeHtml(h.content) + '</div>' : '') +

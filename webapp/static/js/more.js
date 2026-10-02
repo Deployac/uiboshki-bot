@@ -8,7 +8,20 @@ function toggleMore(show) {
   const open = show === undefined ? !menu.classList.contains("open") : show;
   menu.classList.toggle("open", open);
   document.getElementById("more-btn").classList.toggle("open", open);
-  if (open) { syncNavHeight(); haptic(); loadSdoStatus(); }
+  if (open) {
+    // каскад плиток при открытии (дизайн-ревью, п. 18): номер плитки — задержка в app.css
+    menu.querySelectorAll(".more-grid button").forEach((b, i) => b.style.setProperty("--i", i));
+    syncNavHeight(); haptic(); loadSdoStatus();
+  }
+}
+
+// «Канал бота» и «Написать нам»: t.me — внутри Telegram, остальное — браузером;
+// ссылка ещё не задана (канал не создан) — «Скоро»
+function openConfigLink(url) {
+  if (!url) { showToast("Скоро"); return; }
+  if (/^@\w+$/.test(url)) url = "https://t.me/" + url.slice(1);
+  if (/^https?:\/\/(t\.me|telegram\.me)\//i.test(url) && tg && tg.openTelegramLink) tg.openTelegramLink(url);
+  else openLink(url);
 }
 
 function closeSheet(id) {
@@ -172,7 +185,7 @@ function submitHead() {
   const it = submitting.item;
   return '<h3>' + icon("upload", "inl acc") + ' Сдать работу</h3><div class="sub-task"><b>' + escapeHtml(it.subject) + '</b>' +
     '<div class="s">' + (it.due_text !== undefined ? escapeHtml(it.due_text)
-      : "до " + escapeHtml(it.due_date.split("-").reverse().slice(0, 2).join(".")) + (it.due_time ? " · " + escapeHtml(it.due_time) : "")) +
+      : "срок: " + escapeHtml(humanDate(it.due_date, { time: it.due_time }))) +      // дизайн-ревью, п. 15
     '</div></div>';
 }
 
@@ -440,7 +453,7 @@ function toggleNotifyDay(key, day) {
   saveNotify({ prefs: prefs });
 }
 
-// ── Знакомство при первом входе: 3 карточки, один раз ───────────────────
+// ── Знакомство при первом входе: карточки ONBOARD, один раз ─────────────
 // Флаг — в облаке Telegram (CloudStorage: тот же человек на другом телефоне
 // не увидит второй раз), без него — в localStorage устройства.
 
@@ -452,6 +465,13 @@ const ONBOARD = [
   { ic: "bell", cls: "t-bell", title: "Уведомления под тебя",
     text: "Утром — пары и погода, перед парой — напоминание, к дедлайнам — своё время. Дни недели и «другой корпус» — настраиваются.",
     act: "Настроить", go: () => openNotify() },
+  // главное отличие бота — ИИ по лекциям группы и конспекты (дизайн-ревью, п. 20)
+  { ic: "sparkle", cls: "t-ai", title: "ИИ знает ваши лекции",
+    text: "Отвечает по лекциям вашей группы и показывает, из какой взял. Решает задачи по фото, знает расписание и дедлайны.",
+    act: "Спросить ИИ", go: () => switchTab("chat") },
+  { ic: "bookOpen", cls: "t-summary", title: "Конспект за минуту",
+    text: "Нажми на лекцию с пометкой в «Файлах» — ИИ коротко перескажет главное. Конспект один на всю группу.",
+    act: "Открыть файлы", go: () => switchTab("files") },
   { ic: "search", cls: "t-search", title: "Расписание кого угодно",
     text: "Пары любого преподавателя, группы или аудитории МИРЭА. Нужное можно закрепить, чтобы не искать снова.",
     act: "Попробовать", go: () => switchTab("search") },
@@ -484,11 +504,12 @@ function onboardStore(get, done) {
 // Новичок видит знакомство, а «что нового» ему ни к чему — помечаем
 // прочитанным. Остальным — лист с главным, по разу на выпуск NEWS.id.
 const NEWS = {
-  id: "v5",
+  id: "v5.7",
   items: [
-    ["sparkle", "Конспект лекции", "Нажми на файл с книжкой в «Файлах» — ИИ коротко перескажет главное. Сделал один — конспект сразу увидят все."],
+    ["sparkle", "Конспект лекции", "Файл с пометкой «есть текст» в «Файлах» — нажми, и ИИ коротко перескажет главное. Один конспект на всю группу."],
+    ["cap", "Баллы СДО на главной", "Сколько предметов уже закрыто и что ближе всего к зачёту — прямо на «Сегодня»."],
+    ["deadlines", "Даты по-человечески", "«чт, 8 окт · через 6 дн.» вместо «8.10», а срок нового дедлайна — одним нажатием."],
     ["today", "Главная открывается сразу", "Пары и дедлайны на сегодня видны мгновенно, свежее подтягивается следом. Даже когда сайт МИРЭА тормозит."],
-    ["chat", "Расписание в чатах — целиком", "Картинка с парами через @" + BOT_USERNAME + " больше не обрезается снизу."],
   ],
 };
 

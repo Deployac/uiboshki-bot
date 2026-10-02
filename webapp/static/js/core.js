@@ -7,6 +7,9 @@ const tg = window.Telegram ? window.Telegram.WebApp : null;
 const APP_CONFIG = window.APP_CONFIG || {};
 const BOT_USERNAME = APP_CONFIG.bot || "uiboshkibot";
 const GROUP_NAME = APP_CONFIG.group || "УИБО-03-24";
+// Канал бота и «Написать нам» (config.py: CHANNEL_URL, CONTACT_URL); пусто — плитка говорит «Скоро»
+const CHANNEL_URL = APP_CONFIG.channel || "";
+const CONTACT_URL = APP_CONFIG.contact || "";
 
 if (tg) {
   tg.ready();
@@ -164,6 +167,39 @@ function escapeHtml(s) {
   return (s || "").replace(/[&<>"']/g, c => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
   })[c]);
+}
+
+// Даты по-человечески (дизайн-ревью, п. 15): вместо голых «8.10» и «к 09.10»
+// — «чт, 8 окт · через 6 дн.», чтобы не считать день недели и сколько осталось.
+// iso — «ГГГГ-ММ-ДД»; opts.time — «ЧЧ:ММ» (23:59 у дальних дат не пишем — это
+// «до конца дня»), opts.today — «сегодня» в ISO (по умолчанию — дата телефона).
+// Ближние: «сегодня · 23:59», «завтра · 09:00», «вчера»; дальше месяца — без «через».
+const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+const WEEKDAYS_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+
+function isoDays(iso) {          // дни от эпохи — без сдвигов часовых поясов и перевода часов
+  const p = String(iso).slice(0, 10).split("-").map(Number);
+  return Math.round(Date.UTC(p[0], p[1] - 1, p[2]) / 86400000);
+}
+
+function humanDate(iso, opts) {
+  opts = opts || {};
+  const now = new Date();
+  const today = opts.today ? isoDays(opts.today) : Math.round(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
+  const days = isoDays(iso) - today;
+  const d = new Date(isoDays(iso) * 86400000);
+  const date = WEEKDAYS_SHORT[d.getUTCDay()] + ", " + d.getUTCDate() + " " + MONTHS_SHORT[d.getUTCMonth()];
+  let text;
+  if (days === 0) text = "сегодня";
+  else if (days === 1) text = "завтра";
+  else if (days === -1) text = "вчера";
+  else if (days === 7) text = date + " · через неделю";
+  else if (days > 1 && days <= 30) text = date + " · через " + days + " дн.";
+  else if (days < -1 && days >= -30) text = date + " · " + (-days) + " дн. назад";
+  else text = date;
+  const near = Math.abs(days) <= 1;
+  if (opts.time && (near || opts.time !== "23:59")) text += " · " + opts.time;
+  return text;
 }
 
 // «Открыть» у файла: бот присылает его в чат, кнопка показывает, что

@@ -62,10 +62,22 @@ function zachRow(c) {
     '<span class="zb"><i style="width:' + pct + '%"></i><em style="left:' + c.pass_share * 100 + '%"></em></span><b>' + pct + '%</b></div>';
 }
 
+// Что даёт свой вход в СДО (дизайн-ревью, п. 19): без входа экран не пустой,
+// а объясняет, зачем подключаться. Тексты — по тому, что бот реально умеет.
+const SDO_PERKS = [
+  ["cap", "Баллы по каждому предмету и сколько осталось до зачёта или «3»"],
+  ["checkCircle", "Какие работы текущего контроля зачтены, а какие нет"],
+  ["upload", "Сдача работ прямо отсюда — до 3 файлов за раз"],
+  ["bell", "Бот напишет, когда появятся новые баллы"],
+];
+
 function sdoNeedConnect(box, text) {
-  box.innerHTML = '<div class="card sdo-empty"><div class="big">' + icon("cap", "xl acc") + '</div><b>' + escapeHtml(text) + '</b>' +
+  // «вход устарел» и «не подключён» — один экран, отличается заголовок и кнопка
+  const expired = /устарел/.test(text);
+  box.innerHTML = '<div class="card sdo-empty"><div class="big">' + icon("cap", "xl acc") + '</div><b>' + escapeHtml(text.replace(/:\s*вкладка.*$/, "")) + '</b>' +
     '<p class="sheet-hint">Баллы и задания у каждого свои — их видно только со своим входом в СДО.</p>' +
-    '<button class="primary" onclick="openSdoSheet()">Подключить СДО</button></div>';
+    '<div class="sdo-perks">' + SDO_PERKS.map(([ic, t]) => '<div class="sdo-perk"><span class="sec-ic">' + icon(ic) + '</span><span>' + t + '</span></div>').join("") + '</div>' +
+    '<button class="primary" onclick="openSdoSheet()">' + (expired ? "Подключить заново" : "Подключить СДО") + '</button></div>';
 }
 
 function showSdoView(name) {
@@ -101,14 +113,42 @@ async function openSdo(fresh) {
   }
 }
 
+// Сводка семестра: сколько предметов закрыто на «3»/зачёт и какой ближе
+// всего — одна на hero экрана СДО и плитку «Баллы СДО» на главной.
+function sdoSummary(list) {
+  return {
+    closed: list.filter(c => c.closed).length, total: list.length,
+    near: list.filter(c => !c.closed).sort((a, b) => a.need - b.need)[0] || null,
+  };
+}
+
+// Короткое имя предмета для плитки: без меток семестра и скобок, до max знаков по словам.
+function shortCourse(title, max) {
+  max = max || 28;
+  const t = (title || "").replace(/\[[^\]]*\]|\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max + 1).replace(/\s+\S*$/, "");
+  return (cut.length >= max / 2 ? cut : t.slice(0, max)).replace(/[\s,.:;—-]+$/, "") + "…";
+}
+
+// Журнал для фоновых загрузок (баллы у пар, плитка на главной): один запрос на всех.
+let sdoGradesReq = null;
+
+function fetchSdoGrades() {
+  if (!sdoGradesReq) {
+    sdoGradesReq = api("/api/sdo/grades").then(d => (sdoData = d), e => { sdoGradesReq = null; throw e; });
+  }
+  return sdoGradesReq;
+}
+
 function renderSdoList() {
   const box = document.getElementById("sdo-list");
   const list = sdoData.courses;
   const ago = Math.max(0, Math.round((Date.now() / 1000 - sdoData.updated) / 60));
   document.getElementById("sdo-updated").textContent = ago < 1 ? "обновлено только что" : "обновлено " + ago + " мин назад";
+  updateSdoTile(sdoData);         // плитка «Баллы СДО» на главной — те же цифры (дизайн-ревью, п. 12)
   if (!list.length) { box.innerHTML = '<div class="empty">В СДО пока нет журналов с баллами за этот семестр</div>'; return; }
-  const closed = list.filter(c => c.closed).length;
-  const near = list.filter(c => !c.closed).sort((a, b) => a.need - b.need)[0];
+  const { closed, near } = sdoSummary(list);
   box.innerHTML =
     '<div class="sc-sum"><div class="e">Закрыто на «3» или зачёт</div>' +
       '<div class="b">' + closed + ' из ' + list.length + ' ' + plural(list.length, "предмета", "предметов", "предметов") + '</div>' +
@@ -163,7 +203,7 @@ async function loadLessonScores() {
   scoresTried = true;
   const st = typeof loadSdoStatus === "function" ? (sdoState && sdoState.state !== "off" ? sdoState : await loadSdoStatus()) : null;
   if (!st || st.state !== "ok") return;
-  try { sdoData = await api("/api/sdo/grades"); } catch (e) { return; }
+  try { await fetchSdoGrades(); } catch (e) { return; }
   rerenderSelectedDay();
 }
 
@@ -236,6 +276,9 @@ function renderSubject() {
 }
 
 // График «как росли баллы» (sdo_history.py: точка в день, когда смотришь баллы).
+// Шкала — не 0…130, а по ближайшему порогу (histScale), иначе рост 10→30
+// лежит внизу и не виден. Линии и заливка — в SVG, текст и точка — HTML
+// поверх (preserveAspectRatio="none" растягивал бы буквы и круг).
 function historyCard(c) {
   const h = c.history;
   if (!h || !h.points || !h.points.length) return "";
@@ -246,21 +289,74 @@ function historyCard(c) {
     return '<div class="card hist"><div class="hist-head"><b>Как растут баллы</b>' + delta + '</div>' +
       '<p class="sheet-hint">График появится, когда наберётся история: бот запоминает сумму раз в день, когда ты смотришь баллы.</p></div>';
   }
-  const W = 320, H = 110, pad = 6;
-  const t0 = Date.parse(pts[0][0]), t1 = Date.parse(pts[pts.length - 1][0]) || t0 + 1;
-  const x = t => pad + (W - 2 * pad) * (t1 === t0 ? 1 : (Date.parse(t) - t0) / (t1 - t0));
-  const y = v => H - pad - (H - 2 * pad) * Math.min(1, v / c.max);
-  const line = pts.map(p => x(p[0]).toFixed(1) + "," + y(p[1]).toFixed(1)).join(" ");
-  const area = pad + "," + (H - pad) + " " + line + " " + x(pts[pts.length - 1][0]).toFixed(1) + "," + (H - pad);
-  const marks = (c.marks || []).map(m => '<line x1="0" x2="' + W + '" y1="' + y(m.at).toFixed(1) + '" y2="' + y(m.at).toFixed(1) +
-    '" class="hist-mark"/><text x="' + (W - 2) + '" y="' + (y(m.at) - 3).toFixed(1) + '" class="hist-lbl">' + escapeHtml(m.label) + '</text>').join("");
-  const last = pts[pts.length - 1];
-  const fmtDay = iso => { const p = iso.split("-"); return +p[2] + "." + p[1]; };
+  const sc = histScale(pts.map(p => p[1]), c.marks, c.max);
+  // координаты — в процентах блока графика: и у SVG (viewBox 100×100), и у подписей
+  const t0 = Date.parse(pts[0][0]), t1 = Date.parse(pts[pts.length - 1][0]);
+  const x = t => t1 === t0 ? 100 : (Date.parse(t) - t0) / (t1 - t0) * 100;
+  const y = v => 100 - (Math.min(sc.hi, Math.max(sc.lo, v)) - sc.lo) / (sc.hi - sc.lo) * 100;
+  const xy = pts.map(p => [x(p[0]), y(p[1])]);
+  const line = xy.map(p => p[0].toFixed(2) + "," + p[1].toFixed(2)).join(" ");
+  const last = pts[pts.length - 1], lx = xy[xy.length - 1][0], ly = xy[xy.length - 1][1];
+  const valBelow = ly < 26;                     // точка у самого верха — значение под ней
+  // высота линии графика в точке px — чтобы подписи порогов не налезали на неё
+  const yAt = px => {
+    for (let i = 1; i < xy.length; i++) {
+      if (px <= xy[i][0]) {
+        const a = xy[i - 1], b = xy[i], k = b[0] === a[0] ? 1 : (px - a[0]) / (b[0] - a[0]);
+        return a[1] + (b[1] - a[1]) * k;
+      }
+    }
+    return ly;
+  };
+  const LH = 14;                                // высота подписи, % высоты графика
+  const busy = (x0, x1, y0, y1) => {
+    for (let px = x0; px <= x1; px += 2) { const v = yAt(px); if (v >= y0 - 5 && v <= y1 + 5) return true; }
+    return x1 > 80 && (valBelow ? y1 > ly && y0 < ly + 24 : y1 > ly - 24 && y0 < ly);   // значение у последней точки
+  };
+  // пороги в шкале — пунктир с подписью «зачёт · 40» / «на «4» · 60» там, где свободно
+  const lines = sc.marks.map(m => '<line x1="0" x2="100" y1="' + y(m.at).toFixed(2) + '" y2="' + y(m.at).toFixed(2) + '" class="hist-mark"/>').join("");
+  const labels = sc.marks.map(m => {
+    const my = y(m.at), text = (m.label === "зачёт" ? "зачёт" : "на «" + m.label + "»") + " · " + fmtNum(m.at);
+    const w = text.length * 2.3 + 4;            // ширина подписи в % (≈ 6px на букву при ширине ~290px)
+    const spots = [["l", "up", 0, w, my - LH, my], ["r", "up", 100 - w, 100, my - LH, my],
+                   ["l", "dn", 0, w, my, my + LH], ["r", "dn", 100 - w, 100, my, my + LH]];
+    const s = spots.find(p => !busy(p[2], p[3], p[4], p[5])) || spots[0];
+    return '<span class="hist-lbl ' + s[0] + ' ' + s[1] + (m.at === sc.goal ? ' goal' : '') +
+      '" style="top:' + my.toFixed(2) + '%">' + escapeHtml(text) + '</span>';
+  }).join("");
+  // края оси — «26 сен» и «сегодня», без голых «26.09» (дизайн-ревью, п. 15)
+  const fmtDay = iso => { const p = iso.split("-"); return +p[2] + " " + MONTHS_SHORT[+p[1] - 1]; };
   return '<div class="card hist"><div class="hist-head"><b>Как растут баллы</b>' + delta + '</div>' +
-    '<svg viewBox="0 0 ' + W + ' ' + H + '" class="hist-svg" preserveAspectRatio="none">' + marks +
-      '<polygon points="' + area + '" class="hist-area"/><polyline points="' + line + '" class="hist-line"/>' +
-      '<circle cx="' + x(last[0]).toFixed(1) + '" cy="' + y(last[1]).toFixed(1) + '" r="3.5" class="hist-dot"/></svg>' +
-    '<div class="hist-axis"><span>' + fmtDay(pts[0][0]) + '</span><span>сейчас ' + fmtNum(last[1]) + '</span></div></div>';
+    '<div class="hist-plot">' +
+      '<span class="hist-y top">' + fmtNum(sc.hi) + '</span><span class="hist-y bot">' + fmtNum(sc.lo) + '</span>' +
+      '<svg viewBox="0 0 100 100" class="hist-svg" preserveAspectRatio="none">' +
+        '<defs><linearGradient id="hist-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" class="hist-g0"/><stop offset="1" class="hist-g1"/></linearGradient></defs>' +
+        '<line x1="0" x2="100" y1="0" y2="0" class="hist-grid"/><line x1="0" x2="100" y1="100" y2="100" class="hist-grid"/>' + lines +
+        '<polygon points="0,100 ' + line + ' 100,100" class="hist-area" fill="url(#hist-fill)"/>' +
+        '<polyline points="' + line + '" class="hist-line"/></svg>' +
+      labels +
+      '<span class="hist-dot" style="left:' + lx.toFixed(2) + '%;top:' + ly.toFixed(2) + '%"></span>' +
+      '<span class="hist-val' + (valBelow ? ' dn' : '') + '" style="top:' + ly.toFixed(2) + '%">' + fmtNum(last[1]) + '</span>' +
+    '</div>' +
+    '<div class="hist-axis"><span>' + fmtDay(pts[0][0]) + '</span><span>' + humanDate(last[0]) + '</span></div></div>';
+}
+
+// Шкала графика баллов (дизайн-ревью, п. 17): верх — ближайший порог выше
+// максимума истории с небольшим запасом, а если все пороги пройдены — максимум
+// БРС (130). Низ — 0, а если все точки высоко (выше середины) — чуть ниже
+// минимума, круглым числом; ось подписана, так что это честно.
+// → {lo, hi, goal: порог-цель или null, marks: пороги, попавшие в шкалу}.
+function histScale(values, marks, max) {
+  max = max || 130;
+  marks = marks || [];
+  const vmax = Math.max.apply(null, values), vmin = Math.min.apply(null, values);
+  const above = marks.map(m => m.at).filter(a => a > vmax).sort((a, b) => a - b);
+  const goal = above.length ? above[0] : null;
+  let hi = goal === null ? max : Math.min(max, Math.ceil((goal + Math.max(5, goal * 0.2)) / 5) * 5);
+  hi = Math.max(hi, Math.ceil(vmax));
+  let lo = 0;
+  if (vmin > hi / 2) lo = Math.max(0, Math.floor((vmin - Math.max(5, (hi - vmin) / 2)) / 10) * 10);
+  return { lo: lo, hi: hi, goal: goal, marks: marks.filter(m => m.at > lo && m.at < hi) };
 }
 
 // ── Текущий контроль ──────────────────────────────────────────────────────

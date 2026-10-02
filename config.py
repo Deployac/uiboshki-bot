@@ -16,6 +16,10 @@ DATABASE_PATH = os.getenv("DATABASE_PATH", "mirea_bot.db")
 GROUP_NAME = os.getenv("GROUP_NAME", "УИБО-03-24")
 BOT_USERNAME = os.getenv("BOT_USERNAME", "uiboshkibot").lstrip("@")   # для ссылок t.me/…
 GROUP_PROGRAM = os.getenv("GROUP_PROGRAM", "Бизнес-информатика")        # направление — для промптов ИИ
+# Плитки «Канал бота» и «Написать нам» в меню «Ещё» WebApp (дизайн-ревью, п. 18):
+# ссылки t.me/… (или любые). Пока пусто — плитка видна, по нажатию «Скоро».
+CHANNEL_URL = os.getenv("CHANNEL_URL", "").strip()
+CONTACT_URL = os.getenv("CONTACT_URL", "").strip()
 # Предметы по выбору: ходят не все (военная кафедра — двое из группы).
 # Пары скрыты, пока человек не ответит «хожу» (WebApp спросит на главной,
 # бот — при /start). Через запятую.
