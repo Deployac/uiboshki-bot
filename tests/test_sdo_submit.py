@@ -208,3 +208,46 @@ async def test_no_form_explains_from_assignment_page(moodle, monkeypatch):
     assert "JavaScript" not in msg
     assert "Ни одной попытки" in msg and "просрочено на: 5 дн." in msg
     assert not any(m == "POST" for m, _, _ in moodle.calls)                     # ничего не грузили
+
+
+@pytest.mark.asyncio
+async def test_keepalive_spread_over_hour(db, moodle):
+    """Проверки входов вразнобой: подключённые до версии получают случайное
+    место в ближайшем часе (не все разом), дальше — 50–59 мин, потом 55."""
+    from datetime import datetime, timedelta
+    t0 = datetime(2026, 10, 2, 12, 0, 0)
+    for uid in range(1, 31):
+        await db.save_sdo_session(uid, sdo_accounts.encrypt(COOKIE))      # как до версии: без времени
+    await sdo_accounts.keepalive_due(None, t0)
+    rows = await db.get_sdo_sessions("ok")
+    due = sorted(r["next_check_at"] for r in rows)
+    assert all("2026-10-02 12:01:00" <= d <= "2026-10-02 12:55:00" for d in due)
+    assert len(set(due)) > 10                                              # разошлись по часу
+
+    def mins(r):
+        return (datetime.fromisoformat(r["next_check_at"]) - when).total_seconds() / 60
+
+    when = t0 + timedelta(minutes=60)                                      # у всех очередь подошла
+    for step in range(4):
+        await sdo_accounts.keepalive_due(None, when)
+        rows = await db.get_sdo_sessions("ok")
+        gaps = {round(mins(r)) for r in rows}
+        if step < 3:
+            assert gaps <= set(range(50, 60))                              # первые три — вразнобой
+        else:
+            assert gaps == {55}                                            # дальше ровно 55
+        when = max(datetime.fromisoformat(r["next_check_at"]) for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_keepalive_not_due_not_checked(db, moodle):
+    from datetime import datetime
+    t0 = datetime(2026, 10, 2, 12, 0, 0)
+    await db.save_sdo_session(222, sdo_accounts.encrypt(COOKIE), sdo_accounts.first_check_at(t0))
+    nxt = (await db.get_sdo_session(222))["next_check_at"]
+    assert "2026-10-02 12:50:00" <= nxt <= "2026-10-02 12:59:00"
+    moodle.logged_in = False
+    await sdo_accounts.keepalive_due(None, t0)                             # ещё не очередь — не трогаем
+    assert (await db.get_sdo_session(222))["status"] == "ok"
+    await sdo_accounts.keepalive_due(None, datetime.fromisoformat(nxt))
+    assert (await db.get_sdo_session(222))["status"] == "expired"

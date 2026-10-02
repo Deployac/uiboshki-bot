@@ -7,15 +7,21 @@
 а если её нет — производный от BOT_TOKEN: утечка одной базы (бэкап в чате
 старосты) не раскрывает чужие входы. В логи и ответы значение не попадает.
 
-Раз в 55 минут (scheduler.py) куки проверяются и заодно держат сессию живой;
+Куки проверяются примерно раз в час и заодно держат сессию живой;
 разлогиненная помечается expired, и человеку один раз приходит сообщение.
+Проверки — вразнобой (keepalive_due, раз в минуту смотрит, чья очередь): у
+каждого входа своё время; первые JITTER_CHECKS проверок — через случайные
+50–59 мин, чтобы входы разошлись по часу и запросы в СДО не шли пачкой,
+дальше ровно через 55.
 """
 
 import base64
 import hashlib
 import logging
 import os
+import random
 import re
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
@@ -135,27 +141,75 @@ async def status_for(user_id: int) -> dict:
     return {"state": "off"}
 
 
-async def keepalive_all(bot=None):
-    """Проверить все подключённые входы. Разлогиненный — expired и одно
-    сообщение человеку; сеть упала — ничего не трогаем."""
-    from database import get_sdo_sessions, set_sdo_status
-    for row in await get_sdo_sessions("ok"):
-        cookie = decrypt(row["cookie_enc"])
-        if cookie and needs_rotation(row["cookie_enc"]):
-            from database import save_sdo_session
-            await save_sdo_session(row["user_id"], encrypt(cookie))   # на новый ключ
+JITTER_CHECKS = 3           # столько первых проверок — через случайные 50–59 мин
+JITTER_RANGE = (50, 59)
+STEADY_MINUTES = 55
+
+
+def _utc(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d %H:%M:%S")       # как datetime('now') в SQLite
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def next_interval(jitter_left: int) -> int:
+    return random.randint(*JITTER_RANGE) if jitter_left > 0 else STEADY_MINUTES
+
+
+def first_check_at(now: datetime | None = None) -> str:
+    """Только что подключили (и проверили) — следующая проверка через 50–59 мин."""
+    return _utc((now or _now()) + timedelta(minutes=random.randint(*JITTER_RANGE)))
+
+
+async def _check_one(row: dict, bot=None, now: datetime | None = None):
+    from database import set_sdo_next_check, set_sdo_status, update_sdo_cookie
+    uid = row["user_id"]
+    cookie = decrypt(row["cookie_enc"])
+    if cookie and needs_rotation(row["cookie_enc"]):
+        await update_sdo_cookie(uid, encrypt(cookie))   # на новый ключ
+    left = row.get("jitter_left")
+    left = JITTER_CHECKS if left is None else left
+    now = now or _now()
+    try:
+        alive = bool(cookie) and await check(cookie)
+    except Exception as e:
+        logger.info(f"СДО keepalive {uid}: {type(e).__name__}")
+        await set_sdo_next_check(uid, _utc(now + timedelta(minutes=next_interval(left))), left)
+        return
+    await set_sdo_status(uid, "ok" if alive else "expired")
+    if alive:
+        await set_sdo_next_check(uid, _utc(now + timedelta(minutes=next_interval(left))), max(0, left - 1))
+    elif bot:
         try:
-            alive = bool(cookie) and await check(cookie)
-        except Exception as e:
-            logger.info(f"СДО keepalive {row['user_id']}: {type(e).__name__}")
-            continue
-        await set_sdo_status(row["user_id"], "ok" if alive else "expired")
-        if not alive and bot:
-            try:
-                from keyboards import app_button
-                await bot.send_message(row["user_id"],
-                    "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
-                    "Подключи заново: приложение → СДО → Вход.",
-                    reply_markup=app_button("🎓 Подключить СДО", "sdo"))
-            except Exception:
-                pass
+            from keyboards import app_button
+            await bot.send_message(uid,
+                "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
+                "Подключи заново: приложение → СДО → Вход.",
+                reply_markup=app_button("🎓 Подключить СДО", "sdo"))
+        except Exception:
+            pass
+
+
+async def keepalive_due(bot=None, now: datetime | None = None):
+    """Раз в минуту (scheduler.py): проверить входы, чья очередь подошла.
+    Вход без времени (подключён до этой версии) не проверяется сразу, а
+    получает случайное место в ближайшем часе — после деплоя не все разом."""
+    from database import get_sdo_sessions, set_sdo_next_check
+    now = now or _now()
+    for row in await get_sdo_sessions("ok"):
+        due = row.get("next_check_at")
+        if not due:
+            left = row.get("jitter_left")
+            await set_sdo_next_check(row["user_id"], _utc(now + timedelta(minutes=random.randint(1, STEADY_MINUTES))),
+                                     JITTER_CHECKS if left is None else left)
+        elif due <= _utc(now):
+            await _check_one(row, bot, now)
+
+
+async def keepalive_all(bot=None):
+    """Проверить все подключённые входы сразу (вручную/в тестах)."""
+    from database import get_sdo_sessions
+    for row in await get_sdo_sessions("ok"):
+        await _check_one(row, bot)

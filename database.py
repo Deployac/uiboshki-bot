@@ -153,6 +153,14 @@ async def init_db():
                 checked_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Проверка входов СДО вразнобой (sdo_accounts.keepalive_due): у каждого
+        # своё время следующей проверки; первые проверки — через 50–59 мин
+        # случайно, чтобы входы разошлись по часу, потом ровно 55.
+        for col in ("next_check_at TEXT", "jitter_left INTEGER DEFAULT 3"):
+            try:
+                await db.execute(f"ALTER TABLE sdo_sessions ADD COLUMN {col}")
+            except Exception:
+                pass  # колонка уже есть
         await db.execute("""
             CREATE TABLE IF NOT EXISTS pinned_targets (
                 user_id     INTEGER NOT NULL,
@@ -960,10 +968,10 @@ async def set_optional_answer(user_id: int, subject: str, attend: bool):
         await db.commit()
 
 
-async def save_sdo_session(user_id: int, cookie_enc: str):
+async def save_sdo_session(user_id: int, cookie_enc: str, next_check_at: str | None = None):
     async with aiosqlite.connect(DATABASE_PATH) as db:
-        await db.execute("INSERT OR REPLACE INTO sdo_sessions (user_id, cookie_enc, status, checked_at) "
-                         "VALUES (?, ?, 'ok', datetime('now'))", (user_id, cookie_enc))
+        await db.execute("INSERT OR REPLACE INTO sdo_sessions (user_id, cookie_enc, status, checked_at, next_check_at, jitter_left) "
+                         "VALUES (?, ?, 'ok', datetime('now'), ?, 3)", (user_id, cookie_enc, next_check_at))
         await db.commit()
 
 
@@ -986,6 +994,20 @@ async def set_sdo_status(user_id: int, status: str):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("UPDATE sdo_sessions SET status=?, checked_at=datetime('now') WHERE user_id=?",
                          (status, user_id))
+        await db.commit()
+
+
+async def update_sdo_cookie(user_id: int, cookie_enc: str):
+    """Перешифровка на новый ключ — без сброса расписания проверок."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("UPDATE sdo_sessions SET cookie_enc=? WHERE user_id=?", (cookie_enc, user_id))
+        await db.commit()
+
+
+async def set_sdo_next_check(user_id: int, next_check_at: str, jitter_left: int):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("UPDATE sdo_sessions SET next_check_at=?, jitter_left=? WHERE user_id=?",
+                         (next_check_at, jitter_left, user_id))
         await db.commit()
 
 

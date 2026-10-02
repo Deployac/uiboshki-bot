@@ -896,7 +896,7 @@ async def api_sdo_connect(body: SdoConnect, user: dict = CurrentUser):
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
     if not alive:
         raise HTTPException(status_code=400, detail="СДО не пускает с этой кукой — войди на сайте заново и скопируй новую")
-    await save_sdo_session(user["id"], sdo_accounts.encrypt(cookie))
+    await save_sdo_session(user["id"], sdo_accounts.encrypt(cookie), sdo_accounts.first_check_at())
     import sdo_grades
     sdo_grades.forget(user["id"])
     return await sdo_accounts.status_for(user["id"])
