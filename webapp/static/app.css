@@ -764,7 +764,7 @@
   /* ── Нижняя панель: у каждой вкладки свой цвет (как плитки «Ещё»).
      Невыбранные — своим цветом, но приглушённые; выбранная — цветная плитка. ── */
   nav.tabs button[data-tab="today"]     { --tc: #4a8ff7; --tc2: #3164d9; }
-  nav.tabs button[data-tab="sdo"]       { --tc: #2aa39a; --tc2: #2366b0; }
+  nav.tabs button[data-tab="sdo"]       { --tc: #c8915a; --tc2: #8d5a2b; }   /* капибара — карамельная */
   nav.tabs button[data-tab="files"]     { --tc: #2bb3a3; --tc2: #2366b0; }
   nav.tabs button[data-tab="chat"]      { --tc: #9b7cf6; --tc2: #6a4fe0; }
   nav.tabs button[data-tab="more"]      { --tc: #f06292; --tc2: #c2185b; }
@@ -830,6 +830,9 @@
   .lesson.tap { cursor: pointer; transition: transform .12s ease; }
   .lesson.tap:active { transform: scale(.98); }
   .more-grid .sq.t-dl { background: linear-gradient(145deg, #f0884b, #e0553f); }
-  nav.tabs button .ic.bad { position: relative; }
-  nav.tabs button .ic.bad::after { content: ""; position: absolute; top: 0; right: calc(50% - 20px); width: 8px; height: 8px;
-                                   border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg-card); }
+  /* СДО не подключён / вход устарел — красная шапочка; открыта — приглушённый кирпичный, почти без свечения */
+  nav.tabs button.sdo-off { --tc: #b94a4a; --tc2: #8a2f2f; }
+  nav.tabs button.sdo-off:not(.active) .ic { color: #ff6b6b; opacity: 1; }
+  nav.tabs button.sdo-off.active { box-shadow: 0 4px 10px rgba(185, 74, 74, .22); }
+  nav.tabs button.sdo-ok .ico { width: 27px; height: 25px; }
+  nav.tabs button.sdo-ok:not(.active) .ic { opacity: .9; }
