@@ -127,3 +127,13 @@ def test_whats_new_once_per_release():
     assert "const NEWS = {" in more and 'cloudFlag("news_seen", NEWS.id)' in more
     assert "if (firstVisit) { cloudFlag(\"news_seen\", NEWS.id); return; }" in more   # новичку — только знакомство
     assert 'id="news-sheet"' in HTML
+
+
+def test_home_starts_instantly_from_saved_day():
+    # Мгновенный старт: сводка «сегодня» за этот же день — из памяти телефона,
+    # свежая — следом; имя — сразу из Telegram; пары сегодня — без /api/day.
+    home = JS["js/home.js"]
+    assert "readHomeSnap()" in home and "saveHomeSnap()" in home
+    assert "snap.today.date === isoDate(new Date())" in home          # только за сегодня
+    assert "tg.initDataUnsafe.user" in home
+    assert "renderDay(list, todayData)" in home

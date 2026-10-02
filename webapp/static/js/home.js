@@ -106,47 +106,98 @@ function dueText(days) {
   return "через " + days + " дн.";
 }
 
-async function loadToday() {
+// Мгновенный старт: последняя сводка «сегодня» и точки недели лежат в памяти
+// телефона — главная рисуется сразу, свежие данные приходят следом и
+// перерисовывают её. Сохранённое показываем только за этот же день.
+const HOME_SNAP_KEY = "home.snap";
+
+function readHomeSnap() {
   try {
-    const me = await api("/api/me");
-    const hour = new Date().getHours();
-    document.getElementById("greeting").innerHTML = escapeHtml(greetingFor(hour) + (me.first_name ? ", " + me.first_name : "")) + " " + icon("wave", "mood wave");
-  } catch (e) {
-    document.getElementById("subtitle").textContent = "Не удалось авторизоваться: " + e.message;
-    return;
+    const snap = JSON.parse(localStorage.getItem(HOME_SNAP_KEY) || "null");
+    return snap && snap.today && snap.today.date === isoDate(new Date()) ? snap : null;
+  } catch (e) { return null; }
+}
+
+function saveHomeSnap() {
+  if (!todayData) return;
+  try {
+    const week = {};
+    Object.keys(weekCache).slice(-2).forEach(k => week[k] = weekCache[k]);
+    localStorage.setItem(HOME_SNAP_KEY, JSON.stringify({ today: todayData, week: week }));
+  } catch (e) {}
+}
+
+function setGreeting(name) {
+  const hour = new Date().getHours();
+  document.getElementById("greeting").innerHTML = escapeHtml(greetingFor(hour) + (name ? ", " + name : "")) + " " + icon("wave", "mood wave");
+}
+
+function showBadge(id, html) {
+  const el = document.getElementById(id);
+  el.innerHTML = html || "";
+  el.style.display = html ? (id === "weather" ? "inline-block" : "inline-flex") : "none";
+}
+
+function renderToday() {
+  document.getElementById("subtitle").textContent = todayData.weekday + ", " + todayData.label + " · " + GROUP_NAME;
+  showBadge("weather", todayData.weather ? escapeHtml(todayData.weather) : "");
+  // зеркало МИРЭА лежит — расписание сохранённое
+  showBadge("stale", todayData.stale ? icon("warning") + " сайт МИРЭА не отвечает · данные от " + escapeHtml(todayData.stale) : "");
+  // пары не в своём корпусе — заметно, до первой пары
+  showBadge("campus", todayData.campus ? icon("place") + " " + escapeHtml(todayData.campus) : "");
+  const n = todayData.lessons.reduce((a, l) => a + (l.pairs || 1), 0);
+  document.getElementById("today-count").textContent = n ? n + " " + plural(n, "пара", "пары", "пар") : "";
+  refreshStatuses();
+  const dl = todayData.deadlines;
+  document.getElementById("today-deadline-count").textContent = dl.active;
+  document.getElementById("today-deadline-next").innerHTML = dl.soon.length
+    ? escapeHtml(dl.soon[0].subject.slice(0, 40) + " · " + dueText(dl.soon[0].days)) : "ничего не горит " + icon("party", "mood");
+  document.getElementById("today-notes").innerHTML = todayData.notes.map(x =>
+    '<div class="note-card">' + icon("pin", "inl") + (x.subject ? "<b>" + escapeHtml(x.subject) + ":</b> " : "") + escapeHtml(x.text) + '</div>').join("");
+}
+
+let chipsDate = null;   // за какой «сегодня» нарисована полоска дней
+
+async function loadToday() {
+  // имя — сразу из Telegram, /api/me (вход и статистика) — параллельно
+  const user = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
+  setGreeting(user ? user.first_name : "");
+  let shown = false;
+  if (!todayData) {
+    const snap = readHomeSnap();
+    if (snap) {
+      todayData = snap.today;
+      Object.keys(snap.week || {}).forEach(k => { if (!weekCache[k]) weekCache[k] = snap.week[k]; });
+      renderToday();
+      renderDayChips();
+      shown = true;
+    }
   }
+  const me = api("/api/me").then(m => { setGreeting(m.first_name); return true; }, () => false);
   try {
     todayData = await api("/api/today");
-    document.getElementById("subtitle").textContent = todayData.weekday + ", " + todayData.label + " · " + GROUP_NAME;
-    if (todayData.weather) {
-      const w = document.getElementById("weather");
-      w.textContent = todayData.weather; w.style.display = "inline-block";
-    }
-    if (todayData.stale) {         // зеркало МИРЭА лежит — расписание сохранённое
-      const st = document.getElementById("stale");
-      st.innerHTML = icon("warning") + " сайт МИРЭА не отвечает · данные от " + escapeHtml(todayData.stale);
-      st.style.display = "inline-flex";
-    }
-    if (todayData.campus) {        // пары не в своём корпусе — заметно, до первой пары
-      const c = document.getElementById("campus");
-      c.innerHTML = icon("place") + " " + escapeHtml(todayData.campus); c.style.display = "inline-flex";
-    }
-    const n = todayData.lessons.reduce((a, l) => a + (l.pairs || 1), 0);
-    document.getElementById("today-count").textContent = n ? n + " " + plural(n, "пара", "пары", "пар") : "";
-    refreshStatuses();
-    const dl = todayData.deadlines;
-    document.getElementById("today-deadline-count").textContent = dl.active;
-    document.getElementById("today-deadline-next").innerHTML = dl.soon.length
-      ? escapeHtml(dl.soon[0].subject.slice(0, 40) + " · " + dueText(dl.soon[0].days)) : "ничего не горит " + icon("party", "mood");
-    document.getElementById("today-notes").innerHTML = todayData.notes.map(x =>
-      '<div class="note-card">' + icon("pin", "inl") + (x.subject ? "<b>" + escapeHtml(x.subject) + ":</b> " : "") + escapeHtml(x.text) + '</div>').join("");
+    renderToday();
+    saveHomeSnap();
   } catch (e) {
+    if (!(await me) && !shown) {
+      document.getElementById("subtitle").textContent = "Не удалось авторизоваться: " + e.message;
+      return;
+    }
+    if (shown) { showToast("Нет связи — показываю сохранённое"); return; }
     const hero = document.getElementById("hero");
     hero.className = "hero calm";
     hero.innerHTML = '<div class="h-eyebrow">Расписание</div><div class="h-title">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
     document.getElementById("today-lessons").innerHTML = "";
   }
-  renderDayChips();
+  if (chipsDate !== (todayData && todayData.date)) renderDayChips();
+  else rerenderToday();
+}
+
+// Свежие данные пришли, а полоска дней уже стоит на сегодня — перерисовать
+// только сегодняшние пары (без нового запроса).
+function rerenderToday() {
+  const active = document.querySelector("#daychips button.active");
+  if (active && todayData && active.dataset.date === todayData.date) renderDay(document.getElementById("day-lessons"), todayData);
 }
 
 function plural(n, one, few, many) {
@@ -211,6 +262,7 @@ function dotsHtml(kinds) {
 }
 
 function renderDayChips() {
+  chipsDate = todayData ? todayData.date : null;
   const base = todayData ? new Date(todayData.date + "T12:00:00") : new Date();
   const wd = (base.getDay() + 6) % 7;             // 0 = понедельник
   const monday = new Date(base);
@@ -245,7 +297,7 @@ async function loadWeekDots(mondayIso) {
   numEl.textContent = "";
   let data = weekCache[mondayIso];
   if (!data) {
-    try { data = weekCache[mondayIso] = await api("/api/week?start=" + mondayIso); }
+    try { data = weekCache[mondayIso] = await api("/api/week?start=" + mondayIso); saveHomeSnap(); }
     catch (e) { return; }  // без точек полоска дней всё равно работает
   }
   if (!document.querySelector('#daychips button[data-date="' + mondayIso + '"]')) return;  // уже листнули дальше
@@ -292,7 +344,9 @@ async function selectDay(btn, silent) {
   const list = document.getElementById("day-lessons");
   const date = btn.dataset.date;
   const today = todayData && date === todayData.date;   // у сегодняшнего дня статусы пар меняются — без кэша
-  if (dayCache[date] && !today) {
+  if (today) {
+    renderDay(list, todayData);                          // те же пары, что в /api/today, — без запроса
+  } else if (dayCache[date]) {
     renderDay(list, dayCache[date]);
   } else {
     list.style.minHeight = list.offsetHeight + "px";
