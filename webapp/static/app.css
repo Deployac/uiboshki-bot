@@ -13,6 +13,8 @@
     --radius:    18px;
     --radius-sm: 12px;
     --shadow:    0 8px 24px rgba(0,0,0,0.35);
+    /* цвета для текста: в тёмной теме — те же, в светлой — темнее (ниже) */
+    --ok-text: var(--ok); --warn-text: var(--warn); --accent-2-text: var(--accent-2); --danger-text: var(--danger);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; }
@@ -87,7 +89,7 @@
     font-size: 11px;
     font-weight: 700;
     letter-spacing: .06em;
-    color: var(--accent-2);
+    color: var(--accent-2-text);
     margin: 0 0 6px;
   }
   .card .big { font-size: 17px; font-weight: 700; margin: 0 0 4px; }
@@ -153,7 +155,7 @@
     display: flex; align-items: center; justify-content: center;
   }
   .lesson.now .l-num { background: var(--accent); color: #fff; }
-  .lesson .l-now { color: var(--ok); font-weight: 800; font-size: 12px; }
+  .lesson .l-now { color: var(--ok-text); font-weight: 800; font-size: 12px; }
   .note-card { margin-top: 8px; padding: 10px 13px; border-radius: var(--radius-sm);
                background: rgba(255,178,56,.1); border: 1px solid rgba(255,178,56,.3); font-size: 13.5px; }
   .daychips { display: flex; gap: 6px; margin-bottom: 10px; }
@@ -168,7 +170,7 @@
     border-radius: 12px; padding: 7px 0; font-size: 11.5px; font-weight: 700; line-height: 1.2;
   }
   .daychips button b { display: block; font-size: 16px; color: var(--text); }
-  .daychips button.today b { color: var(--accent-2); }
+  .daychips button.today b { color: var(--accent-2-text); }
   .daychips button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .daychips button.active b { color: #fff; }
   .daychips .dots { display: flex; justify-content: center; gap: 2px; height: 5px; margin-top: 4px; }
@@ -190,7 +192,7 @@
   }
   @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
   .schedule-html s { color: var(--hint); }
-  .schedule-html b { color: var(--accent-2); }
+  .schedule-html b { color: var(--accent-2-text); }
 
   .chip {
     display: inline-block;
@@ -202,9 +204,9 @@
     color: var(--hint);
     border: 1px solid var(--border);
   }
-  .chip.ok      { background: rgba(61,220,132,.14); color: var(--ok); border-color: rgba(61,220,132,.3); }
-  .chip.warn    { background: rgba(255,178,56,.14); color: var(--warn); border-color: rgba(255,178,56,.3); }
-  .chip.danger  { background: rgba(255,99,99,.14);  color: var(--danger); border-color: rgba(255,99,99,.3); }
+  .chip.ok      { background: rgba(61,220,132,.14); color: var(--ok-text); border-color: rgba(61,220,132,.3); }
+  .chip.warn    { background: rgba(255,178,56,.14); color: var(--warn-text); border-color: rgba(255,178,56,.3); }
+  .chip.danger  { background: rgba(255,99,99,.14);  color: var(--danger-text); border-color: rgba(255,99,99,.3); }
 
   nav.tabs {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
@@ -239,12 +241,12 @@
   .seg button { flex: 1; background: none; border: none; color: var(--hint); font-weight: 700; font-size: 13.5px; padding: 8px 0; border-radius: 9px; }
   .seg button.active { background: var(--accent); color: #fff; }
   .group-title { color: var(--hint); font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; margin: 14px 2px 8px; }
-  .group-title.danger { color: var(--danger); }
+  .group-title.danger { color: var(--danger-text); }
   details.done-group summary { cursor: pointer; list-style: none; }
   details.done-group summary::-webkit-details-marker { display: none; }
   .dl-actions { display: flex; gap: 12px; margin-top: 6px; }
   .dl-actions button, .dl-actions a { background: none; border: none; color: var(--accent); font-size: 12.5px; font-weight: 700; padding: 0; text-decoration: none; }
-  .dl-actions button.del { color: var(--danger); }
+  .dl-actions button.del { color: var(--danger-text); }
   .fab {
     position: fixed; right: 18px; bottom: calc(var(--nav-h, 64px) + 16px); z-index: 8;
     width: 54px; height: 54px; border-radius: 50%; border: none;
@@ -283,7 +285,7 @@
   .hw-card .hw-subj { font-weight: 800; margin-bottom: 4px; }
   .hw-card .hw-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
   .hw-card .dl-meta { margin-top: 8px; }
-  .file-card .badge { font-size: 11px; font-weight: 800; color: var(--accent-2); margin-left: 6px; }
+  .file-card .badge { font-size: 11px; font-weight: 800; color: var(--accent-2-text); margin-left: 6px; }
   .file-card .badge.sum { color: var(--accent); }
   .file-card .fbody { min-width: 0; }
   .file-card .fbody.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -316,7 +318,7 @@
   .folder-card .go { margin-left: auto; color: var(--hint); font-size: 18px; }
   .file-back { background: none; border: none; color: var(--accent); font-weight: 700; font-size: 14px; padding: 0; margin: 0 0 6px; }
   .file-del { display: block; width: 100%; margin-top: 10px; background: none; border: none;
-              color: var(--danger); font-size: 14px; font-weight: 700; padding: 8px; }
+              color: var(--danger-text); font-size: 14px; font-weight: 700; padding: 8px; }
   .file-del.inline { display: inline; width: auto; margin: 0 0 10px; padding: 0; font-size: 13px; }
   .file-subj-title { font-size: 19px; font-weight: 800; margin: 0 2px 10px; word-break: break-word; }
   #file-list > .group-title:first-child { margin-top: 2px; }
@@ -384,6 +386,9 @@
 
   /* Поиск расписания */
   .chips-row { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 12px; }
+  /* фильтры поиска — одной строкой с прокруткой вбок: «Аудитории» на узком
+     iPhone уезжали на вторую строку (дизайн-ревью, п. 5) */
+  #target-types { flex-wrap: nowrap; overflow-x: auto; margin-right: -18px; padding-right: 18px; }
   .chips-row button {
     flex: none; background: var(--bg-card); color: var(--hint);
     border: 1px solid var(--border); border-radius: 999px;
@@ -448,7 +453,7 @@
   }
   .think summary {
     cursor: pointer;
-    color: var(--accent-2);
+    color: var(--accent-2-text);
     font-size: 12px;
     font-weight: 700;
     list-style: none;
@@ -606,7 +611,7 @@
     color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
   #sdo-cookie { margin-bottom: 12px; font-family: ui-monospace, Menlo, monospace; }
   button.ghost { width: 100%; background: none; border: none; color: var(--hint); font-size: 14px; font-weight: 600; padding: 12px; margin-top: 2px; }
-  button.ghost.danger { color: var(--danger); }
+  button.ghost.danger { color: var(--danger-text); }
   .sub-task { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; margin-bottom: 12px; }
   .fpick { display: flex; align-items: center; gap: 12px; background: var(--bg-card); border: 1px dashed var(--border);
     border-radius: var(--radius-sm); padding: 14px; margin-bottom: 12px; }
@@ -614,10 +619,10 @@
   .fpick > div { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .fpick .ic { font-size: 26px; }
   .fpick .go { color: var(--accent); font-weight: 700; }
-  .fpick .x { background: none; border: none; color: var(--danger); font-size: 16px; padding: 4px; }
+  .fpick .x { background: none; border: none; color: var(--danger-text); font-size: 16px; padding: 4px; }
   .sub-done { text-align: center; padding: 6px 0 2px; }
   .sub-done .big { font-size: 52px; }
-  .dl-actions button.submit { color: var(--ok); }
+  .dl-actions button.submit { color: var(--ok-text); }
 
   /* ── СДО → Баллы (js/sdo.js): цвета категорий БРС ── */
   :root { --s-tk: #a78bfa; --s-pos: #34d399; --s-sk: #60a5fa; --s-td: #f472b6; --s-dost: #fbbf24; --s-dop: #2dd4bf; }
@@ -636,7 +641,7 @@
   .sc-sum .pips { display: flex; gap: 6px; margin-top: 12px; }
   .sc-sum .pips i { flex: 1; height: 6px; border-radius: 6px; background: rgba(255,255,255,.25); }
   .sc-sum .pips i.on { background: #fff; }
-  .legend { display: flex; gap: 12px; margin: 2px 4px 12px; font-size: 12px; color: var(--hint); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 2px 4px 12px; font-size: 12px; color: var(--hint); }
   .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
   .sc-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 18px; padding: 14px; margin-bottom: 10px; }
   .sc-card.tap:active { transform: scale(.985); }
@@ -651,8 +656,8 @@
   .sc-foot b { color: var(--text); }
   .zach { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--hint); }
   .zach b { color: var(--text); }
-  .zach > b { color: var(--warn); min-width: 34px; text-align: right; }
-  .zach.ok > b { color: var(--ok); }
+  .zach > b { color: var(--warn-text); min-width: 34px; text-align: right; }
+  .zach.ok > b { color: var(--ok-text); }
   .zach .zb { position: relative; flex: 1; height: 5px; border-radius: 5px; background: var(--bg-raised); }
   .zach .zb i { display: block; height: 100%; border-radius: 5px; background: var(--warn); }
   .zach.ok .zb i { background: var(--ok); }
@@ -661,8 +666,8 @@
   .sd-head .n { font-size: 44px; font-weight: 900; letter-spacing: -1.5px; line-height: 1; }
   .sd-head .of { color: var(--hint); font-weight: 700; padding-bottom: 5px; }
   .sd-head .st { margin-left: auto; text-align: right; font-size: 12px; color: var(--hint); }
-  .sd-head .st b { display: block; font-size: 15px; color: var(--warn); }
-  .sd-head .st b.ok { color: var(--ok); }
+  .sd-head .st b { display: block; font-size: 15px; color: var(--warn-text); }
+  .sd-head .st b.ok { color: var(--ok-text); }
   .gbar { position: relative; margin: 22px 0 26px; }
   .gtrack { height: 10px; border-radius: 10px; background: var(--bg-raised); display: flex; overflow: hidden; }
   .gtrack i { height: 100%; }
@@ -694,8 +699,8 @@
   .wrow:first-child { border-top: none; }
   .wrow:active { opacity: .6; }
   .wrow .wi { width: 26px; height: 26px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900; flex: none; background: var(--bg-raised); color: var(--hint); }
-  .wrow.ok .wi { background: rgba(61,220,132,.16); color: var(--ok); }
-  .wrow.low .wi, .wrow.miss .wi { background: rgba(255,99,99,.16); color: var(--danger); }
+  .wrow.ok .wi { background: rgba(61,220,132,.16); color: var(--ok-text); }
+  .wrow.low .wi, .wrow.miss .wi { background: rgba(255,99,99,.16); color: var(--danger-text); }
   .wrow.wait .wi { background: rgba(124,127,245,.18); }
   .wrow.todo .wi { background: var(--accent); }
   .wrow.soon { opacity: .55; }
@@ -704,8 +709,8 @@
   .wrow .ws { text-align: right; font-size: 12px; color: var(--hint); line-height: 1.15; white-space: nowrap; }
   .wrow .ws b { font-size: 16px; color: var(--text); }
   .wrow .ws small { display: block; font-size: 10.5px; }
-  .wrow.ok .ws b { color: var(--ok); }
-  .wrow.low .ws b { color: var(--danger); }
+  .wrow.ok .ws b { color: var(--ok-text); }
+  .wrow.low .ws b { color: var(--danger-text); }
   .wrow .chev { color: var(--hint); font-size: 18px; }
 
   /* ── СДО: задание и сдача нескольких файлов ── */
@@ -714,9 +719,9 @@
   .t-due b { font-size: 17px; }
   .t-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   .t-tag { font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px; background: var(--bg-raised); color: var(--hint); white-space: nowrap; }
-  .t-tag.ok { background: rgba(61,220,132,.14); color: var(--ok); }
-  .t-tag.warn { background: rgba(255,178,56,.14); color: var(--warn); }
-  .t-tag.bad { background: rgba(255,99,99,.14); color: var(--danger); }
+  .t-tag.ok { background: rgba(61,220,132,.14); color: var(--ok-text); }
+  .t-tag.warn { background: rgba(255,178,56,.14); color: var(--warn-text); }
+  .t-tag.bad { background: rgba(255,99,99,.14); color: var(--danger-text); }
   .t-desc { font-size: 14px; line-height: 1.5; margin: 12px 0 0; overflow-wrap: anywhere; }
   .t-file { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--border); }
   .t-file:first-child { border-top: none; }
@@ -737,7 +742,7 @@
   .ico.lg { width: 28px; height: 28px; }
   .ico.xl { width: 52px; height: 52px; stroke-width: 1.6; }
   .ico.acc { color: var(--accent); }
-  .ico.ok { color: var(--ok); }
+  .ico.ok { color: var(--ok-text); }
   nav.tabs button .ic .ico { width: 24px; height: 24px; vertical-align: 0; }
   .chat-head-btns .ico, .seg .ico, .chips-row .ico, .link-btn .ico { width: 16px; height: 16px; vertical-align: -3px; }
   h2.section .ttl { display: inline-flex; align-items: center; gap: 6px; }
@@ -771,7 +776,7 @@
   .chat-avatar { color: #fff; }
   .dl-actions { flex-wrap: wrap; row-gap: 6px; }
   /* настроение в тексте — тоже свои: хлопушка и помахать рукой */
-  .ico.mood { color: var(--warn); stroke-width: 1.8; }
+  .ico.mood { color: var(--warn-text); stroke-width: 1.8; }
   .ico.wave { color: #fbbf24; transform-origin: 70% 80%; animation: wave 1.6s ease 0.4s 1; }
   @keyframes wave { 0%, 100% { transform: none; } 20%, 60% { transform: rotate(14deg); } 40%, 80% { transform: rotate(-8deg); } }
   .hero .ico.mood { color: #fff; }
@@ -832,10 +837,10 @@
   .nt-days, .nt-mins { display: flex; gap: 6px; margin-top: 12px; }
   .nt-days button, .nt-mins button { flex: 1; min-width: 0; padding: 8px 0; border-radius: 10px; border: 1px solid var(--border);
                background: none; color: var(--hint); font-size: 13px; font-weight: 600; }
-  .nt-days button.we { color: var(--danger); opacity: .8; }
+  .nt-days button.we { color: var(--danger-text); opacity: .8; }
   .nt-days button.on, .nt-mins button.on { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
   .campus-pill { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px 6px; padding: 7px 12px; border-radius: 999px;
-                 background: rgba(255,178,56,.14); border: 1px solid rgba(255,178,56,.35); color: var(--warn); font-size: 13px; font-weight: 600; }
+                 background: rgba(255,178,56,.14); border: 1px solid rgba(255,178,56,.35); color: var(--warn-text); font-size: 13px; font-weight: 600; }
   .campus-pill .ico { width: 15px; height: 15px; }
   .nt-remind { padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--border); }
   .nt-remind .nt-mins { margin-top: 8px; }
@@ -856,20 +861,25 @@
   .stale-pill { background: rgba(154,160,172,.12); border-color: var(--border); color: var(--hint); font-weight: 500; }
   .lesson .l-score { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; vertical-align: 1px;
                      font-size: 11.5px; font-weight: 700; color: var(--hint); background: var(--bg-raised); border: 1px solid var(--border); }
-  .lesson .l-score.ok { color: var(--ok); border-color: rgba(61,220,132,.35); background: rgba(61,220,132,.1); }
+  .lesson .l-score.ok { color: var(--ok-text); border-color: rgba(61,220,132,.35); background: rgba(61,220,132,.1); }
   /* свои напоминания о дедлайне */
-  .chip.remind { color: var(--warn); border-color: rgba(255,178,56,.3); background: rgba(255,178,56,.1); }
+  .chip.remind { color: var(--warn-text); border-color: rgba(255,178,56,.3); background: rgba(255,178,56,.1); }
   .chip.remind .ico { width: 13px; height: 13px; }
   .rm-list { margin: 4px 0 6px; }
   .rm-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border); color: var(--text); }
-  .rm-row .ico { color: var(--warn); }
+  .rm-row .ico { color: var(--warn-text); }
   .rm-row span { flex: 1; }
   .rm-row button { background: none; border: none; color: var(--hint); padding: 4px; }
   .rm-presets { margin-top: 14px; }
   .rm-row button .ico { color: var(--hint); }
   /* светлая тема Telegram (core.js: applyTheme ставит data-theme) */
   :root { --switch-off: #3a3f4d; }
-  :root[data-theme="light"] { --switch-off: #d1d1d6; }
+  :root[data-theme="light"] { --switch-off: #d1d1d6;
+    /* светлая тема: зелёные, оранжевые и бирюзовые надписи на светлом фоне
+       читались плохо (дизайн-ревью, п. 3) — тексту свои, более тёмные оттенки */
+    --ok-text: #15803d; --warn-text: #b45309; --accent-2-text: #0f766e; --danger-text: #c62828; }
+  :root[data-theme="light"] .sc-kind.za { color: #047857; background: rgba(4,120,87,.1); }
+  :root[data-theme="light"] .sc-kind.ex { color: #1d4ed8; background: rgba(29,78,216,.09); }
   :root[data-theme="light"] .sheet-backdrop { background: rgba(0,0,0,.32); }
   :root[data-theme="light"] .lesson .l-score { background: #f2f2f7; }
   /* ── Знакомство при первом входе ── */
@@ -907,7 +917,7 @@
   .card.hist { margin-top: 12px; }
   .hist-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
   .hist-delta { font-size: 12.5px; font-weight: 700; color: var(--hint); padding: 2px 9px; border-radius: 999px; background: var(--bg-raised); }
-  .hist-delta.up { color: var(--ok); background: rgba(61,220,132,.12); }
+  .hist-delta.up { color: var(--ok-text); background: rgba(61,220,132,.12); }
   .hist-svg { width: 100%; height: 110px; display: block; overflow: visible; }
   .hist-line { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
   .hist-area { fill: color-mix(in srgb, var(--accent) 16%, transparent); stroke: none; }

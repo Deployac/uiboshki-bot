@@ -125,7 +125,7 @@ function switchTab(name) {
   if (name === "deadlines") loadDeadlines();
   if (name === "files") loadFiles();
   if (name === "search") { renderRecent(); loadPins().then(renderRecent); }
-  if (name === "chat") requestAnimationFrame(syncNavHeight);
+  if (name === "chat") requestAnimationFrame(() => { syncNavHeight(); scrollChatToEnd(); });
   if (tg && tg.BackButton) {
     tg.BackButton.offClick(closeFolder);
     tg.BackButton.offClick(sdoBack);

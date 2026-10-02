@@ -94,6 +94,14 @@ function switchChat(i) {
   chatId = c.id; chatLog = c.log;
   clearAttachment();
   renderChat();
+  scrollChatToEnd();
+}
+
+// Чат с историей открывается на последнем сообщении, как в Telegram: раньше —
+// сверху, на самых старых (дизайн-ревью, п. 1). Пустой чат не крутим.
+function scrollChatToEnd() {
+  if (!chatLog.length) return;
+  requestAnimationFrame(() => window.scrollTo(0, document.documentElement.scrollHeight));
 }
 function deleteChat(i) {
   const c = chats[i];
