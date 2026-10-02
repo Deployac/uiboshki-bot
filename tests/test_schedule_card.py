@@ -70,6 +70,11 @@ def test_card_endpoint(monkeypatch):
     _img(r.content)
     assert c.get(url).status_code == 200 and len(calls) == 1       # второй раз — из памяти
     assert c.get(url.split("?")[0] + "?sig=bad").status_code == 403
+    # превью — отдельным маленьким файлом (живой тест: с одной ссылкой на
+    # превью и фото картинка в чате приходила обрезанной снизу)
+    t = c.get(url + "&thumb=1")
+    assert t.status_code == 200 and len(t.content) < len(r.content)
+    assert Image.open(io.BytesIO(t.content)).width == schedule_card.THUMB_W and len(calls) == 1
 
 
 def test_build_own_today(monkeypatch):
@@ -85,4 +90,5 @@ async def test_inline_sends_photos_when_server_known(monkeypatch):
     ans = await _ask("")
     assert [type(r).__name__ for r in ans.results] == ["InlineQueryResultPhoto"] * 3
     assert all(r.photo_url.startswith("https://bot.example/card/") for r in ans.results)
+    assert all(r.thumbnail_url == r.photo_url + "&thumb=1" for r in ans.results)
     assert (await _ask("завтра")).results[0].photo_url.split("/card/")[1].startswith("tomorrow-")

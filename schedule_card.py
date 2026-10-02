@@ -62,9 +62,24 @@ def _pairs_word(n: int) -> str:
 
 
 def _jpeg(img) -> bytes:
+    # progressive: если Telegram всё же получит файл не целиком, видна вся
+    # картинка чуть мутнее, а не верх и серая полоса (живой тест, 2 октября)
     buf = io.BytesIO()
-    img.save(buf, "JPEG", quality=90)
+    img.save(buf, "JPEG", quality=85, optimize=True, progressive=True)
     return buf.getvalue()
+
+
+THUMB_W = 320
+
+
+def thumbnail(data: bytes) -> bytes:
+    """Маленькое превью для списка inline-результатов — отдельным файлом по
+    своей ссылке (?thumb=1). Раньше превью и фото были одной ссылкой: Telegram
+    качает превью с ограничением размера и, похоже, тем же файлом отдавал и
+    фото в чат — картинка в сообщении обрезалась снизу серым."""
+    img = Image.open(io.BytesIO(data))
+    img.thumbnail((THUMB_W, THUMB_W * 4))
+    return _jpeg(img)
 
 
 def _header(d, title: str, subtitle: str):
@@ -188,7 +203,8 @@ def sign(key: str) -> str:
 
 
 def card_url(base: str, kind: str, target_type: int = 0, target_id: int = 0) -> str:
-    """kind: today / tomorrow / week (своя группа) или target (неделя найденного)."""
+    """kind: today / tomorrow / week (своя группа) или target (неделя найденного).
+    Превью для inline — та же ссылка с «&thumb=1» (handlers/inline._photo)."""
     key = f"{kind}-{target_type}-{target_id}-{int(time.time()) // 600}"
     return f"{base.rstrip('/')}/card/{key}.jpg?sig={sign(key)}"
 

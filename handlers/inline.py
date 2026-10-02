@@ -54,8 +54,10 @@ def _article(rid: str, title: str, description: str, text: str) -> InlineQueryRe
 
 
 def _photo(rid: str, url: str, title: str, description: str, caption: str) -> InlineQueryResultPhoto:
+    # превью — своим адресом (?thumb=1): с одной ссылкой на двоих фото в чате
+    # приходило обрезанным снизу
     return InlineQueryResultPhoto(
-        id=hashlib.md5(rid.encode()).hexdigest(), photo_url=url, thumbnail_url=url,
+        id=hashlib.md5(rid.encode()).hexdigest(), photo_url=url, thumbnail_url=url + "&thumb=1",
         title=title, description=description[:120], caption=caption, reply_markup=_app_kb(),
     )
 
