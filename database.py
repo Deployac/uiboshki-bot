@@ -117,6 +117,11 @@ async def init_db():
             await db.execute("ALTER TABLE files ADD COLUMN category TEXT")
         except Exception:
             pass  # колонка уже есть
+        # Название до /tidyfiles («Лекция 3» вместо «ЛК3_бизнес») — для отката
+        try:
+            await db.execute("ALTER TABLE files ADD COLUMN orig_title TEXT")
+        except Exception:
+            pass  # колонка уже есть
         # Откуда файл пришёл автоматически ("sdo:<cmid>:<имя>" — выгрузка из
         # СДО, см. sdo_files.py): повторная выгрузка не плодит дубли.
         try:
@@ -664,6 +669,23 @@ async def update_file_meta(fid: int, title: str, subject: str, category: str):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("UPDATE files SET title=?, subject=?, category=? WHERE id=?", (title, subject, category, fid))
         await db.commit()
+
+
+async def rename_files(changes: dict[int, str]) -> int:
+    """Новые названия (file_names.tidy_titles); старое — в orig_title,
+    если его там ещё нет (повторный /tidyfiles не теряет самое первое)."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.executemany("UPDATE files SET orig_title = COALESCE(orig_title, title), title = ? WHERE id = ?",
+                             [(t, i) for i, t in changes.items()])
+        await db.commit()
+    return len(changes)
+
+
+async def undo_file_renames() -> int:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cur = await db.execute("UPDATE files SET title = orig_title, orig_title = NULL WHERE orig_title IS NOT NULL")
+        await db.commit()
+        return cur.rowcount
 
 
 async def get_files(subject: str = None) -> list[dict]:

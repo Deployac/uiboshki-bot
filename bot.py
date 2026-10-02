@@ -64,6 +64,7 @@ BOT_COMMANDS = [
 STAROSTA_COMMANDS = BOT_COMMANDS + [
     BotCommand(command="announce", description="📣 Рассылка группе"),
     BotCommand(command="sdofiles", description="📥 Файлы из СДО"),
+    BotCommand(command="tidyfiles", description="🧹 Понятные названия файлов"),
     BotCommand(command="stats", description="📊 Статистика"),
     BotCommand(command="pulsecheck", description="🩺 Пускает ли Пульс"),
     BotCommand(command="backup", description="💾 Копия базы"),

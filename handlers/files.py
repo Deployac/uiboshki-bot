@@ -606,6 +606,8 @@ async def _sdo_import(bot: Bot, chat_id: int, status: Message, files: list):
     if st.get("expired"):
         lines.append("⚠️ Кука СДО протухла посередине — обнови SDO_SESSION_COOKIE и повтори /sdofiles.")
     lines.append("\nСмотреть: /files или в приложении: ☰ Ещё → Файлы.")
+    if st["added"]:
+        lines.append("Названия как в СДО — сделать понятными («Лекция 3. Тема»): /tidyfiles")
     await bot.send_message(chat_id, "\n".join(lines), parse_mode="HTML")
 
 
@@ -617,6 +619,57 @@ async def cmd_backup(message: Message):
         return
     from backup import send_backup
     await send_backup(message.bot, message.chat.id, silent=False)
+
+
+# ── Понятные названия файлов (/tidyfiles) ───────────────────────────────────
+
+@router.message(Command("tidyfiles"))
+async def cmd_tidyfiles(message: Message):
+    """«ЛК3_бизнес.pdf» → «Лекция 3. Бизнес» по всем предметам: сначала
+    показать, что поменяется; «/tidyfiles undo» — вернуть как было."""
+    if not is_starosta(message.from_user.id):
+        await message.answer("❌ Только для старосты.")
+        return
+    from database import undo_file_renames
+    from file_names import preview, tidy_titles
+    if (message.text or "").split()[1:2] == ["undo"]:
+        n = await undo_file_renames()
+        await message.answer(f"↩️ Вернул прежние названия: {n} файлов." if n else "Нечего возвращать.")
+        return
+    files = await get_files()
+    changes = tidy_titles(files)
+    if not changes:
+        await message.answer("✨ Все названия уже понятные — менять нечего.")
+        return
+    lines = preview(files, changes)
+    more = len(changes) - min(len(changes), 25)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=f"✅ Переименовать ({len(changes)})", callback_data="tidy:yes"),
+        InlineKeyboardButton(text="Отмена", callback_data="tidy:no"),
+    ]])
+    await message.answer(
+        "🧹 <b>Понятные названия файлов</b>\nТип и номер по названию, тема — если есть. Вот что поменяется:"
+        + "\n".join(lines) + (f"\n\n…и ещё {more}" if more > 0 else "")
+        + "\n\nВернуть как было — <code>/tidyfiles undo</code>.",
+        parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("tidy:"))
+async def tidy_confirm(callback: CallbackQuery):
+    if not is_starosta(callback.from_user.id):
+        await callback.answer("Только для старосты", show_alert=True)
+        return
+    if callback.data != "tidy:yes":
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.answer("Отменено")
+        return
+    from database import rename_files
+    from file_names import tidy_titles
+    n = await rename_files(tidy_titles(await get_files()))     # заново: файлы могли измениться
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.message.answer(f"✅ Переименовал {n} файлов. Вернуть — <code>/tidyfiles undo</code>.",
+                                  parse_mode="HTML")
+    await callback.answer()
 
 
 # ── Восстановление базы из копии (/restore) ─────────────────────────────────
