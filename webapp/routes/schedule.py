@@ -23,7 +23,7 @@ _card_cache: dict[str, tuple[float, bytes]] = {}
 
 
 @router.get("/card/{key}.jpg")
-async def schedule_card_image(key: str, sig: str = ""):
+async def schedule_card_image(key: str, sig: str = "", thumb: int = 0):
     import asyncio
     import time
     from datetime import datetime
@@ -35,7 +35,7 @@ async def schedule_card_image(key: str, sig: str = ""):
         raise HTTPException(403, "Неверная ссылка")
     hit = _card_cache.get(key)
     if hit and hit[0] > time.time():
-        return Response(hit[1], media_type="image/jpeg")
+        return _card_response(hit[1], thumb)
     kind, target_type, target_id = parsed
     now = datetime.now(TZ)
     if kind == "target":
@@ -53,6 +53,14 @@ async def schedule_card_image(key: str, sig: str = ""):
     if len(_card_cache) > 200:
         _card_cache.clear()
     _card_cache[key] = (time.time() + 600, data)
+    return _card_response(data, thumb)
+
+
+def _card_response(data: bytes, thumb: int) -> Response:
+    """Картинка целиком или маленькое превью (inline: thumbnail_url — свой адрес)."""
+    if thumb:
+        import schedule_card
+        data = schedule_card.thumbnail(data)
     return Response(data, media_type="image/jpeg")
 
 
