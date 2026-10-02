@@ -173,30 +173,47 @@ async def send_deadline_reminders(bot: Bot):
 
 
 async def check_lesson_reminders(bot: Bot):
+    """Раз в минуту: кому пора напомнить о паре. Если в ближайшие часы пар нет
+    — выходим, не трогая базу; иначе пользователи и их ответы про предметы
+    по выбору — двумя запросами на всех, а расписание разбирается один раз на
+    каждый набор скрытых предметов, а не на каждого человека."""
     global _sent_reminders
     try:
+        import notify_prefs
+        from config import OPTIONAL_SUBJECTS
+        from database import get_all_optional_answers, get_reminder_users
+        from optional_subjects import HIDE, no_filter
         now   = datetime.now(TZ)
         today = now.date()
         _sent_reminders = {k for k in _sent_reminders if k[0] == today}
 
-        from optional_subjects import apply_for
-        raw    = await fetch_schedule_raw()
-        users  = await get_all_subscribed_users()
+        raw = await fetch_schedule_raw()
+        horizon = max(spec["max"] for spec in notify_prefs.REMIND.values()) * 60 + 120
+        with no_filter():
+            upcoming = [e for e in parse_events_for_date(raw, today)
+                        if e["time_start"] and 0 <= (e["time_start"] - now).total_seconds() <= horizon]
+        if not upcoming:
+            return
 
-        for uid in users:
-            user = await get_user(uid)
-            if not user:
-                continue
-            import notify_prefs
+        answers = await get_all_optional_answers()
+        by_hide: dict[frozenset, list] = {}
+        for user in await get_reminder_users():
+            uid = user["user_id"]
             prefs = notify_prefs.merge(user.get("notify"))
             if not notify_prefs.allowed(prefs, "lessons", today.weekday()):
                 continue
-            await apply_for(uid)
-            events = parse_events_for_date(raw, today)
+            mine = answers.get(uid, {})
+            hide = frozenset(s for s in OPTIONAL_SUBJECTS if not mine.get(s))
+            if hide not in by_hide:
+                token = HIDE.set(hide)
+                try:
+                    by_hide[hide] = parse_events_for_date(raw, today)
+                finally:
+                    HIDE.reset(token)
 
             # У каждой пары свой сценарий: первая за день, после короткой
             # перемены или после большого перерыва — и своё «за сколько».
-            for e, remind_mins, kind in notify_prefs.plan_reminders(events, prefs):
+            for e, remind_mins, kind in notify_prefs.plan_reminders(by_hide[hide], prefs):
                 t = e["time_start"]
                 diff = abs((t - (now + timedelta(minutes=remind_mins))).total_seconds())
                 if diff > 60:

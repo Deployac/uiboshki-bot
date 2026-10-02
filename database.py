@@ -312,6 +312,23 @@ async def get_all_subscribed_users() -> list[int]:
         cursor = await db.execute("SELECT user_id FROM users WHERE subscribed = 1")
         return [r[0] for r in await cursor.fetchall()]
 
+async def get_reminder_users() -> list[dict]:
+    """Подписчики с их настройками уведомлений — одним запросом (напоминания
+    о парах проверяются раз в минуту, по запросу на человека — лишнее)."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        cursor = await db.execute("SELECT user_id, notify FROM users WHERE subscribed = 1")
+        return [{"user_id": r[0], "notify": r[1]} for r in await cursor.fetchall()]
+
+
+async def get_all_optional_answers() -> dict[int, dict[str, bool]]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        out: dict[int, dict[str, bool]] = {}
+        for uid, subject, attend in await (await db.execute(
+                "SELECT user_id, subject, attend FROM optional_subjects")).fetchall():
+            out.setdefault(uid, {})[subject] = bool(attend)
+        return out
+
+
 async def set_notify(user_id: int, prefs: dict):
     import json
     async with aiosqlite.connect(DATABASE_PATH) as db:
