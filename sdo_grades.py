@@ -340,16 +340,19 @@ def parse_task_page(html: str) -> dict:
     (introattachment и вложенные в описание) и свои уже сданные файлы."""
     soup = BeautifulSoup(html, "html.parser")
     main = soup.find(attrs={"role": "main"}) or soup
+    # В Moodle 4 описание и файлы задания — в шапке активности (activity-header),
+    # она стоит в #region-main ПЕРЕД <div role="main">, а не внутри него.
+    region = soup.find(id="region-main") or main
     title_el = main.find(["h2", "h1"]) or soup.find(["h1", "h2"])
     teacher, mine, seen = [], [], set()
-    for a in main.find_all("a", href=_PLUGINFILE):
+    for a in region.find_all("a", href=_PLUGINFILE):
         href = a["href"].split("?")[0]
         if href in seen:
             continue
         seen.add(href)
         item = {"name": _file_name(a), "url": href}
         (mine if "assignsubmission_file" in href else teacher).append(item)
-    intro = main.find(class_=re.compile(r"activity-description")) or main.find(id="intro")
+    intro = region.find(class_=re.compile(r"activity-description")) or region.find(id="intro")
     text = ""
     if intro:
         for a in intro.find_all("a", href=_PLUGINFILE):
