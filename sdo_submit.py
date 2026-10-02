@@ -16,6 +16,7 @@
 Ошибки — SubmitError с понятным текстом для WebApp.
 """
 
+import json
 import logging
 import re
 
@@ -97,6 +98,7 @@ def parse_edit_page(html: str) -> dict:
             break
     ctx = re.search(r"\"context\":\{\"id\":\"?(\d+)", html) or re.search(r"\"contextid\":\"?(\d+)", html)
     client = re.search(r"\"client_id\":\"([0-9a-z]+)\"", html)
+    accepted, labels = accepted_types(html, soup)
     maxbytes = re.search(r"\"maxbytes\":\"?(-?\d+)", html)
     maxfiles = re.search(r"\"maxfiles\":\"?(-?\d+)", html)
     if not (repo_id and ctx and fields.get("sesskey")):
@@ -111,7 +113,72 @@ def parse_edit_page(html: str) -> dict:
         "client_id": client.group(1) if client else "",
         "maxbytes": int(maxbytes.group(1)) if maxbytes else 0,
         "maxfiles": int(maxfiles.group(1)) if maxfiles else 0,
+        "accepted": accepted,
+        "labels": labels,
     }
+
+
+def accepted_types(html: str, soup: BeautifulSoup) -> tuple[list[str], list[str]]:
+    """Какие файлы принимает задание — как пишет сам СДО под полем файлов
+    («Допустимые типы файлов: Архив (ZIP) .zip»). → ([".zip"], ["Архив (ZIP)"]);
+    пустой список — любые. Живой случай 02.10: задание брало только ZIP, а бот
+    молча пытался грузить PDF и Word, и СДО отказывал без объяснений."""
+    exts: list[str] = []
+    m = re.search(r"\"accepted_types\":(\[[^\]]*\]|\"[^\"]*\")", html)
+    if m:
+        try:
+            raw = json.loads(m.group(1))
+        except ValueError:
+            raw = []
+        raw = raw if isinstance(raw, list) else [raw]
+        exts = [e.strip().lower() for e in raw if isinstance(e, str) and e.strip().startswith(".")]
+        if any(isinstance(e, str) and e.strip() == "*" for e in raw):
+            exts = []
+    labels = []
+    for li in soup.select(".form-filetypes-descriptions li"):
+        small = li.find("small")
+        tail = small.get_text(" ", strip=True) if small else ""
+        if small:
+            small.extract()
+        name = li.get_text(" ", strip=True)
+        if name:
+            labels.append(name)
+        if not m:          # нет настроек файлового менеджера — расширения из подписи
+            exts += [e.lower() for e in re.findall(r"\.[0-9A-Za-z]+", tail)]
+    return sorted(set(exts), key=exts.index), labels
+
+
+def ext_ok(name: str, accepted: list[str]) -> bool:
+    return not accepted or any(name.lower().endswith(e) for e in accepted)
+
+
+def only_text(accepted: list[str]) -> str:
+    """«СДО примет здесь только .zip — упакуй работу в ZIP-архив»."""
+    text = "СДО примет здесь только " + ", ".join(accepted)
+    if accepted == [".zip"]:
+        text += " — упакуй работу в ZIP-архив"
+    return text
+
+
+async def submission_rules(cookie: str, cmid: int) -> dict:
+    """Что принимает задание — до выбора файлов: {"accepted", "labels",
+    "maxfiles", "maxbytes"} или {"closed": почему нельзя сдать}."""
+    from sdo_parser import get_checked
+    url = f"{SDO_BASE_URL}/mod/assign/view.php?id={cmid}"
+    async with httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=30) as client:
+        try:
+            resp = await get_checked(client, url + "&action=editsubmission")
+            try:
+                page = parse_edit_page(resp.text)
+            except NoForm as e:
+                view = await get_checked(client, url)
+                why = str(e) or submission_summary(view.text)
+                return {"closed": "СДО не даёт прикрепить файл" + (f": {why}" if why else " — сдача закрыта или срок вышел")}
+            except SubmitError as e:
+                return {"closed": str(e)}
+        except httpx.HTTPError:
+            raise SubmitError("СДО не отвечает — попробуй позже")
+    return {k: page[k] for k in ("accepted", "labels", "maxfiles", "maxbytes")}
 
 
 STATUS_ROWS = ("Состояние ответа", "Оставшееся время", "Последний срок", "Срок сдачи",
@@ -199,6 +266,9 @@ async def submit_file(cookie: str, cmid: int, name: str = "", data: bytes = b"",
                 raise SubmitError(f"в этом задании файл не больше {page['maxbytes'] // (1024 * 1024) or 1} МБ")
             if page["maxfiles"] > 0 and len(files) > page["maxfiles"]:
                 raise SubmitError(f"в этом задании можно прикрепить не больше {page['maxfiles']} файл(ов)")
+            bad = [n for n, _ in files if not ext_ok(n, page["accepted"])]
+            if bad:
+                raise SubmitError(f"«{bad[0]}» не подойдёт: {only_text(page['accepted'])}")
             for fname, fdata in files:
                 await _upload(client, page, fname, fdata)
             form = dict(page["fields"], submitbutton="Сохранить")
