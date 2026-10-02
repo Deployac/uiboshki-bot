@@ -742,7 +742,7 @@ async def _chat_file_request(text: str) -> dict | None:
         msg = "🤔 По какому предмету? Подходят: " + "; ".join(subjects[:8]) + ". Напиши чуть подробнее."
         return {"content": msg, "html": esc(msg), "reasoning": ""}
     if not items:
-        msg = f"🤷 В папке «{subjects[0]}» такого не нашёл — загляни во вкладку «Файлы»."
+        msg = f"🤷 В папке «{subjects[0]}» такого не нашёл — загляни в «Файлы» (☰ Ещё)."
         return {"content": msg, "html": esc(msg), "reasoning": ""}
     with_text = await get_file_ids_with_text()
     msg = f"📁 {subjects[0]} — " + ("вот файл:" if len(items) == 1 else f"нашёл {len(items)}" +

@@ -726,7 +726,7 @@
   h2.section .ttl { display: inline-flex; align-items: center; gap: 6px; }
   .more-grid .sq { color: #fff; }
   .more-grid .sq .ico { width: 30px; height: 30px; stroke-width: 1.8; }
-  .more-grid .sq.t-search { background: linear-gradient(145deg, #4a8ff7, #3164d9); }
+  .more-grid .sq.t-files { background: linear-gradient(145deg, #4a8ff7, #3164d9); }
   .more-grid .sq.t-cal { background: linear-gradient(145deg, #38bdf8, #0284c7); }
   .more-grid .sq.t-phone { background: linear-gradient(145deg, #8b7cf6, #6a4fe0); }
   .ftype { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
@@ -765,7 +765,7 @@
      Невыбранные — своим цветом, но приглушённые; выбранная — цветная плитка. ── */
   nav.tabs button[data-tab="today"]     { --tc: #4a8ff7; --tc2: #3164d9; }
   nav.tabs button[data-tab="sdo"]       { --tc: #c8915a; --tc2: #8d5a2b; }   /* капибара — карамельная */
-  nav.tabs button[data-tab="files"]     { --tc: #2bb3a3; --tc2: #2366b0; }
+  nav.tabs button[data-tab="search"]    { --tc: #2bb3a3; --tc2: #2366b0; }
   nav.tabs button[data-tab="chat"]      { --tc: #9b7cf6; --tc2: #6a4fe0; }
   nav.tabs button[data-tab="more"]      { --tc: #f06292; --tc2: #c2185b; }
   nav.tabs button .ic { color: var(--tc); opacity: .6; transition: opacity .15s ease; }
