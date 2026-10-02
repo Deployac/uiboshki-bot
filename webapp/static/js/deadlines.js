@@ -73,6 +73,7 @@ function renderDeadline(item) {
   const actions = [];
   if (item.done) actions.push('<button onclick="event.stopPropagation(); toggleDeadline(' + item.id + ', false)">' + icon("undo") + ' Вернуть в активные</button>');
   if (item.can_submit && !item.done) actions.push('<button class="submit" onclick="event.stopPropagation(); openSubmit(' + item.id + ')">' + icon("upload") + ' Сдать</button>');
+  if (!item.done) actions.push('<button onclick="event.stopPropagation(); openRemind(' + item.id + ')">' + icon("bell") + ' Напомнить</button>');
   if (isLink) actions.push('<a href="#" onclick="event.stopPropagation(); openLink(' + escapeHtml(JSON.stringify(desc)) + '); return false;">' + icon("link") + ' Задание</a>');
   if (item.can_edit) actions.push('<button onclick="event.stopPropagation(); openAddSheet(' + item.id + ')">' + icon("edit") + ' Изменить</button>');
   if (item.can_edit) actions.push('<button class="del" onclick="event.stopPropagation(); deleteDeadline(' + item.id + ')">' + icon("trash") + ' Удалить</button>');
@@ -82,11 +83,63 @@ function renderDeadline(item) {
       '<div class="dl-body">' +
         '<p class="dl-title">' + escapeHtml(item.subject) + '</p>' +
         (desc && !isLink ? '<p class="dl-desc">' + escapeHtml(desc) + '</p>' : '') +
-        '<div class="dl-meta">' + dueBadge(item) + (item.personal ? '<span class="chip">' + icon("user") + ' личный</span>' : '') + '</div>' +
+        '<div class="dl-meta">' + dueBadge(item) + (item.personal ? '<span class="chip">' + icon("user") + ' личный</span>' : '') +
+          (item.reminders || []).map(r => '<span class="chip remind">' + icon("bell") + ' ' + escapeHtml(r.label) + '</span>').join("") + '</div>' +
         (actions.length ? '<div class="dl-actions">' + actions.join("") + '</div>' : '') +
       '</div>' +
     '</div>'
   );
+}
+
+// ── Своё напоминание о дедлайне (deadline_reminders.py) ──────────────────
+
+let remindItem = null;
+
+function openRemind(id) {
+  haptic();
+  remindItem = deadlineIndex[id];
+  renderRemind();
+  document.getElementById("remind-sheet").classList.add("open");
+}
+
+function renderRemind() {
+  const it = remindItem;
+  const list = (it.reminders || []).map(r =>
+    '<div class="rm-row">' + icon("bell") + '<span>' + escapeHtml(r.label) + '</span>' +
+    '<button onclick="deleteRemind(' + escapeHtml(JSON.stringify(r.at)) + ')" aria-label="убрать">' + icon("cross") + '</button></div>').join("");
+  document.getElementById("remind-body").innerHTML =
+    '<h3>Напомнить</h3><p class="sheet-hint">' + escapeHtml(it.subject) + ' — ' + dueBadge(it).replace(/<[^>]+>/g, "") + '</p>' +
+    (list ? '<div class="rm-list">' + list + '</div>' : '') +
+    '<div class="nt-mins rm-presets">' +
+      '<button onclick="addRemind({preset:\'1d\'})">за день</button>' +
+      '<button onclick="addRemind({preset:\'3h\'})">за 3 часа</button>' +
+      '<button onclick="addRemind({preset:\'1h\'})">за час</button></div>' +
+    '<div class="nt-custom"><input type="datetime-local" id="remind-at">' +
+      '<button onclick="addRemind({at: document.getElementById(\'remind-at\').value})">OK</button></div>' +
+    '<button class="ghost" onclick="closeSheet(\'remind-sheet\')">Готово</button>';
+}
+
+async function addRemind(body) {
+  haptic();
+  if (body.at === "") { showToast("Выбери дату и время"); return; }
+  try {
+    const r = await api("/api/deadlines/" + remindItem.id + "/remind", { method: "POST", body: JSON.stringify(body) });
+    remindItem.reminders = (remindItem.reminders || []).concat([{ at: r.at, label: r.label }])
+      .sort((a, b) => a.at < b.at ? -1 : 1);
+    showToast("✓ Напомню " + r.label);
+    renderRemind();
+    loadDeadlines();
+  } catch (e) { showToast(e.message); }
+}
+
+async function deleteRemind(at) {
+  haptic();
+  try {
+    await api("/api/deadlines/" + remindItem.id + "/remind?at=" + encodeURIComponent(at), { method: "DELETE" });
+    remindItem.reminders = (remindItem.reminders || []).filter(r => r.at !== at);
+    renderRemind();
+    loadDeadlines();
+  } catch (e) { showToast(e.message); }
 }
 
 function openLink(url) {
