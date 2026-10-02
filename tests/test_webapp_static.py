@@ -91,3 +91,12 @@ def test_tab_bar_and_menu_use_own_icons():
     menu = HTML[HTML.index('id="more-menu"'):HTML.index('id="sdo-sheet"')]
     emoji = re.compile("[\U0001F300-\U0001FAFF☀-➿]")
     assert not emoji.search(nav) and not emoji.search(menu)
+
+
+def test_theme_follows_telegram_live():
+    # тема Telegram меняется без перезапуска приложения — перекрашиваемся сразу
+    core = JS["js/core.js"]
+    assert 'tg.onEvent("themeChanged", applyTheme)' in core
+    assert "dataset.theme" in core
+    css = (STATIC / "app.css").read_text(encoding="utf-8")
+    assert ':root[data-theme="light"]' in css and "var(--switch-off)" in css

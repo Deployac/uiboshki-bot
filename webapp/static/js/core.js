@@ -11,29 +11,37 @@ if (tg) {
   // @BotFather; закрыть — кнопкой «Закрыть».
   try { if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); } catch (e) {}
   try { tg.setHeaderColor("secondary_bg_color"); } catch (e) {}
+  applyTheme();
+  // Тему Telegram можно переключить, не закрывая приложение (или она
+  // меняется сама — «как в системе» вечером) — перекрашиваемся сразу.
+  try { tg.onEvent("themeChanged", applyTheme); } catch (e) {}
+}
+
+// Цвета приложения — из темы Telegram (тёмная/светлая, свой акцент).
+// data-theme на <html> — для мест, где светлой теме нужен свой цвет (app.css).
+function applyTheme() {
   const tp = tg.themeParams || {};
   const root = document.documentElement.style;
-  if (tp.bg_color)            root.setProperty("--bg", tp.bg_color);
+  const light = tg.colorScheme === "light";
+  document.documentElement.dataset.theme = light ? "light" : "dark";
+  const set = (name, value) => value ? root.setProperty(name, value) : root.removeProperty(name);
+  set("--bg", tp.bg_color);
   // Карточки должны отличаться от фона. Живой тест: из чата бота Telegram
   // дал серый secondary_bg_color, а с ярлыка «Домой» — такой же чёрный, как
   // фон, и карточки сливались. Берём первый цвет, отличный от фона, иначе
   // чуть светлее/темнее фона сами.
   const sameAsBg = c => !c || (tp.bg_color && c.toLowerCase() === tp.bg_color.toLowerCase());
   const card = [tp.section_bg_color, tp.secondary_bg_color].find(c => !sameAsBg(c))
-    || (tp.bg_color ? (tg.colorScheme === "light" ? "#f2f2f7" : "#1c1c1e") : "");
-  if (card) root.setProperty("--bg-card", card);
-  if (tp.text_color)          root.setProperty("--text", tp.text_color);
-  if (tp.hint_color)          root.setProperty("--hint", tp.hint_color);
-  if (tp.button_color)        root.setProperty("--accent", tp.button_color);
+    || (tp.bg_color ? (light ? "#f2f2f7" : "#1c1c1e") : "");
+  set("--bg-card", card);
+  set("--text", tp.text_color);
+  set("--hint", tp.hint_color);
+  set("--accent", tp.button_color);
   // Светлая тема Telegram: тёмные рамки и тяжёлая тень из тёмной палитры
   // смотрелись грубо (замечено в живом тесте) — делаем их светлыми.
-  if (tg.colorScheme === "light") {
-    root.setProperty("--border", tp.section_separator_color || "#e4e6ea");
-    root.setProperty("--bg-raised", "#eceef1");
-    root.setProperty("--shadow", "0 2px 10px rgba(0,0,0,0.06)");
-  } else if (tp.section_separator_color) {
-    root.setProperty("--border", tp.section_separator_color);
-  }
+  set("--border", light ? (tp.section_separator_color || "#e4e6ea") : tp.section_separator_color);
+  set("--bg-raised", light ? "#eceef1" : "");
+  set("--shadow", light ? "0 2px 10px rgba(0,0,0,0.06)" : "");
 }
 
 // Полный экран на телефоне (Telegram 8.0+): без шапки Telegram, как
