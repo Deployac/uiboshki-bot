@@ -1023,6 +1023,20 @@ README — витрина для тех, кто открывает репози�
   совпали один в один (кроме строки подключения). Два теста подменяют
   `STAROSTA_IDS`/`today_msk` теперь в `database.deadlines`, где они читаются.
 
+### v5.0.1 «Манул»
+- `handlers/files.py` (935 строк) разбит на четыре модуля: `files.py` —
+  просмотр, поиск, отправка файла и «скинь практику 3 по …» в чате;
+  `files_upload.py` — /upload пачкой; `files_sdo.py` — /sdofiles;
+  `files_admin.py` — /delfile, /backup, /tidyfiles, /restore, /syncfiles.
+- Подмодули подключены к роутеру `handlers.files` (снаружи и в тестах —
+  тот же `from handlers.files import router`). Порядок обработчиков тот же;
+  разошлись только команды и кнопки с непересекающимися фильтрами.
+- Баг из старого плана (документ ловился /syncfiles в любом состоянии FSM,
+  /addhw с файлом молчал) был закрыт `StateFilter(None)`, но без теста —
+  добавлен тест (без фильтра краснеет).
+- `title_from_filename` теперь из `handlers.files_upload`, `sdo_moves` — из
+  `handlers.files_sdo` (sdo_files.py и тесты поправлены).
+
 ## Как будет дальше
 
 Новую версию = новый тег `vX.Y.Z` на нужном коммите + запись сюда.

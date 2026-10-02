@@ -137,7 +137,7 @@ def test_match_subject_full_tie_is_not_guessed():
 
 async def test_misplaced_sdo_files_are_moved(db):
     from database import add_file, get_files, get_sdo_file_subjects, set_files_subject
-    from handlers.files import sdo_moves
+    from handlers.files_sdo import sdo_moves
     wrong = await add_file("Лекция 1-2", ECON[1], "tg1", "l.pptx", 0, category="lectures", source="sdo:7")
     ok = await add_file("ЛК1", ECON[1], "tg2", "lk1.pdf", 0, category="lectures", source="sdo:8:lk1.pdf")
     f = lambda src, subj: sdo_files.SdoFile(course_id=1, subject=subj, title="x", category="lectures",
@@ -250,6 +250,7 @@ async def test_sdofiles_command_dry_run_then_import(db, bot, monkeypatch):
     import sdo_parser
     import schedule_parser
     import handlers.files as hf
+    from handlers import files_sdo
 
     async def subjects(**_):
         return SUBJECTS
@@ -278,7 +279,7 @@ async def test_sdofiles_command_dry_run_then_import(db, bot, monkeypatch):
         cb = CallbackQuery(id="1", from_user=user, chat_instance="c", data="sdof:go",
                            message=Message(message_id=2, date=0, chat=chat, text="…"))
         await dp.feed_update(bot, Update(update_id=int(time.time() * 1000) % 10**9 + 1, callback_query=cb))
-        await asyncio.gather(*hf._sdo_tasks)
+        await asyncio.gather(*files_sdo._sdo_tasks)
     finally:
         hf.router._parent_router = None
     final = bot.session.sent_texts[-1][1]
