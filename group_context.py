@@ -69,7 +69,8 @@ async def build_group_context(user_id: int, deadline_days: int = 21) -> str:
 
     try:
         deadlines = await database.get_active_deadlines(user_id)
-    except Exception:
+    except Exception as e:
+        logger.warning(f"контекст ИИ без дедлайнов: {e!r}")
         deadlines = []
     horizon = today + timedelta(days=deadline_days)
     upcoming = [d for d in deadlines if date.fromisoformat(d["due_date"]) <= horizon]

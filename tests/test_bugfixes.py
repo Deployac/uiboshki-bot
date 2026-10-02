@@ -476,3 +476,33 @@ async def test_sdo_job_silent_without_cookie_and_reports_network_once(monkeypatc
     await scheduler.sync_sdo_deadlines(FakeBot())
     await scheduler.sync_sdo_deadlines(FakeBot())
     assert len(sent) == 1 and "недоступен" in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_hw_file_that_fails_to_send_is_reported(hw_db):
+    # Тихая ошибка: файл ДЗ не отправлялся (удалён в Telegram, битый file_id) —
+    # голый except молча его пропускал, человек думал, что файла нет.
+    from aiogram import Bot, Dispatcher
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.types import CallbackQuery
+    from tests.test_solver_render import RecordingSession
+
+    class Session(RecordingSession):
+        async def make_request(self, bot, method, timeout=None):
+            if type(method).__name__ == "SendDocument":
+                raise RuntimeError("wrong file_id")
+            if type(method).__name__ == "EditMessageText":
+                return True
+            return await super().make_request(bot, method, timeout)
+
+    await hw_db.add_hw("Матан", "Решить №5", "BROKEN", "document", STAROSTA_ID)
+    bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=Session())
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(announce.router)
+    try:
+        msg = Message(message_id=1, date=0, chat=Chat(id=USER.id, type="private"), from_user=USER, text="x")
+        cb = CallbackQuery(id="1", from_user=USER, chat_instance="c", data="hw:0", message=msg)
+        await dp.feed_update(bot, Update(update_id=int(time.time()), callback_query=cb))
+    finally:
+        announce.router._parent_router = None
+    assert any("не отправился" in t for t, _ in bot.session.sent)

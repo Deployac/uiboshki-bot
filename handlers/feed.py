@@ -76,8 +76,8 @@ async def cmd_feed_start(message: Message, state: FSMContext):
                     f"(антиспам, лимит {FEED_COOLDOWN_MINUTES} мин между постами)"
                 )
                 return
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Подслушано: не проверился антиспам у {message.from_user.id}: {e!r}")
 
     await state.set_state(FeedPost.waiting)
     await message.answer(

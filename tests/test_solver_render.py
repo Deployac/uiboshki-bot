@@ -156,3 +156,37 @@ async def test_solve_answer_goes_out_as_html(db, dp, bot, monkeypatch):
     assert parse_mode == "HTML"
     assert "3 · x² · ln(x)" in text
     assert "<b>1. Краткий ответ</b>" in text
+
+
+class EditRecordingSession(RecordingSession):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.edits = []
+
+    async def make_request(self, bot, method, timeout=None):
+        if type(method).__name__ == "EditMessageText":
+            self.edits.append(method.text)
+            return True
+        return await super().make_request(bot, method, timeout)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure,expected", [("raise", "ИИ сейчас не ответил"), ("empty", "пустой ответ")])
+async def test_free_text_solver_failure_is_not_silent(db, dp, monkeypatch, failure, expected):
+    # Тихая ошибка: при сбое ИИ «🤖 решаю…» молча удалялось — человек оставался без ответа.
+    import handlers.solver as solver
+
+    async def no_intent(text):
+        return "none"
+
+    async def broken(task, subject="", backend="gemini", **kw):
+        if failure == "raise":
+            raise RuntimeError("лимит запросов")
+        return ""
+
+    monkeypatch.setattr(solver, "classify_intent", no_intent)
+    monkeypatch.setattr(solver, "solve_text", broken)
+    bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=EditRecordingSession())
+    await _feed(dp, bot, "Найди производную функции x^3 * ln(x) по x")
+    assert any("решаю" in t for t, _ in bot.session.sent)
+    assert any(expected in t for t in bot.session.edits)
