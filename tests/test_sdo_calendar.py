@@ -105,7 +105,7 @@ async def test_sync_uses_calendar_and_keeps_ids(db, monkeypatch):
     monkeypatch.setattr(sdo_parser, "fetch_upcoming_html", upcoming_must_not_be_used)
     res = await sdo_parser.sync_deadlines()
     assert (res["added"], res["updated"]) == (13, 0)
-    assert (await db.get_deadline_by_external_id("sdo:2"))["subject"] == "Тест 1 закрывается (Анализ данных)"
+    assert (await db.get_deadline_by_external_id("sdo:2"))["subject"] == "Тест 1 · Анализ данных"   # понятное название (deadline_names)
 
     calls.clear()
     again = await sdo_parser.sync_deadlines()

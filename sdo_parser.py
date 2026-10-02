@@ -152,6 +152,7 @@ def parse_deadlines(html: str) -> list[dict]:
             continue
 
         results.append({
+            "title":       title,
             "course":      course_name,
             "external_id": f"sdo:{event_id}",
             "subject":     f"{title} ({course_name})" if course_name else title,
@@ -190,6 +191,9 @@ def course_of(subject: str) -> str:
     """Курс из названия дедлайна: последняя скобка верхнего уровня —
     «ПР 1 (Анализ данных (УИБО-03-24))» → «Анализ данных (УИБО-03-24)»."""
     s = (subject or "").rstrip()
+    from deadline_names import SEP
+    if SEP in s:          # уже понятное название: «Практика 2 · Анализ данных (Экз)»
+        return re.sub(r"\s*\((?:Зач|Экз)\)$", "", s.rsplit(SEP, 1)[1]).strip()
     if not s.endswith(")"):
         return ""
     depth = 0
@@ -281,6 +285,7 @@ def parse_calendar_events(events: list[dict]) -> list[dict]:
         title = html_lib.unescape(e.get("name") or "Без названия").strip()
         course = html_lib.unescape((e.get("course") or {}).get("fullname") or "").strip()
         results.append({
+            "title":       title,
             "course":      course,
             "external_id": f"sdo:{e['id']}",   # тот же id события, что и в «Предстоящих» — без дублей
             "subject":     f"{title} ({course})" if course else title,
@@ -339,6 +344,11 @@ async def sync_deadlines() -> dict:
     subjects = await get_group_subjects(**SEMESTER_WINDOW)
     old = [i for i in items if not_this_semester(i, subjects)]
     items = [i for i in items if not not_this_semester(i, subjects)]
+    # понятные названия — после проверки семестра (метка «[I.26-27]» уходит)
+    from deadline_names import pretty
+    for i in items:
+        if i.get("title"):
+            i["subject"] = pretty(i["title"], i.get("course") or "", subjects)
 
     for item in items:
         existing = await get_deadline_by_external_id(item["external_id"])
