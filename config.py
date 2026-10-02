@@ -20,6 +20,14 @@ GROUP_PROGRAM = os.getenv("GROUP_PROGRAM", "Бизнес-информатика"
 # ссылки t.me/… (или любые). Пока пусто — плитка видна, по нажатию «Скоро».
 CHANNEL_URL = os.getenv("CHANNEL_URL", "").strip()
 CONTACT_URL = os.getenv("CONTACT_URL", "").strip()
+# Куда бот публикует посты канала (/channel у старосты): «@uiboshki_dev» или
+# id «-100…». Не задан — берём @имя из CHANNEL_URL вида t.me/<имя>.
+def channel_id_from(explicit: str, url: str) -> str:
+    m = re.search(r"t\.me/([A-Za-z0-9_]{4,})/?$", url or "")
+    return (explicit or "").strip() or (f"@{m.group(1)}" if m else "")
+
+
+CHANNEL_ID = channel_id_from(os.getenv("CHANNEL_ID", ""), CHANNEL_URL)
 # Предметы по выбору: ходят не все (военная кафедра — двое из группы).
 # Пары скрыты, пока человек не ответит «хожу» (WebApp спросит на главной,
 # бот — при /start). Через запятую.

@@ -98,7 +98,11 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 `OPTIONAL_SUBJECTS` (предметы по выбору, по умолчанию «Военная кафедра»: пары
 скрыты, пока человек не ответит «хожу» — `optional_subjects.py`, /optional).
 `CHANNEL_URL`, `CONTACT_URL` (необязательно: плитки «Канал бота» и «Написать нам»
-в меню «Ещё» WebApp; пока пусто — «Скоро», задать на этапе 3).
+в меню «Ещё» WebApp; пока пусто — «Скоро», задать на этапе 3), `CHANNEL_ID`
+(куда бот публикует посты, `/channel`; не задан — @имя из `CHANNEL_URL`).
+Посты канала — `channel/posts/NN-имя/` (post.html в разметке Telegram и
+картинки), публикует бот-админ по кнопке старосты (`channel_posts.py`,
+`handlers/channel.py`).
 
 ## Как устроено (главное)
 - **Расписание МИРЭА.** Официальный API `schedule-of.mirea.ru` из-за рубежа не
