@@ -209,3 +209,58 @@ async def test_first_pair_reminder_hour_before(db, monkeypatch):
     monkeypatch.setattr(scheduler, "_sent_reminders", set())
     await scheduler.check_lesson_reminders(FakeBot())
     assert len(sent) == 1 and "Через 1 ч первая пара" in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_reminders_batch_and_quiet_without_pairs(db, monkeypatch):
+    """Напоминания: нет пар в ближайшие часы — база не читается вовсе; есть —
+    пользователи двумя запросами на всех, расписание разбирается по разу на
+    набор скрытых предметов, у каждого свой фильтр предметов по выбору."""
+    import database
+    import scheduler
+    from database import set_optional_answer, upsert_user
+    now = datetime(2026, 10, 1, 8, 0, tzinfo=scheduler.TZ)
+
+    class FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+
+    async def fake_raw():
+        return b""
+
+    parses = []
+
+    def events(raw, day):
+        from optional_subjects import HIDE
+        parses.append(HIDE.get())
+        day_ = _day(("ЛК Военная кафедра", 9, 0, 10, 30), tz=scheduler.TZ)
+        return [e for e in day_ if not any(h in e["summary"] for h in HIDE.get())]
+
+    sent = []
+
+    class FakeBot:
+        async def send_message(self, uid, text, **kw):
+            sent.append(uid)
+
+    for uid in (1, 2, 3):
+        await upsert_user(uid, "", "X")
+    await set_optional_answer(3, "Военная кафедра", True)          # третий ходит на военку
+    monkeypatch.setattr(scheduler, "datetime", FakeDatetime)
+    monkeypatch.setattr(scheduler, "fetch_schedule_raw", fake_raw)
+    monkeypatch.setattr(scheduler, "parse_events_for_date", events)
+    monkeypatch.setattr(scheduler, "_sent_reminders", set())
+    await scheduler.check_lesson_reminders(FakeBot())
+    assert sent == [3]                                             # остальным военка скрыта
+    assert len(parses) == 3                                        # без фильтра + 2 набора, не по человеку
+
+    reads = []
+
+    async def spy():
+        reads.append(1)
+        return []
+
+    monkeypatch.setattr(database, "get_reminder_users", spy)
+    now = datetime(2026, 10, 1, 20, 0, tzinfo=scheduler.TZ)        # вечер — пар впереди нет
+    await scheduler.check_lesson_reminders(FakeBot())
+    assert reads == []

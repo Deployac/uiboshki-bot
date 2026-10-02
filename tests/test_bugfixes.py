@@ -161,10 +161,10 @@ async def test_lesson_reminder_dedupe_resets_next_day(monkeypatch):
         return b""
 
     async def fake_users():
-        return [USER.id]
+        return [{"user_id": USER.id, "notify": '{"remind_first": 15}'}]
 
-    async def fake_get_user(uid):
-        return {"user_id": uid, "reminder_minutes": 15, "notify": '{"remind_first": 15}'}
+    async def no_answers():
+        return {}
 
     sent = []
 
@@ -175,8 +175,9 @@ async def test_lesson_reminder_dedupe_resets_next_day(monkeypatch):
     monkeypatch.setattr(scheduler, "datetime", FakeDatetime)
     monkeypatch.setattr(scheduler, "fetch_schedule_raw", fake_raw)
     monkeypatch.setattr(scheduler, "parse_events_for_date", fake_events)
-    monkeypatch.setattr(scheduler, "get_all_subscribed_users", fake_users)
-    monkeypatch.setattr(scheduler, "get_user", fake_get_user)
+    import database
+    monkeypatch.setattr(database, "get_reminder_users", fake_users)
+    monkeypatch.setattr(database, "get_all_optional_answers", no_answers)
     monkeypatch.setattr(scheduler, "_sent_reminders", set())
 
     await scheduler.check_lesson_reminders(FakeBot())
@@ -210,10 +211,10 @@ async def test_no_reminder_for_self_study(monkeypatch):
         return b""
 
     async def fake_users():
-        return [USER.id]
+        return [{"user_id": USER.id, "notify": '{"remind_first": 15}'}]
 
-    async def fake_get_user(uid):
-        return {"user_id": uid, "reminder_minutes": 15, "notify": '{"remind_first": 15}'}
+    async def no_answers():
+        return {}
 
     sent = []
 
@@ -224,8 +225,9 @@ async def test_no_reminder_for_self_study(monkeypatch):
     monkeypatch.setattr(scheduler, "datetime", FakeDatetime)
     monkeypatch.setattr(scheduler, "fetch_schedule_raw", fake_raw)
     monkeypatch.setattr(scheduler, "parse_events_for_date", fake_events)
-    monkeypatch.setattr(scheduler, "get_all_subscribed_users", fake_users)
-    monkeypatch.setattr(scheduler, "get_user", fake_get_user)
+    import database
+    monkeypatch.setattr(database, "get_reminder_users", fake_users)
+    monkeypatch.setattr(database, "get_all_optional_answers", no_answers)
     monkeypatch.setattr(scheduler, "_sent_reminders", set())
     await scheduler.check_lesson_reminders(FakeBot())
     assert sent == []
