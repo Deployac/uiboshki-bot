@@ -82,7 +82,7 @@
   <section class="view" id="view-search">
     <div id="search-pane">
       <h2 class="section">Расписание МИРЭА <span class="stat" id="index-stat"></span></h2>
-      <input class="searchbox" id="target-search" placeholder="Фамилия, группа или аудитория" autocomplete="off">
+      <input class="searchbox" id="target-search" enterkeyhint="search" placeholder="Фамилия, группа или аудитория" autocomplete="off">
       <div class="chips-row" id="target-types">
         <button class="active" data-type="0">Все</button>
         <button data-type="2"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg> Преподаватели</button>
@@ -114,7 +114,7 @@
   <!-- ── Файлы ─────────────────────────────────────────────────────── -->
   <section class="view" id="view-files">
     <h2 class="section">Файлы</h2>
-    <input class="searchbox" id="file-search" placeholder="Поиск по названию, предмету, файлу…">
+    <input class="searchbox" id="file-search" enterkeyhint="search" placeholder="Поиск по названию, предмету, файлу…">
     <div id="file-head"></div>
     <div class="list" id="file-list"><div class="skel" style="height:60px"></div><div class="skel" style="height:60px"></div></div>
     <p class="sheet-hint" style="margin-top:14px;"><svg class="ico inl" aria-hidden="true"><use href="#i-bookOpen"/></svg> — ИИ уже прочитал файл и отвечает по нему. Загрузить новые: /upload в боте.</p>

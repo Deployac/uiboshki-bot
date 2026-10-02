@@ -110,6 +110,8 @@ function haptic(kind) {
 // ── Табы ──────────────────────────────────────────────────────────────────
 
 function switchTab(name) {
+  const focused = document.activeElement;
+  if (focused && /^(INPUT|TEXTAREA)$/.test(focused.tagName)) focused.blur();   // убрать клавиатуру
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById("view-" + name).classList.add("active");
   const menu = document.getElementById("more-menu");
@@ -136,6 +138,20 @@ function switchTab(name) {
 
 // Пустой экран «по-хорошему» (пар нет, всё сдано, дедлайнов нет) — с
 // капибарой с логотипа, а не просто серой строкой.
+// Клавиатура на телефоне: «Ввод» в поле поиска и нажатие мимо поля её
+// убирают — отдельной кнопки «скрыть» в Telegram нет.
+document.addEventListener("keydown", (e) => {
+  const t = e.target;
+  if (e.key === "Enter" && t && t.tagName === "INPUT" && t.classList.contains("searchbox")) t.blur();
+});
+document.addEventListener("touchstart", (e) => {
+  const a = document.activeElement;
+  if (!a || !/^(INPUT|TEXTAREA)$/.test(a.tagName)) return;
+  const keep = e.target.closest && e.target.closest("input, textarea, button, label, select, .chip, .pill");
+  if (keep && !keep.closest(".tabs")) return;      // нижнее меню клавиатуру убирает
+  a.blur();
+}, { passive: true });
+
 function capyEmpty(title, sub) {
   return '<div class="empty capy-empty">' + icon("capy", "capy") + '<b>' + title + '</b>' +
     (sub ? '<span>' + sub + '</span>' : '') + '</div>';

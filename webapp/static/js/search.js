@@ -40,9 +40,9 @@ async function searchTargets(q) {
     const data = await api("/api/search?q=" + encodeURIComponent(q) + "&type=" + targetType);
     if (seq !== targetSeq) return;  // пришёл ответ на старый запрос — пользователь уже печатает дальше
     if (!data.items.length) {
-      list.innerHTML = '<div class="empty">' + (data.ready
-        ? "Ничего не нашлось"
-        : "Справочник ещё собирается (первый запуск, около получаса) — попробуй чуть позже") + '</div>';
+      list.innerHTML = data.ready
+        ? capyEmpty("Ничего не нашлось", "Проверь написание или попробуй часть фамилии")
+        : '<div class="empty">Справочник ещё собирается (первый запуск, около получаса) — попробуй чуть позже</div>';
       return;
     }
     list.innerHTML = data.items.map(targetItem).join("");
