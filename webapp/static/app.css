@@ -886,3 +886,15 @@
   .capy-empty span { font-size: 13px; }
   @keyframes capyBob { 0%, 100% { transform: translateY(0) rotate(0); } 50% { transform: translateY(-4px) rotate(-2deg); } }
   @media (prefers-reduced-motion: reduce) { .capy-empty .ico.capy, .view, .onboard.open, .ob-card { animation: none; } }
+  /* история баллов на экране предмета */
+  .card.hist { margin-top: 12px; }
+  .hist-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .hist-delta { font-size: 12.5px; font-weight: 700; color: var(--hint); padding: 2px 9px; border-radius: 999px; background: var(--bg-raised); }
+  .hist-delta.up { color: var(--ok); background: rgba(61,220,132,.12); }
+  .hist-svg { width: 100%; height: 110px; display: block; overflow: visible; }
+  .hist-line { fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+  .hist-area { fill: color-mix(in srgb, var(--accent) 16%, transparent); stroke: none; }
+  .hist-dot { fill: var(--accent); }
+  .hist-mark { stroke: var(--border); stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
+  .hist-lbl { fill: var(--hint); font-size: 9px; text-anchor: end; }
+  .hist-axis { display: flex; justify-content: space-between; color: var(--hint); font-size: 12px; margin-top: 4px; }

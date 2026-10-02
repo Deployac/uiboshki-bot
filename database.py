@@ -227,6 +227,17 @@ async def init_db():
                 PRIMARY KEY (user_id, deadline_id, remind_at)
             )
         """)
+        # История баллов СДО (sdo_history.py): сумма по предмету раз в день —
+        # для графика «как росли баллы» на экране предмета.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sdo_score_history (
+                user_id   INTEGER NOT NULL,
+                course_id INTEGER NOT NULL,
+                day       TEXT NOT NULL,
+                score     REAL NOT NULL,
+                PRIMARY KEY (user_id, course_id, day)
+            )
+        """)
         # Последний удачный календарь группы (schedule_parser.fetch_schedule_raw):
         # если зеркало МИРЭА не отвечает, а бот только что перезапустился —
         # показываем его, а не ошибку.
@@ -1000,6 +1011,21 @@ async def mark_deadline_reminder_sent(user_id: int, deadline_id: int, remind_at:
         # старше месяца — не нужны
         await db.execute("DELETE FROM deadline_reminders WHERE sent=1 AND remind_at < datetime('now', '-30 days')")
         await db.commit()
+
+
+async def save_score_points(user_id: int, day: str, scores: dict[int, float]):
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.executemany("INSERT OR REPLACE INTO sdo_score_history (user_id, course_id, day, score) VALUES (?, ?, ?, ?)",
+                             [(user_id, cid, day, sc) for cid, sc in scores.items()])
+        await db.commit()
+
+
+async def get_score_points(user_id: int, course_id: int, since: str) -> list[tuple[str, float]]:
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        rows = await (await db.execute(
+            "SELECT day, score FROM sdo_score_history WHERE user_id=? AND course_id=? AND day>=? ORDER BY day",
+            (user_id, course_id, since))).fetchall()
+        return [(d, s) for d, s in rows]
 
 
 async def save_schedule_backup(data: bytes, saved_at: str):
