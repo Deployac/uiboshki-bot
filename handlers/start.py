@@ -228,11 +228,13 @@ HELP_TEXT = (
     "«когда следующая пара», «что сдавать на неделе», «скинь практику 3 по …», "
     "вопрос по учёбе или фото задачи.\n\n"
     "⚡ <b>Быстро в чате</b>\n"
+    "<i>Классика: команды работают как раньше, а всё новое появляется в приложении.</i>\n"
     "/schedule · /tomorrow · /week — расписание\n"
     "/next — следующая пара · /deadlines — дедлайны\n"
     "/teacher Фамилия · /group УИБО-03-24 · /room А-18 — чужое расписание\n\n"
     "⚙️ <b>Уведомления</b>\n"
-    "/settings — что и когда присылать · /optional — предметы по выбору\n\n"
+    "В приложении: ☰ Ещё → Уведомления — дни, погода, корпус, напоминания.\n"
+    "/settings — коротко в чате · /optional — предметы по выбору\n\n"
     "💬 <b>Группа</b>\n"
     "/anon — анонимный вопрос старосте · /feed — «Подслушано» · /vote — голосование"
 )
@@ -303,9 +305,12 @@ def _settings_view(user: dict | None) -> tuple[str, InlineKeyboardMarkup]:
         "⚙️ <b>Настройки</b>\n\n"
         f"🔔 Утренняя рассылка и напоминания: <b>{'включены' if sub else 'выключены'}</b>\n"
         f"⏰ Напоминать о паре за <b>{mins} мин</b>\n\n"
-        f"Рассылка приходит каждое утро в {SCHEDULE_HOUR}:{SCHEDULE_MINUTE:02d}: расписание и погода."
+        f"Рассылка приходит каждое утро в {SCHEDULE_HOUR}:{SCHEDULE_MINUTE:02d}: расписание и погода.\n\n"
+        "Дни недели, погода, подсказка про другой корпус — в приложении: ☰ Ещё → Уведомления."
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    from keyboards import app_button
+    app = app_button("🔔 Настроить в приложении", "notify")
+    kb = InlineKeyboardMarkup(inline_keyboard=([app.inline_keyboard[0]] if app else []) + [
         [InlineKeyboardButton(text="🔕 Выключить уведомления" if sub else "🔔 Включить уведомления",
                               callback_data="set:sub")],
         [InlineKeyboardButton(text=("✓ " if m == mins else "") + f"за {m} мин", callback_data=f"set:rem:{m}")

@@ -53,6 +53,11 @@ async def init_db():
         # студенту своя приватная ссылка, не одна общая на группу. Генерится
         # лениво при первом /calendar (см. get_or_create_calendar_token), не
         # при регистрации — чтобы не плодить токены тем, кто им не пользуется.
+        # Конструктор уведомлений (notify_prefs.py): JSON, пусто — умолчания
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN notify TEXT")
+        except Exception:
+            pass  # колонка уже есть
         try:
             await db.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
         except Exception:
@@ -288,6 +293,14 @@ async def get_all_subscribed_users() -> list[int]:
     async with aiosqlite.connect(DATABASE_PATH) as db:
         cursor = await db.execute("SELECT user_id FROM users WHERE subscribed = 1")
         return [r[0] for r in await cursor.fetchall()]
+
+async def set_notify(user_id: int, prefs: dict):
+    import json
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("UPDATE users SET notify = ? WHERE user_id = ?",
+                         (json.dumps(prefs, ensure_ascii=False), user_id))
+        await db.commit()
+
 
 # ── Персональные ссылки на ICS-календарь ────────────────────────────────────
 # Токен — случайная непредсказуемая строка (не user_id), чтобы ссылку нельзя

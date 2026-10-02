@@ -45,23 +45,46 @@ def progress_bar(delta: int, max_days: int = 14) -> str:
 
 
 async def send_morning_schedule(bot: Bot):
+    import notify_prefs
     from optional_subjects import apply_for
+    from schedule_parser import format_day
 
-    # Приветствие + погода одной строкой (если не получили — без неё)
+    now = datetime.now(TZ)
+    weather_text = None          # погоду берём один раз и только если кому-то нужна
     try:
-        from handlers.weather import get_weather_for_morning
-        weather_text = await get_weather_for_morning()
+        raw = await fetch_schedule_raw()
+        home = notify_prefs.home_campus(raw)
     except Exception as e:
-        logger.error(f"Weather error: {e}")
-        weather_text = ""
-    head = "☀️ <b>Доброе утро!</b>" + (f"\n{weather_text}" if weather_text else "")
+        logger.error(f"Утренняя рассылка: расписание не загрузилось: {e}")
+        raw, home = None, None
 
     users = await get_all_subscribed_users()
     for uid in users:
         try:
+            prefs = await notify_prefs.get(uid)
+            if not notify_prefs.allowed(prefs, "morning", now.weekday()):
+                continue
             await apply_for(uid)   # у каждого своё: предметы по выбору
-            full_text = f"{head}\n\n{await get_today_schedule()}"
-            await bot.send_message(uid, full_text, parse_mode="HTML",
+            events = parse_events_for_date(raw, now.date()) if raw is not None else None
+            if prefs["skip_empty"] and events is not None and not events:
+                continue
+            head = "☀️ <b>Доброе утро!</b>"
+            if prefs["weather"]:
+                if weather_text is None:
+                    try:
+                        from handlers.weather import get_weather_for_morning
+                        weather_text = await get_weather_for_morning() or ""
+                    except Exception as e:
+                        logger.error(f"Weather error: {e}")
+                        weather_text = ""
+                if weather_text:
+                    head += f"\n{weather_text}"
+            if prefs["campus"] and events:
+                note = notify_prefs.campus_note(events, home)
+                if note:
+                    head += f"\n{note}"
+            body = format_day(events, now.date(), now=now) if events is not None else await get_today_schedule()
+            await bot.send_message(uid, f"{head}\n\n{body}", parse_mode="HTML",
                                    reply_markup=app_button("📅 Открыть расписание", "today"))
         except Exception as e:
             logger.warning(f"Не смог отправить {uid}: {e}")
@@ -117,9 +140,13 @@ async def send_deadline_reminders(bot: Bot):
     # Дедлайны теперь бывают личные (видны только автору) — рассылка каждому
     # подписчику собирается персонально (общие + его личные, не отмеченные им
     # самим), а не одним и тем же текстом всем подряд.
+    import notify_prefs
+    weekday = today_msk().weekday()
     users = await get_all_subscribed_users()
     for uid in users:
         try:
+            if not notify_prefs.allowed(await notify_prefs.get(uid), "deadlines", weekday):
+                continue
             deadlines = await get_deadlines_soon(days=3, viewer_id=uid)
             if not deadlines:
                 continue
@@ -159,6 +186,9 @@ async def check_lesson_reminders(bot: Bot):
         for uid in users:
             user = await get_user(uid)
             if not user:
+                continue
+            import notify_prefs
+            if not notify_prefs.allowed(notify_prefs.merge(user.get("notify")), "lessons", today.weekday()):
                 continue
             await apply_for(uid)
             events = parse_events_for_date(raw, today)

@@ -108,6 +108,10 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   что, когда — без содержимого), события по пути запроса WebApp
   (`EVENT_PATHS`, в `get_current_user`) и сообщениям боту (`StatsMiddleware`);
   картинка — Pillow, шрифт DejaVu в `assets/fonts`. Старше 180 дней — удаляется.
+- **Уведомления** (`notify_prefs.py`, WebApp ☰ Ещё → Уведомления, `/api/notify`):
+  JSON в `users.notify` поверх `DEFAULTS` — что слать и в какие дни, погода,
+  «другой корпус» (корпус — в скобках в LOCATION, свой = самый частый),
+  «только если есть пары». Общий выключатель — `users.subscribed`.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

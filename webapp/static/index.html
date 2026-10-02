@@ -26,6 +26,7 @@
       <button class="x" onclick="hideHomeAdd()" aria-label="Скрыть"><svg class="ico" aria-hidden="true"><use href="#i-cross"/></svg></button>
     </div>
     <div class="weather-pill" id="weather" style="display:none;"></div>
+    <div class="campus-pill" id="campus" style="display:none;"></div>
     <div id="hero"><div class="skel" style="height:118px"></div></div>
 
     <h2 class="section" id="today-head"><span>Сегодня</span><span class="stat" id="today-count"></span></h2>
@@ -207,6 +208,7 @@
       <button onclick="toggleMore(false); openSdo()"><span class="sq sdo" id="more-sdo"><svg class="ico" aria-hidden="true"><use href="#i-cap"/></svg></span>СДО</button>
       <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq t-cal"><svg class="ico" aria-hidden="true"><use href="#i-calsub"/></svg></span>Календарь</button>
       <button onclick="toggleMore(false); addToHome()"><span class="sq t-phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span>Ярлык</button>
+      <button onclick="toggleMore(false); openNotify()"><span class="sq t-bell"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg></span>Уведомления</button>
       <button onclick="toggleMore(false); openSecurity()"><span class="sq t-sec"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span>Безопасность</button>
     </div>
   </div>
@@ -216,6 +218,13 @@
   <div class="sheet">
     <div class="sheet-grip"></div>
     <div id="sdo-body"></div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="notify-sheet" onclick="if (event.target === this) closeSheet('notify-sheet')">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div id="notify-body"></div>
   </div>
 </div>
 

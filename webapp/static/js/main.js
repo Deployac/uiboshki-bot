@@ -15,9 +15,10 @@ loadChatSubjects();
 })();
 
 // Кнопка из уведомления бота открывает приложение сразу на нужном экране:
-// ?tab=deadlines / files / chat / sdo / search («Корнилов», keyboards.app_button).
+// ?tab=deadlines / files / chat / sdo / search / notify («Корнилов», keyboards.app_button).
 (function () {
   const tab = new URLSearchParams(location.search).get("tab");
   if (tab === "sdo") openSdo();
+  else if (tab === "notify") openNotify();
   else if (["deadlines", "files", "chat", "search"].includes(tab)) switchTab(tab);
 })();
