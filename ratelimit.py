@@ -14,6 +14,8 @@ LIMITS = {
     "ai": (15, 60),
     "submit": (6, 600),
     "sdo_connect": (5, 600),
+    "send": (20, 60),          # файлы в чат: бот не должен заваливать личку и упираться в лимиты Telegram
+    "deadline": (20, 600),     # свои дедлайны
 }
 _hits: dict[tuple[str, int], deque] = defaultdict(deque)
 

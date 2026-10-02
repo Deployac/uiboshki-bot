@@ -71,3 +71,13 @@ def _fixed_semester(monkeypatch):
     import sdo_parser
     real = sdo_parser.current_semester_tag
     monkeypatch.setattr(sdo_parser, "current_semester_tag", lambda today=None: real(today or date(2026, 9, 26)))
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """Счётчики ratelimit живут в памяти процесса — между тестами сбрасываем,
+    иначе один тест на лимит (21 дедлайн подряд) роняет соседние с 429."""
+    import ratelimit
+    ratelimit.reset()
+    yield
+    ratelimit.reset()
