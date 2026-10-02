@@ -1,5 +1,5 @@
-"""Группа: зам старосты (/setzam), рейтинг активности (/rating), проверка
-Пульса (/pulsecheck) и статистика бота (/stats) — у старосты."""
+"""Группа: зам старосты (/setzam), рейтинг активности (/rating), здоровье
+бота (/status), проверка Пульса (/pulsecheck) и статистика (/stats) — у старосты."""
 
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -50,6 +50,15 @@ async def cmd_rating(message: Message):
         lines.append(f"{medals[i]} {esc(name)} — {r['cnt']} {plural(r['cnt'], 'задача', 'задачи', 'задач')}")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
+
+
+@router.message(Command("status"))
+async def cmd_status(message: Message):
+    """Здоровье бота (health.py): СДО, расписание, бэкап, ошибки — только староста."""
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
+        return
+    import health
+    await message.answer(await health.report(), parse_mode="HTML")
 
 
 @router.message(Command("pulsecheck"))

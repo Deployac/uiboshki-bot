@@ -262,6 +262,6 @@ def test_sdo_jobs_keepalive_and_early_first_sync():
     from datetime import datetime, timedelta
     import scheduler
     jobs = {j.func.__name__: j for j in scheduler.start_scheduler(object()).get_jobs()}
-    assert jobs["keepalive"].trigger.interval <= timedelta(hours=1)
+    assert jobs["sdo_keepalive"].trigger.interval <= timedelta(hours=1)   # обёртка keepalive + отметка для /status
     first = jobs["sync_sdo_deadlines"].next_run_time
     assert first - datetime.now(first.tzinfo) < timedelta(minutes=2)

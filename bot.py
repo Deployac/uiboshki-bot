@@ -8,11 +8,13 @@ from aiogram.types import BotCommand, ErrorEvent, MenuButtonWebApp, WebAppInfo
 
 from config import BOT_TOKEN, STAROSTA_ID, WEBAPP_PORT, WEBAPP_URL, GROUP_NAME
 from database import init_db
+import health
 from handlers import register_handlers
 from scheduler import start_scheduler
 from middleware import MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+health.install()   # ошибки из логов за сутки — в /status у старосты
 # httpx на INFO пишет полный адрес каждого запроса — с sesskey СДО в query.
 # Секрету в логах не место (и шума меньше).
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -69,7 +71,8 @@ STAROSTA_COMMANDS = BOT_COMMANDS + [
     BotCommand(command="sdofiles", description="📥 Файлы из СДО"),
     BotCommand(command="tidyfiles", description="🧹 Понятные названия файлов"),
     BotCommand(command="stats", description="📊 Статистика"),
-    BotCommand(command="pulsecheck", description="🩺 Пускает ли Пульс"),
+    BotCommand(command="status", description="🩺 Состояние бота"),
+    BotCommand(command="pulsecheck", description="📡 Пускает ли Пульс"),
     BotCommand(command="backup", description="💾 Копия базы"),
     BotCommand(command="restore", description="♻️ Восстановить базу из копии"),
 ]
