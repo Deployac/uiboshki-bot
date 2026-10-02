@@ -32,10 +32,20 @@ async function copyCalendarLink() {
 
 let sdoState = { state: "off" };
 
+// Кнопка СДО внизу: не подключён или вход устарел — шапочка красная (и
+// плашка приглушённо-кирпичная, когда открыта); подключён — капибара.
+function setSdoNav(state) {
+  const btn = document.querySelector('nav.tabs button[data-tab="sdo"]');
+  if (!btn) return;
+  const ok = state === "ok";
+  btn.classList.toggle("sdo-off", !ok);
+  btn.classList.toggle("sdo-ok", ok);
+  btn.querySelector("use").setAttribute("href", ok ? "#i-capy" : "#i-cap");
+}
+
 async function loadSdoStatus() {
   try { sdoState = await api("/api/sdo/status"); } catch (e) { return sdoState; }
-  // вход в СДО устарел — красная точка на кнопке СДО внизу
-  document.getElementById("nav-sdo").classList.toggle("bad", sdoState.state === "expired");
+  setSdoNav(sdoState.state);
   return sdoState;
 }
 
