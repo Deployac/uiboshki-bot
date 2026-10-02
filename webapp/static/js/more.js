@@ -451,23 +451,65 @@ const ONBOARD = [
 ];
 let onboardStep = 0;
 
-function onboardStore(get, done) {
+// Флаг в облаке Telegram (CloudStorage, Bot API 6.9), без него — localStorage.
+function cloudFlag(key, value, done) {
   const cs = tg && tg.CloudStorage;
+  const get = value === undefined;
   try {
     if (cs && tg.isVersionAtLeast && tg.isVersionAtLeast("6.9")) {
-      if (get) cs.getItem(ONBOARD_KEY, (err, v) => done(!err && !!v));
-      else cs.setItem(ONBOARD_KEY, "1");
+      if (get) cs.getItem(key, (err, v) => done(err ? null : (v || "")));
+      else cs.setItem(key, value);
       return;
     }
   } catch (e) {}
   try {
-    if (get) done(!!localStorage.getItem(ONBOARD_KEY));
-    else localStorage.setItem(ONBOARD_KEY, "1");
-  } catch (e) { if (get) done(true); }        // хранилища нет — лучше не показывать каждый раз
+    if (get) done(localStorage.getItem(key) || "");
+    else localStorage.setItem(key, value);
+  } catch (e) { if (get) done(null); }      // хранилища нет — null, «не знаем»
+}
+
+function onboardStore(get, done) {
+  if (get) cloudFlag(ONBOARD_KEY, undefined, v => done(v === null || !!v));   // не знаем — не показываем
+  else cloudFlag(ONBOARD_KEY, "1");
+}
+
+// ── «Что нового»: один раз после крупного обновления ─────────────────────
+// Новичок видит знакомство, а «что нового» ему ни к чему — помечаем
+// прочитанным. Остальным — лист с главным, по разу на выпуск NEWS.id.
+const NEWS = {
+  id: "2026-10-02",
+  items: [
+    ["cap", "Баллы прямо в расписании", "У пар в «Эта неделя» — твои баллы по предмету, а нажатие ведёт в его текущий контроль."],
+    ["bell", "Напоминания как удобно", "Перед первой парой — за час или за три, после перемены — за 5 минут. И своё напоминание к любому дедлайну."],
+    ["place", "Другой корпус", "Если сегодня пары не в своём корпусе — утром придёт подсказка и плашка на главной."],
+    ["chat", "Расписание в любом чате", "Набери @" + BOT_USERNAME + " в любом чате — и отправь туда пары на сегодня, завтра или неделю."],
+    ["sparkle", "ИИ стал надёжнее", "Понимает «ООП», «матан», «БД», а если Gemini занят — ответит запасной ИИ."],
+  ],
+};
+
+function maybeWhatsNew(firstVisit) {
+  if (firstVisit) { cloudFlag("news_seen", NEWS.id); return; }
+  cloudFlag("news_seen", undefined, seen => {
+    if (seen === null || seen === NEWS.id) return;
+    showWhatsNew();
+  });
+}
+
+function showWhatsNew() {
+  document.getElementById("news-body").innerHTML =
+    '<div class="sec-hero"><span class="sec-shield nt-bell">' + icon("sparkle") + '</span><div><h3>Что нового</h3>' +
+    '<p>Обновили приложение — коротко о главном</p></div></div>' +
+    NEWS.items.map(([ic, t, d]) => secItem(ic, t, escapeHtml(d))).join("") +
+    '<button class="primary" style="margin-top:10px" onclick="closeSheet(\'news-sheet\')">Круто</button>';
+  document.getElementById("news-sheet").classList.add("open");
+  cloudFlag("news_seen", NEWS.id);
 }
 
 function maybeOnboard() {
-  onboardStore(true, seen => { if (!seen) showOnboard(0); });
+  onboardStore(true, seen => {
+    if (!seen) showOnboard(0);
+    maybeWhatsNew(!seen);
+  });
 }
 
 function showOnboard(i) {

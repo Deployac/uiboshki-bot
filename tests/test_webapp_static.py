@@ -120,3 +120,10 @@ def test_telegram_back_closes_sheets_first():
     main = JS["js/main.js"]
     assert "closeTopSheet" in main and "MutationObserver" in main
     assert "NESTED().forEach(fn => tg.BackButton.offClick(fn))" in main     # без двойного «назад»
+
+
+def test_whats_new_once_per_release():
+    more = JS["js/more.js"]
+    assert "const NEWS = {" in more and 'cloudFlag("news_seen", NEWS.id)' in more
+    assert "if (firstVisit) { cloudFlag(\"news_seen\", NEWS.id); return; }" in more   # новичку — только знакомство
+    assert 'id="news-sheet"' in HTML
