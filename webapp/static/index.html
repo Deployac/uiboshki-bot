@@ -117,7 +117,7 @@
     <input class="searchbox" id="file-search" enterkeyhint="search" placeholder="Поиск по названию, предмету, файлу…">
     <div id="file-head"></div>
     <div class="list" id="file-list"><div class="skel" style="height:60px"></div><div class="skel" style="height:60px"></div></div>
-    <p class="sheet-hint" style="margin-top:14px;"><svg class="ico inl" aria-hidden="true"><use href="#i-bookOpen"/></svg> — ИИ уже прочитал файл и отвечает по нему. Загрузить новые: /upload в боте.</p>
+    <p class="sheet-hint" style="margin-top:14px;"><svg class="ico inl" aria-hidden="true"><use href="#i-bookOpen"/></svg> — ИИ прочитал файл: отвечает по нему, а нажмёшь на файл — сделает конспект (<svg class="ico inl" aria-hidden="true"><use href="#i-sparkle"/></svg> — конспект уже есть). Загрузить новые: /upload в боте.</p>
   </section>
 
   <!-- ── СДО: баллы → предмет → текущий контроль (js/sdo.js) ────────── -->
@@ -189,6 +189,13 @@
     <p class="sheet-hint">Изменится у всей группы. Текст для ИИ переедет вместе с файлом.</p>
     <button class="primary" id="fe-submit" onclick="submitFileEdit()">Сохранить</button>
     <button class="file-del" id="fe-delete" onclick="deleteFiles([fileEditing.id], '«' + fileEditing.title + '»')"><svg class="ico" aria-hidden="true"><use href="#i-trash"/></svg> Удалить файл</button>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="sum-sheet" onclick="if (event.target === this) closeSheet('sum-sheet')">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div id="sum-content"></div>
   </div>
 </div>
 

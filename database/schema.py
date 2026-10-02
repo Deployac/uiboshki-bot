@@ -183,6 +183,16 @@ async def init_db():
                 extracted_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Конспект лекции от ИИ (lecture_summary.py): один на файл и общий для
+        # всех — делается, только когда кто-то нажмёт «Сделать конспект».
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS file_summaries (
+                file_id    INTEGER PRIMARY KEY,
+                content    TEXT NOT NULL,
+                created_by INTEGER,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS votes (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,

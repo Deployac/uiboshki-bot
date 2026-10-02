@@ -42,6 +42,7 @@ EVENT_PATHS = [
     ("POST", "/api/sdo/submit", "submit"),
     ("POST", "/api/sdo/connect", "sdo_connect"),
     ("POST", "/api/chat", "ai"),
+    ("POST", "/api/summary", "summary"),          # «Сделать конспект» (открыть готовый — не событие)
     ("POST", "/api/files/", "download"),          # /api/files/{id}/link и /send
     ("GET", "/api/me", "open"),
     ("GET", "/api/deadlines", "deadlines"),
@@ -132,7 +133,7 @@ async def collect(days: int = 30) -> dict:
 
 # Чем пользуется — коротко, для списка «кто пользуется»
 USES = {"open": "приложение", "bot": "бот", "deadlines": "дедлайны", "files": "файлы", "download": "файлы",
-        "ai": "ИИ", "sdo": "СДО", "sdo_connect": "СДО", "submit": "сдача работ", "search": "поиск"}
+        "ai": "ИИ", "summary": "конспекты", "sdo": "СДО", "sdo_connect": "СДО", "submit": "сдача работ", "search": "поиск"}
 
 
 def period_label(days: int) -> str:

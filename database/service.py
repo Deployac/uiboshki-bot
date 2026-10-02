@@ -35,7 +35,8 @@ async def clear_semester_data():
     async with connect() as db:
         # file_text — вместе с files: иначе извлечённый текст всех лекций
         # семестра навсегда остаётся в базе сиротами (см. delete_file).
-        for table in ("deadlines", "deadline_done", "homework", "files", "file_text", "vote_answers", "votes"):
+        for table in ("deadlines", "deadline_done", "homework", "files", "file_text", "file_summaries",
+                      "vote_answers", "votes"):
             try:
                 await db.execute(f"DELETE FROM {table}")
             except Exception:

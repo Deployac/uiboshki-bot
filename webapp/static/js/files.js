@@ -32,11 +32,16 @@ function catLabel(c) {
   return icon(CAT_ICONS[c.key] || "folder") + " " + escapeHtml(catText(c.label));
 }
 
+// Файл с текстом нажимается целиком (кроме кнопок) — открывается конспект.
+// Значок у названия: книжка — ИИ прочитал файл, искры — конспект уже готов.
 function fileCard(f, withPlace) {
   const sub = withPlace ? (f.subject || "Без предмета") + " · " + catText(f.category_label) : (f.file_name || "");
+  const badge = f.has_summary ? '<span class="badge sum">' + icon("sparkle") + '</span>'
+    : f.has_text ? '<span class="badge">' + icon("bookOpen") + '</span>' : '';
   return '<div class="file-card" id="fc-' + f.id + '">' +
     fileTypeIcon(f.file_name) +
-    '<div style="min-width:0"><div class="ft">' + escapeHtml(f.title) + (f.has_text ? '\u2060<span class="badge">' + icon("bookOpen") + '</span>' : '') + '</div>' +
+    '<div class="fbody' + (f.has_text ? ' tap" onclick="openSummary(' + f.id + ')' : '') + '">' +
+    '<div class="ft">' + escapeHtml(f.title) + (badge ? '\u2060' + badge : '') + '</div>' +
     '<div class="fs">' + escapeHtml(sub) + '</div></div>' +
     '<button class="dl" onclick="downloadFile(' + f.id + ', this)" aria-label="Скачать">' + icon("download") + '</button>' +
     '<button onclick="openFile(' + f.id + ', this)">В чат</button>' +
@@ -285,3 +290,70 @@ async function openFileFromLink(id) {
     setTimeout(() => card.classList.remove("hl"), 2500);
   }
 }
+
+// ── Конспект лекции ───────────────────────────────────────────────────────
+// Один на файл и общий для всех: пока никто не нажал «Сделать конспект», его
+// нет; сделал один — открывается у всех сразу (lecture_summary.py).
+
+let sumFile = null;
+let sumData = null;
+
+async function openSummary(id) {
+  haptic();
+  sumFile = id;
+  sumData = null;
+  const box = document.getElementById("sum-content");
+  box.innerHTML = '<div class="skel" style="height:22px;width:60%"></div><div class="skel" style="height:120px;margin-top:14px"></div>';
+  document.getElementById("sum-sheet").classList.add("open");
+  try {
+    const d = await api("/api/summary/" + id);
+    if (sumFile === id) { sumData = d; renderSummary(false); }
+  } catch (e) {
+    box.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
+  }
+}
+
+function renderSummary(busy) {
+  const d = sumData;
+  const box = document.getElementById("sum-content");
+  const head = '<h3>' + escapeHtml(d.title) + '</h3><p class="sheet-hint">' +
+    escapeHtml((d.subject || "Без предмета") + " · " + catText(d.category_label)) + '</p>';
+  if (d.summary) {
+    const when = d.created_at ? " · " + new Date(d.created_at).toLocaleDateString("ru", { day: "numeric", month: "long" }) : "";
+    box.innerHTML = head + '<div class="sum-body">' + d.summary + '</div>' +
+      '<p class="sheet-hint sum-foot">' + icon("sparkle", "inl") + ' Конспект от ИИ' + when +
+      '. Может ошибаться — главное сверяй с лекцией.</p>';
+    return;
+  }
+  box.innerHTML = head +
+    '<div class="sum-empty"><span class="sum-ic">' + icon("sparkle") + '</span>' +
+    '<b>Конспекта пока нет</b>' +
+    '<p>ИИ прочитает лекцию и коротко перескажет главное. Сделаешь один раз — конспект увидят все.</p></div>' +
+    '<button class="primary" id="sum-make" onclick="makeSummary()"' + (busy ? ' disabled' : '') + '>' +
+    (busy ? 'Читаю лекцию…' : 'Сделать конспект') + '</button>' +
+    (busy ? '<p class="sheet-hint sum-wait">Обычно до минуты. Можно закрыть — конспект сохранится.</p>' : '');
+}
+
+async function makeSummary() {
+  const id = sumFile;
+  if (!sumData || sumData.summary) return;
+  haptic();
+  renderSummary(true);
+  try {
+    const d = await api("/api/summary/" + id, { method: "POST" });
+    const f = fileIndex[id];
+    if (f) {
+      f.has_summary = true;
+      const card = document.getElementById("fc-" + id);
+      if (card) card.outerHTML = fileCard(f, !!fileQuery);
+    }
+    if (sumFile !== id) { showToast("Конспект готов: " + d.title); return; }
+    haptic("success");
+    sumData = d;
+    renderSummary(false);
+  } catch (e) {
+    if (sumFile === id) renderSummary(false);
+    showToast(e.message);
+  }
+}
+

@@ -32,10 +32,11 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
     # бота, а светить его в браузерном JS не хочется. Вместо этого фронт
     # открывает диплинк на сам бот (t.me/<bot>?start=file_<id>), который уже
     # шлёт документ — см. handlers/start.py: cmd_start_deeplink.
-    from database import get_file_ids_with_text
+    from database import get_file_ids_with_summary, get_file_ids_with_text
     from file_categories import CATEGORIES, LABELS, category_of
     from database import is_editor
     with_text = await get_file_ids_with_text()
+    with_summary = await get_file_ids_with_summary()
     editor = await is_editor(user["id"])
     out = []
     for f in items:
@@ -43,6 +44,7 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
         out.append({
             "id": f["id"], "title": f["title"], "subject": f.get("subject") or "",
             "file_name": f.get("file_name") or "", "has_text": f["id"] in with_text,
+            "has_summary": f["id"] in with_summary,
             "category": cat, "category_label": LABELS[cat],
             # как /delfile в боте: тот, кто загрузил, или староста/зам
             "can_edit": editor or f.get("uploaded_by") == user["id"],
@@ -173,3 +175,52 @@ async def api_file_edit(file_id: int, body: FileMeta, user: dict = CurrentUser):
         raise HTTPException(status_code=400, detail="неизвестный тип файла")
     await update_file_meta(file_id, title, subject, body.category)
     return {"ok": True, "id": file_id}
+
+
+# ── Конспект лекции (lecture_summary.py) ─────────────────────────────────────
+# Свой путь /api/summary, а не /api/files/{id}/…: stats.kind_for считает
+# любой POST на /api/files/ скачиванием.
+
+async def _summary_view(f: dict) -> dict:
+    import lecture_summary
+    from database import get_file_summary, get_file_text
+    from file_categories import LABELS, category_of
+    s = await get_file_summary(f["id"])
+    return {
+        "id": f["id"], "title": f["title"], "subject": f.get("subject") or "",
+        "category_label": LABELS[category_of(f)], "has_text": bool(s) or bool(await get_file_text(f["id"])),
+        "summary": lecture_summary.to_html(s["content"]) if s else None,
+        "created_at": (s["created_at"] or "")[:10] if s else None,
+    }
+
+
+@router.get("/api/summary/{file_id}")
+async def api_summary(file_id: int, user: dict = CurrentUser):
+    """Конспект файла, если его уже кто-то сделал (иначе summary: null)."""
+    from database import get_file_by_id
+    f = await get_file_by_id(file_id)
+    if not f:
+        raise HTTPException(404, "Файл не найден")
+    return await _summary_view(f)
+
+
+@router.post("/api/summary/{file_id}")
+async def api_summary_make(file_id: int, user: dict = CurrentUser):
+    """«Сделать конспект»: первый нажавший ждёт ИИ, дальше конспект у всех."""
+    import lecture_summary
+    import ratelimit
+    from database import get_file_by_id, get_file_summary
+    f = await get_file_by_id(file_id)
+    if not f:
+        raise HTTPException(404, "Файл не найден")
+    if not await get_file_summary(file_id) and not ratelimit.allow("ai", user["id"]):
+        raise HTTPException(429, "Слишком много запросов к ИИ подряд — подожди минуту")
+    try:
+        await lecture_summary.make(file_id, f["title"], f.get("subject") or "", user["id"])
+    except lecture_summary.NoText:
+        raise HTTPException(422, "В файле нет текста — конспект делать не из чего")
+    except Exception as e:
+        logger.warning(f"конспект файла {file_id}: {e!r}")
+        raise HTTPException(502, "ИИ сейчас не ответил — попробуй через минуту")
+    return await _summary_view(f)
+
