@@ -1,0 +1,77 @@
+"""Обзор недели в воскресенье: пары по дням, другой корпус, свободные дни,
+дедлайны недели; пустую неделю не шлём; тумблер в уведомлениях."""
+from datetime import date, datetime, timedelta
+
+import pytest
+
+import weekly_digest
+from utils import TZ
+
+MON = date(2026, 10, 5)
+
+
+def _lessons(by_day):
+    def fake(raw, d, now=None):
+        out = []
+        for start, room in by_day.get((d - MON).days, []):
+            out.append({"start": start, "pairs": 1, "room": room, "kind": "лекция", "title": "X"})
+        return out
+    return fake
+
+
+@pytest.fixture
+def week(monkeypatch):
+    import schedule_parser
+
+    def set_days(by_day):
+        monkeypatch.setattr(schedule_parser, "lessons_for_date", _lessons(by_day))
+        monkeypatch.setattr(schedule_parser, "week_number", lambda raw, d: 6)
+    return set_days
+
+
+def test_build(week):
+    week({0: [("09:00", "А-1 (В-78)"), ("10:40", "А-2 (В-78)")], 3: [("12:40", "И-201 (МП-1)")]})
+    dls = [{"subject": "Курсовая", "due_date": "2026-10-08", "due_time": "18:00"},
+           {"subject": "Старое", "due_date": "2026-10-20"}, {"subject": "Сделано", "due_date": "2026-10-06", "done": 1}]
+    text = weekly_digest.build(b"", MON, dls, "В-78")
+    assert "Неделя 6" in text and "5–11 октября" in text and "Всего пар: <b>3</b>" in text
+    assert "<b>Пн</b> — 2 пары, с 09:00" in text and "<b>Чт</b> — 1 пара, с 12:40 · 📍 МП-1" in text
+    assert "свободно: Вт, Ср, Пт, Сб" in text
+    assert "Курсовая — Чт 18:00" in text and "Старое" not in text and "Сделано" not in text
+
+
+def test_empty_week_not_sent(week):
+    week({})
+    assert weekly_digest.build(b"", MON, [], "В-78") is None
+
+
+def test_next_monday():
+    assert weekly_digest.next_monday(date(2026, 10, 4)) == MON          # воскресенье → завтра
+    assert weekly_digest.next_monday(MON) == MON + timedelta(days=7)
+
+
+@pytest.mark.asyncio
+async def test_send_respects_toggle(db, week, monkeypatch):
+    import schedule_parser
+    week({0: [("09:00", "А-1 (В-78)")]})
+
+    async def raw():
+        return b""
+
+    monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", raw)
+    for uid in (1, 2):
+        await db.upsert_user(uid, "", "X")
+    await db.set_notify(2, {"weekly": False})
+    sent = []
+
+    class Bot:
+        async def send_message(self, uid, text, **kw):
+            sent.append(uid)
+
+    await weekly_digest.send_all(Bot(), datetime(2026, 10, 4, 19, 0, tzinfo=TZ))
+    assert sent == [1]
+
+
+def test_toggle_in_app():
+    src = open("webapp/static/js/more.js", encoding="utf-8").read()
+    assert "toggleNotify('weekly')" in src
