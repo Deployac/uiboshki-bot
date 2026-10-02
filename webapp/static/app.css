@@ -855,3 +855,26 @@
   :root[data-theme="light"] { --switch-off: #d1d1d6; }
   :root[data-theme="light"] .sheet-backdrop { background: rgba(0,0,0,.32); }
   :root[data-theme="light"] .lesson .l-score { background: #f2f2f7; }
+  /* ── Знакомство при первом входе ── */
+  .onboard { position: fixed; inset: 0; z-index: 40; background: var(--bg); display: none; flex-direction: column;
+             align-items: center; padding: calc(var(--safe-top, 0px) + 18px) 24px calc(var(--safe-bottom, 0px) + 22px); }
+  .onboard.open { display: flex; animation: obIn .25s ease; }
+  .ob-skip { align-self: flex-end; background: none; border: none; color: var(--hint); font-size: 15px; font-weight: 600; padding: 6px; }
+  .ob-card { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+             max-width: 360px; animation: obIn .3s ease; }
+  .ob-logo { display: flex; align-items: center; gap: 8px; color: var(--hint); font-weight: 700; font-size: 14px; margin-bottom: 26px; }
+  .ob-logo .ico.capy { width: 26px; height: 24px; color: #c8915a; }
+  .ob-ic { width: 108px; height: 108px; border-radius: 30px; display: flex; align-items: center; justify-content: center; color: #fff;
+           box-shadow: 0 14px 34px rgba(0,0,0,.25); }
+  .ob-ic .ico { width: 52px; height: 52px; stroke-width: 1.7; }
+  .ob-ic.t-sdo { background: linear-gradient(145deg, #c8915a, #8d5a2b); }
+  .ob-ic.t-bell { background: linear-gradient(145deg, #fbbf24, #f0884b); }
+  .ob-ic.t-search { background: linear-gradient(145deg, #2bb3a3, #2366b0); }
+  .ob-card h2 { margin: 26px 0 10px; font-size: 24px; letter-spacing: -.3px; }
+  .ob-card p { margin: 0; color: var(--hint); font-size: 15.5px; line-height: 1.45; }
+  .ob-act { margin-top: 18px; width: auto; padding: 10px 20px; border: 1px solid var(--border) !important; border-radius: 999px; color: var(--accent) !important; }
+  .ob-dots { display: flex; gap: 7px; margin: 10px 0 16px; }
+  .ob-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--border); transition: all .2s; }
+  .ob-dots i.on { width: 22px; border-radius: 4px; background: var(--accent); }
+  .ob-next { width: 100%; max-width: 360px; }
+  @keyframes obIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

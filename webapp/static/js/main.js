@@ -18,6 +18,8 @@ loadChatSubjects();
 // ?tab=deadlines / files / chat / sdo / search / notify («Корнилов», keyboards.app_button).
 (function () {
   const tab = new URLSearchParams(location.search).get("tab");
+  const deepLink = tab || new URLSearchParams(location.search).get("file");
+  if (!deepLink) maybeOnboard();      // из уведомления — сразу к делу, знакомство потом
   if (tab === "sdo") openSdo();
   else if (tab === "notify") openNotify();
   else if (["deadlines", "files", "chat", "search"].includes(tab)) switchTab(tab);

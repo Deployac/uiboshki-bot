@@ -77,6 +77,7 @@ def test_icons_used_are_drawn():
     # свои иконки (js/icons.js) вместо эмодзи: каждая, что зовётся из JS или
     # разметки, нарисована — иначе на её месте пустое место
     drawn = set(re.findall(r"^\s+(\w+): '", JS["js/icons.js"], re.M))
+    drawn |= set(re.findall(r'<symbol id="i-(\w+)"', JS["js/icons.js"]))     # отдельные символы (капибара)
     used = set(re.findall(r'icon\("(\w+)"', ALL_JS)) | set(re.findall(r'href="#i-(\w+)"', HTML))
     look = JS["js/sdo.js"].split("const WORK_LOOK = {", 1)[1].split("};", 1)[0]
     used |= set(re.findall(r'\["(\w+)", "', look))
@@ -100,3 +101,10 @@ def test_theme_follows_telegram_live():
     assert "dataset.theme" in core
     css = (STATIC / "app.css").read_text(encoding="utf-8")
     assert ':root[data-theme="light"]' in css and "var(--switch-off)" in css
+
+
+def test_onboarding_once_and_not_on_deep_links():
+    more, main = JS["js/more.js"], JS["js/main.js"]
+    assert "CloudStorage" in more and "onboarded_v1" in more        # один раз, и на другом телефоне тоже
+    assert "if (!deepLink) maybeOnboard();" in main                 # из уведомления — без знакомства
+    assert 'id="onboard"' in HTML
