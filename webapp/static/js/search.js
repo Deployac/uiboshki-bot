@@ -120,6 +120,7 @@ async function openTarget(type, id, title) {
   document.getElementById("tw-label").textContent = "Эта неделя";
   document.getElementById("tw-num").textContent = "";
   document.getElementById("target-days").innerHTML = "";
+  document.getElementById("target-stale").innerHTML = "";
   document.getElementById("target-lessons").innerHTML =
     '<div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div>';
   window.scrollTo(0, 0);
@@ -134,11 +135,23 @@ async function openTarget(type, id, title) {
       if (data.pinned) pinnedTargets.push({ type: type, id: id, title: title });
     }
     setPinButton(data.pinned);
+    document.getElementById("target-stale").innerHTML = data.stale
+      ? '<div class="campus-pill stale-pill">' + icon("warning") + ' МИРЭА не отвечает · данные от ' + escapeHtml(data.stale) + '</div>' : "";
     openNextLessonDay();
     renderTargetWeek();
   } catch (e) {
-    document.getElementById("target-lessons").innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
+    // сайт МИРЭА лежит: не серая строка в пустоте, а понятно что и «Повторить»
+    // (дизайн-ревью, п. 6)
+    document.getElementById("target-days").innerHTML = "";
+    document.getElementById("target-stale").innerHTML = "";
+    document.getElementById("target-lessons").innerHTML =
+      capyEmpty("Сайт МИРЭА сейчас не отвечает", "Расписание появится, как только он оживёт. Обычно это минуты.") +
+      '<button class="primary target-retry" onclick="retryTarget()">' + icon("refresh") + ' Повторить</button>';
   }
+}
+
+function retryTarget() {
+  if (targetCurrent) openTarget(targetCurrent.type, targetCurrent.id, targetCurrent.title);
 }
 
 // Сегодня, а если сегодня пар уже нет — ближайший день этой недели с парами

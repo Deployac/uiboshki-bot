@@ -266,6 +266,14 @@ async def api_target(target_type: int, target_id: int, user: dict = CurrentUser)
         raise HTTPException(status_code=404, detail="нет такого типа")
     info = await get_baseinfo(target_id, target_type)
     ical = await fetch_ical(target_id, target_type)
+    stale = None
+    if ical is None and _own_group(target_type, target_id):
+        # своя группа — из сохранённой копии, как на главной (дизайн-ревью, п. 6)
+        from schedule_parser import fetch_schedule_raw, stale_label
+        try:
+            ical, stale = await fetch_schedule_raw(), stale_label()
+        except Exception as e:
+            logger.info(f"api_target: и копии своей группы нет: {e!r}")
     if ical is None:
         raise HTTPException(status_code=502, detail="расписание МИРЭА сейчас недоступно")
     now = datetime.now(TZ)
@@ -278,7 +286,15 @@ async def api_target(target_type: int, target_id: int, user: dict = CurrentUser)
         "pinned": pinned,
         "today": today.isoformat(),
         "weeks": target_weeks(ical, monday, TARGET_WEEKS, now=now),
+        "stale": stale,
     }
+
+
+def _own_group(target_type: int, target_id: int) -> bool:
+    """Это календарь самой группы бота (ICAL_URL …/ical/1/4928)?"""
+    from config import ICAL_URL
+    m = re.search(r"/ical/(\d+)/(\d+)", ICAL_URL or "")
+    return bool(m) and (int(m.group(1)), int(m.group(2))) == (target_type, target_id)
 
 
 # ── Закреплённые группы / преподаватели / аудитории ─────────────────────────

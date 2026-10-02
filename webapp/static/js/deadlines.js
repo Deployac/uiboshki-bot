@@ -56,8 +56,10 @@ async function loadDeadlines() {
       block("Просрочено", groups.overdue, "danger") +
       block("На этой неделе", groups.week) +
       block("Позже", groups.later) +
+      // «нажми, чтобы вернуть» читалось как «нажми на заголовок» — вернуть можно
+      // кнопкой у самой задачи (дизайн-ревью, п. 8)
       (groups.done.length ? '<details class="done-group"><summary><p class="group-title">Выполнено · ' + groups.done.length +
-        ' ▾ <span style="text-transform:none;font-weight:600">— нажми, чтобы вернуть</span></p></summary><div class="list">' +
+        ' ' + icon("chevron", "done-chev") + '</p></summary><div class="list">' +
         groups.done.map(renderDeadline).join("") + '</div></details>' : "");
   } catch (e) {
     list.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';

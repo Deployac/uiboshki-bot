@@ -222,3 +222,31 @@ async def test_namesakes_get_hints_and_busy_one_first(monkeypatch):
     assert res[1]["hint"] == "Физика 1 п/г"
     assert res[2]["hint"] == "нет пар в ближайшие 2 недели"
     assert "hint" not in res[0] and "hint" not in res[3]  # уникальное имя / ical недоступен
+
+
+@pytest.mark.asyncio
+async def test_target_own_group_falls_back_to_saved_copy(db, monkeypatch):
+    """МИРЭА лежит: своя группа открывается из сохранённой копии с пометкой,
+    чужая — 502 (экран с «Повторить»). Дизайн-ревью, п. 6."""
+    import config
+    import mirea_schedule_api as api
+    import schedule_parser
+    import webapp.server as server
+
+    async def down(target_id, target_type):
+        return None
+
+    async def saved(force=False):
+        return _teacher_ical()
+
+    monkeypatch.setattr(api, "fetch_ical", down)
+    monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", saved)
+    monkeypatch.setattr(schedule_parser, "stale_label", lambda: "1 окт, 14:20")
+    monkeypatch.setattr(config, "ICAL_URL", "https://english.mirea.ru/schedule/api/ical/1/4928")
+    client = TestClient(server.app)
+    headers = {"X-Telegram-Init-Data": _make_init_data()}
+
+    data = client.get("/api/target/1/4928", headers=headers).json()
+    assert data["stale"] == "1 окт, 14:20" and len(data["weeks"]) == server.schedule.TARGET_WEEKS
+    assert client.get("/api/target/1/4929", headers=headers).status_code == 502
+    assert client.get("/api/target/2/4928", headers=headers).status_code == 502

@@ -114,6 +114,9 @@ function switchTab(name) {
   if (focused && /^(INPUT|TEXTAREA)$/.test(focused.tagName)) focused.blur();   // убрать клавиатуру
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById("view-" + name).classList.add("active");
+  // «Доброе утро, …» — только на «Сегодня», на остальных вкладках сразу к делу
+  // (дизайн-ревью, п. 9)
+  document.body.classList.toggle("compact-head", name !== "today");
   const menu = document.getElementById("more-menu");
   if (menu) menu.classList.remove("open");
   // СДО — своя кнопка внизу (и его экраны: предмет, ТК, задание); файлы и

@@ -173,3 +173,48 @@ def test_sdo_legend_lists_every_colour_in_bars():
 def test_search_filters_stay_in_one_row():
     # п. 5: «Аудитории» на узком iPhone уезжали на вторую строку
     assert re.search(r"#target-types \{ flex-wrap: nowrap; overflow-x: auto;", CSS)
+
+
+# ── Дизайн-ревью, пункты 6–10 (v5.6.0) ─────────────────────────────────────
+
+def test_target_down_screen_has_retry():
+    # п. 6: «МИРЭА лежит» — было голой строкой; теперь капибара и «Повторить»
+    search = JS["js/search.js"]
+    assert "function retryTarget()" in search and 'onclick="retryTarget()"' in search
+    assert "capyEmpty(\"Сайт МИРЭА сейчас не отвечает\"" in search
+    assert 'id="target-stale"' in HTML and "data.stale" in search
+
+
+def test_sdo_texts_are_human():
+    # п. 7: статусы Moodle по-английски и «нужно 0» у закрытых предметов
+    sdo = JS["js/sdo.js"]
+    assert "function humanStatus(" in sdo and "Сдано, ждёт оценки" in sdo
+    assert "function gotText(" in sdo and "зачёт уже есть" in sdo
+
+
+def test_done_group_has_chevron_not_hint():
+    # п. 8: «Выполнено · N ›» вместо «нажми, чтобы вернуть»
+    dl = JS["js/deadlines.js"]
+    assert "done-chev" in dl and "— нажми, чтобы вернуть</span>" not in dl
+    assert "details.done-group[open] .done-chev" in CSS
+
+
+def test_header_only_on_today():
+    # п. 9: шапка с приветствием — только на «Сегодня», на остальных вкладках место контенту
+    assert 'classList.toggle("compact-head", name !== "today")' in JS["js/core.js"]
+    assert "body.compact-head header.top { display: none; }" in CSS
+
+
+def test_home_pills_scroll_in_one_row():
+    # п. 10: плашки над главной — одной строкой с прокруткой вбок
+    assert 'id="pill-row"' in HTML and "pill-row" in JS["js/home.js"]
+    assert re.search(r"\.pill-row \{[^}]*overflow-x: auto;", CSS)
+    assert ".pill-row > div { flex: none;" in CSS
+
+
+def test_new_chat_stays_open_after_restart():
+    # «＋ Новый» — при следующем заходе открывается он (даже пустой), а не прошлый
+    chat = JS["js/chat.js"]
+    assert 'CHAT_CUR_KEY = "chats.current"' in chat and 'cur === "new"' in chat
+    for fn in ("function newChat", "function switchChat", "function saveChatLog", "function deleteChat"):
+        assert "rememberChat()" in chat.split(fn)[1].split("\n}\n")[0], fn
