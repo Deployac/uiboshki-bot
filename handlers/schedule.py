@@ -15,7 +15,7 @@ from mirea_schedule_api import (
 )
 from database import upsert_user, add_lesson_note, get_lesson_notes, get_or_create_calendar_token
 from keyboards import CANCEL_KB, MAIN_KB
-from config import WEBAPP_URL
+from config import GROUP_NAME, WEBAPP_URL
 from utils import esc, split_by_lines, today_msk
 
 router = Router()
@@ -197,7 +197,7 @@ async def cmd_teacher(message: Message):
 async def cmd_group(message: Message):
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
-        await message.answer("👥 Использование: <code>/group УИБО-03-24</code>", parse_mode="HTML")
+        await message.answer(f"👥 Использование: <code>/group {GROUP_NAME}</code>", parse_mode="HTML")
         return
     await _handle_target_search(message, parts[1].strip(), TARGET_GROUP, "Группу")
 

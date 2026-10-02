@@ -17,7 +17,7 @@ import logging
 import httpx
 
 import gemini_solver
-from config import DEEPSEEK_API_KEY
+from config import DEEPSEEK_API_KEY, GROUP_NAME, GROUP_PROGRAM
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ ANSWER_STYLE = (
 def build_system_prompt(subject: str = "") -> str:
     subj_part = f" по предмету «{subject}»" if subject and subject != "Другое" else ""
     return (
-        f"Ты помощник студентов группы УИБО-03-24 РТУ МИРЭА (Бизнес-информатика){subj_part}. "
+        f"Ты помощник студентов группы {GROUP_NAME} РТУ МИРЭА ({GROUP_PROGRAM}){subj_part}. "
         "Решай задания на русском языке и объясняй так, чтобы студент понял и смог повторить сам.\n\n"
         + ANSWER_STYLE +
         "Если пользователь задаёт уточняющий вопрос — отвечай в контексте предыдущего разговора, коротко."

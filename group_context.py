@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 import aiosqlite
 
 import database
+from config import GROUP_NAME
 from utils import TZ, today_msk
 
 logger = logging.getLogger(__name__)
@@ -60,7 +61,7 @@ async def _schedule_lines(days: int = 2) -> list[str]:
 async def build_group_context(user_id: int, deadline_days: int = 21) -> str:
     today = today_msk()
     lines = [
-        f"Контекст группы УИБО-03-24 (используй, если вопрос про учёбу группы; не пересказывай без нужды).",
+        f"Контекст группы {GROUP_NAME} (используй, если вопрос про учёбу группы; не пересказывай без нужды).",
         f"Сегодня {today.strftime('%d.%m.%Y')}, {WEEKDAYS[today.weekday()]}, "
         f"{datetime.now(TZ).strftime('%H:%M')} по Москве.",
     ]

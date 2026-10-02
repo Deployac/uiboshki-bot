@@ -1,0 +1,31 @@
+"""Имя группы и бота — из переменных (GROUP_NAME, BOT_USERNAME): страница
+приложения, промпты ИИ и подсказки бота подхватывают их, а не «УИБО-03-24»."""
+import config
+
+
+def test_index_page_uses_config(monkeypatch):
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    monkeypatch.setattr(config, "GROUP_NAME", "КМБО-01-25</script>")
+    monkeypatch.setattr(config, "BOT_USERNAME", "otherbot")
+    html = TestClient(server.app).get("/").text
+    assert "УИБО-03-24" not in html.split("<script>window.APP_CONFIG")[0]
+    assert "КМБО-01-25&lt;/script&gt;" in html                         # в разметке — экранировано
+    assert 'window.APP_CONFIG = {"group": "КМБО-01-25<\\/script>", "bot": "otherbot"}' in html
+    assert html.index("window.APP_CONFIG") < html.index('src="js/core.js')
+
+
+def test_prompts_use_group(monkeypatch):
+    import ai_solver
+    monkeypatch.setattr(ai_solver, "GROUP_NAME", "КМБО-01-25")
+    monkeypatch.setattr(ai_solver, "GROUP_PROGRAM", "Прикладная математика")
+    p = ai_solver.build_system_prompt("Матан")
+    assert "КМБО-01-25" in p and "Прикладная математика" in p and "УИБО" not in p
+
+
+def test_no_hardcoded_group_in_code():
+    import pathlib
+    root = pathlib.Path(__file__).parent.parent
+    for f in ("ai_solver.py", "gemini_solver.py", "group_context.py", "bot.py", "handlers/start.py",
+              "handlers/schedule.py", "handlers/inline.py", "webapp/static/js/home.js"):
+        assert "УИБО-03-24" not in (root / f).read_text(encoding="utf-8"), f

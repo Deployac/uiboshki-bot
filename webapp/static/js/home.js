@@ -117,7 +117,7 @@ async function loadToday() {
   }
   try {
     todayData = await api("/api/today");
-    document.getElementById("subtitle").textContent = todayData.weekday + ", " + todayData.label + " · УИБО-03-24";
+    document.getElementById("subtitle").textContent = todayData.weekday + ", " + todayData.label + " · " + GROUP_NAME;
     if (todayData.weather) {
       const w = document.getElementById("weather");
       w.textContent = todayData.weather; w.style.display = "inline-block";

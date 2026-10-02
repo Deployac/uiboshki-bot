@@ -2,7 +2,11 @@
 // Файлы подключаются по порядку и делят глобальную область видимости.
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
-const BOT_USERNAME = "uiboshkibot"; // если бот переименуют — поменять тут
+// Имя бота и группы сервер подставляет в страницу (config.py: BOT_USERNAME,
+// GROUP_NAME); без него (файл открыт напрямую) — как у УИБО-03-24.
+const APP_CONFIG = window.APP_CONFIG || {};
+const BOT_USERNAME = APP_CONFIG.bot || "uiboshkibot";
+const GROUP_NAME = APP_CONFIG.group || "УИБО-03-24";
 
 if (tg) {
   tg.ready();
