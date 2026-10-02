@@ -1,0 +1,90 @@
+"""
+Версии и кодовые имена (правила — CLAUDE.md, «Правила работы»).
+
+  python tools/changelog.py check Имя1 Имя2   — свободны ли имена
+  python tools/changelog.py free              — свободные имена из песен владельца
+  python tools/changelog.py add 4.45.0 Имя <<'EOF'
+  - что сделано (текст версии)
+  EOF                                         — добавить версию в CHANGELOG
+
+Имя должно быть из песен владельца (SONG_WORDS), не занято и не придержано
+(RESERVED). Список слов — отдельные имена и существительные, не текст песен.
+"""
+
+import re
+import sys
+from pathlib import Path
+
+CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+ANCHOR = "\n## Как будет дальше"
+# придержаны владельцем под особые версии (CLAUDE.md)
+RESERVED = {"Брусилов": "прорыв", "Корнилов": "эпохальный поход (уже v4.19.0)",
+            "Сталин": "что-то торжественное, масштаба Победы", "Кайзер": "разбивка webapp/server.py (v4.45.0)"}
+# Имена и отдельные слова из трёх песен, которые дал владелец (не цитаты).
+SONG_WORDS = """
+Буревестник Цветы Фронт Лошадь Милюков Суп Дарданеллы Выходные Локаут Обед Ужин Волопас Кризис Полдник
+Балканы Сончас Гучков Полка Сирень Гельсингфорс Король Некрасов Ленин Львов Чернов Азеф Есенин Троцкий
+Керенский Верховский Церетели Блок Покровский Дутов Дан Коновалов Мартов Дейч Гвоздёв Суханов Струве Рыков
+Володарский Жук Квесис Луначарский Аксельрод Калинин Сталин Гоц Родзянко Берг Бухарин Маклаков Медведь
+Корнилов Рудзутак Свердлов Брусилов Маслов Скобелев Дроздовский Франк Терещенко Чайковский Кирпичников
+Чаянов Бонч-Бруевич Плеханов Газета Барсук Трон Гудзон Алексеев Гамбит Журавли Ермак Голод Орлы Подкомитет
+Вёсла Намаз Оборонцы Сервал Нарвал Кабал Марал Гусак Сайгак Лошак Макак Войтинский Рувинский Зиновьев
+Егорьев Авксентьев Терентьев
+Нарвал Немец Язык Шпион Овцебык Сорок Котлета Бушлат Москит Измена Гранит Лазарет Свет Ответ Хлеб Копыта
+Дождь Алфавит Вулкан Лось Игуана Зов Год
+Метель Скат Истребитель Технокнягиня Цитадель Китоглав Завод Луноход Призрак Акула Хвост Манул Горизонт
+Рождество Ежевика Псы Октябрь Рассвет Глухарь Сверхновая Снегокат Подземелье Белград Столовая Кайзер
+Прерии Марс Титан Пруд
+""".split() + ["Юрьев день"]
+
+
+def _norm(s: str) -> str:
+    return s.replace("ё", "е").lower()
+
+
+def versions(text: str) -> list[tuple[str, str]]:
+    return re.findall(r"^### v([\d.]+)\s+«([^»]+)»", text, re.M)
+
+
+def free(text: str) -> list[str]:
+    used = {_norm(n) for _, n in versions(text)}
+    return sorted({w for w in SONG_WORDS if _norm(w) not in used and w not in RESERVED})
+
+
+def check(text: str, name: str) -> str | None:
+    """None — можно; иначе причина."""
+    if name in RESERVED:
+        return f"придержано: {RESERVED[name]}"
+    if _norm(name) not in {_norm(w) for w in SONG_WORDS}:
+        return "нет в песнях владельца — не придумывать, спросить"
+    taken = [v for v, n in versions(text) if _norm(n) == _norm(name)]
+    return f"занято v{taken[0]}" if taken else None
+
+
+def main(argv: list[str]) -> int:
+    text = CHANGELOG.read_text(encoding="utf-8")
+    cmd = argv[1] if len(argv) > 1 else ""
+    if cmd == "free":
+        print(", ".join(free(text)))
+    elif cmd == "check":
+        for n in argv[2:]:
+            print(n, "—", check(text, n) or "свободно")
+    elif cmd == "add" and len(argv) == 4:
+        ver, name = argv[2], argv[3]
+        if why := check(text, name):
+            sys.exit(f"{name}: {why}")
+        if ver in {v for v, _ in versions(text)}:
+            sys.exit(f"версия {ver} уже есть")
+        body = sys.stdin.read().strip()
+        if not body or ANCHOR not in text:
+            sys.exit("нет текста версии или раздела «Как будет дальше»")
+        CHANGELOG.write_text(text.replace(ANCHOR, f"\n### v{ver} «{name}»\n{body}\n" + ANCHOR, 1), encoding="utf-8")
+        print("ok", ver, name)
+    else:
+        print(__doc__)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
