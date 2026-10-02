@@ -127,6 +127,26 @@ function matchCourse(title, courses) {
   return bestScore >= 0.6 ? best : null;
 }
 
+// Баллы у пар в «Эта неделя»: «12/40» у предмета, который нашёлся в СДО.
+// Журнал грузится один раз и только если вход в СДО подключён.
+let scoresTried = false;
+
+function lessonScore(title) {
+  if (!sdoData || !sdoData.courses) return "";
+  const c = matchCourse(title, sdoData.courses);
+  if (!c) return "";
+  return ' <span class="l-score' + (c.closed ? " ok" : "") + '" title="баллы в СДО">' + fmtNum(c.score) + '/' + fmtNum(c.max) + '</span>';
+}
+
+async function loadLessonScores() {
+  if (sdoData || scoresTried) return;
+  scoresTried = true;
+  const st = typeof loadSdoStatus === "function" ? (sdoState && sdoState.state !== "off" ? sdoState : await loadSdoStatus()) : null;
+  if (!st || st.state !== "ok") return;
+  try { sdoData = await api("/api/sdo/grades"); } catch (e) { return; }
+  rerenderSelectedDay();
+}
+
 async function openLessonSdo(title) {
   haptic();
   if (!sdoData) {
