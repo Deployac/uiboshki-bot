@@ -146,12 +146,16 @@ async def api_today(user: dict = CurrentUser):
 
     now = datetime.now(TZ)
     today = now.date()
-    lessons, tomorrow_first, schedule_ok = [], None, True
+    lessons, tomorrow_first, schedule_ok, campus = [], None, True, ""
     try:
         raw = await fetch_schedule_raw()
         lessons = lessons_for_date(raw, today, now=now)
         tomorrow = lessons_for_date(raw, today + timedelta(days=1))
         tomorrow_first = tomorrow[0] if tomorrow else None
+        import notify_prefs        # «сегодня пары на МП-1, не на В-78»
+        from schedule_parser import parse_events_for_date
+        campus = re.sub(r"<[^>]+>|📍 ", "", notify_prefs.campus_note(parse_events_for_date(raw, today),
+                                                                    notify_prefs.home_campus(raw)))
     except Exception as e:
         logger.warning(f"api_today: расписание недоступно: {e}")
         schedule_ok = False
@@ -171,7 +175,7 @@ async def api_today(user: dict = CurrentUser):
     return {
         **_day_label(today), "now": now.isoformat(), "hour": now.hour,
         "lessons": lessons, "tomorrow_first": tomorrow_first, "schedule_ok": schedule_ok,
-        "weather": weather,
+        "weather": weather, "campus": campus,
         "deadlines": {"active": len(items), "soon": soon},
         "notes": [{"subject": n.get("subject") or "", "text": n["text"]} for n in notes],
     }
@@ -1088,6 +1092,51 @@ async def api_security(user: dict = CurrentUser):
         "limits": {k: {"count": v[0], "minutes": max(1, v[1] // 60)} for k, v in ratelimit.LIMITS.items()},
         "events_days": 180,
     }
+
+
+class NotifyBody(BaseModel):
+    subscribed: bool | None = None
+    reminder_minutes: int | None = None
+    prefs: dict | None = None
+
+
+async def _notify_view(uid: int) -> dict:
+    import notify_prefs
+    from config import DEADLINE_REMINDER_HOUR, DEADLINE_REMINDER_MINUTE, SCHEDULE_HOUR, SCHEDULE_MINUTE
+    from database import get_user
+    from schedule_parser import fetch_schedule_raw
+    user = await get_user(uid) or {}
+    try:
+        home = notify_prefs.home_campus(await fetch_schedule_raw())
+    except Exception:
+        home = None
+    return {"subscribed": bool(user.get("subscribed", 1)), "reminder_minutes": user.get("reminder_minutes") or 15,
+            "reminder_choices": list(notify_prefs.REMINDER_CHOICES), "prefs": notify_prefs.merge(user.get("notify")),
+            "home_campus": home, "morning_time": f"{SCHEDULE_HOUR}:{SCHEDULE_MINUTE:02d}",
+            "deadline_time": f"{DEADLINE_REMINDER_HOUR}:{DEADLINE_REMINDER_MINUTE:02d}"}
+
+
+@app.get("/api/notify")
+async def api_notify(user: dict = CurrentUser):
+    """Конструктор уведомлений (☰ Ещё → Уведомления), notify_prefs.py."""
+    return await _notify_view(user["id"])
+
+
+@app.post("/api/notify")
+async def api_notify_save(body: NotifyBody, user: dict = CurrentUser):
+    import notify_prefs
+    from database import get_user, set_notify, set_reminder_minutes, set_subscription
+    uid = user["id"]
+    if body.subscribed is not None:
+        await set_subscription(uid, 1 if body.subscribed else 0)
+    if body.reminder_minutes is not None:
+        if body.reminder_minutes not in notify_prefs.REMINDER_CHOICES:
+            raise HTTPException(status_code=400, detail="такого времени напоминания нет")
+        await set_reminder_minutes(uid, body.reminder_minutes)
+    if body.prefs is not None:
+        current = notify_prefs.merge((await get_user(uid) or {}).get("notify"))
+        await set_notify(uid, notify_prefs.merge({**current, **body.prefs}))
+    return await _notify_view(uid)
 
 
 @app.post("/api/pulsecheck")

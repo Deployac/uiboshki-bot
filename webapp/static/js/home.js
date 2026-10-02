@@ -120,6 +120,10 @@ async function loadToday() {
       const w = document.getElementById("weather");
       w.textContent = todayData.weather; w.style.display = "inline-block";
     }
+    if (todayData.campus) {        // пары не в своём корпусе — заметно, до первой пары
+      const c = document.getElementById("campus");
+      c.innerHTML = icon("place") + " " + escapeHtml(todayData.campus); c.style.display = "inline-flex";
+    }
     const n = todayData.lessons.reduce((a, l) => a + (l.pairs || 1), 0);
     document.getElementById("today-count").textContent = n ? n + " " + plural(n, "пара", "пары", "пар") : "";
     refreshStatuses();

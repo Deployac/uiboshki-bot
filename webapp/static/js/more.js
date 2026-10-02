@@ -297,4 +297,90 @@ async function openSecurity() {
     '<button class="ghost" onclick="closeSheet(\'security-sheet\')">Понятно</button>';
 }
 
+// ── Уведомления: конструктор (что присылать и в какие дни) ───────────────
+// Раньше — только /settings в чате. Сохраняется сразу при каждом нажатии
+// (/api/notify, notify_prefs.py), без кнопки «Сохранить».
+
+const DAY_NAMES = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+let notifyState = null;
+
+async function openNotify() {
+  haptic();
+  document.getElementById("notify-sheet").classList.add("open");
+  const box = document.getElementById("notify-body");
+  box.innerHTML = '<div class="skel" style="height:320px"></div>';
+  try { notifyState = await api("/api/notify"); } catch (e) {
+    box.innerHTML = '<p class="hint">Не удалось загрузить настройки: ' + escapeHtml(e.message) + '</p>';
+    return;
+  }
+  renderNotify();
+}
+
+function ntSwitch(on, action) {
+  return '<button class="nt-switch' + (on ? " on" : "") + '" role="switch" aria-checked="' + on + '" onclick="' + action + '"><span></span></button>';
+}
+
+function ntDays(key) {
+  const days = notifyState.prefs[key];
+  return '<div class="nt-days">' + DAY_NAMES.map((n, i) =>
+    '<button class="' + (days.includes(i) ? "on" : "") + (i >= 5 ? " we" : "") + '" onclick="toggleNotifyDay(\'' + key + '\',' + i + ')">' + n + '</button>').join("") + '</div>';
+}
+
+function ntRow(title, sub, key) {
+  return '<div class="nt-row"><div><b>' + title + '</b>' + (sub ? '<p>' + sub + '</p>' : '') + '</div>' +
+    ntSwitch(notifyState.prefs[key], "toggleNotify('" + key + "')") + '</div>';
+}
+
+function ntCard(ic, title, sub, key, daysKey, extra) {
+  const on = notifyState.prefs[key];
+  return '<div class="nt-card' + (on ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon(ic) + '</span>' +
+    '<div><b>' + title + '</b><p>' + sub + '</p></div>' + ntSwitch(on, "toggleNotify('" + key + "')") + '</div>' +
+    (on ? ntDays(daysKey) + (extra || "") : "") + '</div>';
+}
+
+function renderNotify() {
+  const s = notifyState, p = s.prefs;
+  const box = document.getElementById("notify-body");
+  let html = '<div class="sec-hero"><span class="sec-shield nt-bell">' + icon("bell") + '</span><div><h3>Уведомления</h3>' +
+    '<p>Что бот присылает в личку и в какие дни</p></div></div>' +
+    '<div class="nt-card nt-master"><div class="nt-head"><div><b>Присылать уведомления</b><p>' +
+    (s.subscribed ? "Включены — настрой ниже, что именно" : "Выключены — бот ничего не пришлёт сам") + '</p></div>' +
+    ntSwitch(s.subscribed, "toggleNotifyMaster()") + '</div></div>';
+  if (s.subscribed) {
+    const campus = s.home_campus ? "если пары не на " + escapeHtml(s.home_campus) + " — напишу, где" : "если пары в другом корпусе — напишу";
+    html +=
+      ntCard("sun", "Утреннее расписание", "в " + s.morning_time + " — пары на сегодня", "morning", "morning_days",
+        ntRow("Погода", "строчка с погодой в начале", "weather") +
+        ntRow("Другой корпус", campus, "campus") +
+        ntRow("Только если есть пары", "в свободный день — тишина", "skip_empty")) +
+      ntCard("clock", "Перед парой", "напоминание за " + s.reminder_minutes + " мин", "lessons", "lesson_days",
+        '<div class="nt-mins">' + s.reminder_choices.map(m =>
+          '<button class="' + (m === s.reminder_minutes ? "on" : "") + '" onclick="setNotifyMinutes(' + m + ')">за ' + m + ' мин</button>').join("") + '</div>') +
+      ntCard("deadlines", "Дедлайны", "в " + s.deadline_time + " — что сдать в ближайшие 3 дня", "deadlines", "deadline_days");
+  }
+  box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';
+}
+
+async function saveNotify(body) {
+  haptic();
+  try { notifyState = await api("/api/notify", { method: "POST", body: JSON.stringify(body) }); }
+  catch (e) { showToast("Не сохранилось: " + e.message); }
+  renderNotify();
+}
+
+function toggleNotifyMaster() { saveNotify({ subscribed: !notifyState.subscribed }); }
+function setNotifyMinutes(m) { saveNotify({ reminder_minutes: m }); }
+
+function toggleNotify(key) {
+  const prefs = {}; prefs[key] = !notifyState.prefs[key];
+  saveNotify({ prefs: prefs });
+}
+
+function toggleNotifyDay(key, day) {
+  const days = notifyState.prefs[key];
+  const prefs = {};
+  prefs[key] = days.includes(day) ? days.filter(d => d !== day) : days.concat([day]);
+  saveNotify({ prefs: prefs });
+}
+
 loadSdoStatus();

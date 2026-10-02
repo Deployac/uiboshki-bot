@@ -792,3 +792,31 @@
     background: rgba(52,211,153,.13); color: #34d399; font-size: 17px; }
   .sec-ic .ico { vertical-align: 0; }
   #security-sheet .sheet { max-height: 88vh; overflow-y: auto; }
+
+  /* ── Уведомления: конструктор ── */
+  .more-grid .sq.t-bell { background: linear-gradient(145deg, #fbbf24, #f0884b); }
+  .sec-shield.nt-bell { background: linear-gradient(145deg, #fbbf24, #f0884b); color: #fff; }
+  .nt-card { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; margin-bottom: 10px; }
+  .nt-card.off { opacity: .7; }
+  .nt-head, .nt-row { display: flex; align-items: center; gap: 12px; }
+  .nt-head > div, .nt-row > div { flex: 1; min-width: 0; }
+  .nt-head b { font-size: 15px; }
+  .nt-head p, .nt-row p { margin: 2px 0 0; color: var(--hint); font-size: 12.5px; }
+  .nt-row { padding: 10px 0 2px; border-top: 1px solid var(--border); margin-top: 10px; }
+  .nt-row b { font-size: 14px; font-weight: 600; }
+  .nt-ic { width: 36px; height: 36px; border-radius: 11px; flex: none; display: flex; align-items: center; justify-content: center;
+           background: var(--bg); color: var(--accent); }
+  .nt-switch { flex: none; width: 46px; height: 28px; border-radius: 14px; border: none; padding: 0; position: relative;
+               background: #3a3f4d; transition: background .2s; }
+  .nt-switch span { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff;
+                    transition: transform .2s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .nt-switch.on { background: var(--ok); }
+  .nt-switch.on span { transform: translateX(18px); }
+  .nt-days, .nt-mins { display: flex; gap: 6px; margin-top: 12px; }
+  .nt-days button, .nt-mins button { flex: 1; min-width: 0; padding: 8px 0; border-radius: 10px; border: 1px solid var(--border);
+               background: none; color: var(--hint); font-size: 13px; font-weight: 600; }
+  .nt-days button.we { color: var(--danger); opacity: .8; }
+  .nt-days button.on, .nt-mins button.on { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
+  .campus-pill { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 10px 6px; padding: 7px 12px; border-radius: 999px;
+                 background: rgba(255,178,56,.14); border: 1px solid rgba(255,178,56,.35); color: var(--warn); font-size: 13px; font-weight: 600; }
+  .campus-pill .ico { width: 15px; height: 15px; }
