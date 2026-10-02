@@ -118,6 +118,9 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   «только если есть пары», напоминание перед парой по сценарию (`REMIND`:
   первая пара / после короткой перемены / после большого перерыва,
   `plan_reminders`). Общий выключатель — `users.subscribed`.
+- **Inline-режим** (`handlers/inline.py`, /setinline в BotFather): картинки
+  расписания `schedule_card.py` (Pillow, всегда тёмные) по подписанной ссылке
+  `/card/<ключ>.jpg?sig=` с сервера WebApp; без `WEBAPP_URL` — текстом.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

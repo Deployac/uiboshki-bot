@@ -1,0 +1,88 @@
+"""Картинки расписания для inline-режима: рисуются (день, неделя, пустой
+день), ссылка подписана — чужая подпись не проходит, inline отдаёт фото,
+если есть адрес сервера."""
+import io
+from datetime import date, datetime, timedelta
+
+import pytest
+from PIL import Image
+
+import schedule_card
+from tests.test_inline import _ask
+from utils import TZ
+
+L = {"num": 1, "pairs": 1, "start": "09:00", "end": "10:30", "title": "Моделирование бизнес-процессов",
+     "kind": "лекция", "room": "А-15 (В-78)", "teacher": "Иванов И."}
+
+
+def _img(data: bytes):
+    img = Image.open(io.BytesIO(data))
+    assert img.format == "JPEG" and img.width == schedule_card.W
+    return img
+
+
+def test_render_day_and_long_title():
+    long = dict(L, title="Очень длинное название предмета " * 6, kind="практика", num=2)
+    a = _img(schedule_card.render_day("Понедельник, 5 октября", "2 пары", [L, long], "УИБО · @bot"))
+    b = _img(schedule_card.render_day("Понедельник, 5 октября", "2 пары", [L, L], "УИБО · @bot"))
+    assert a.height > b.height          # длинное название — в две строки, не вылезает за край
+    _img(schedule_card.render_day("Суббота, 10 октября", "пар нет", [], "УИБО · @bot"))
+
+
+def test_render_week_skips_free_days():
+    mon = date(2026, 10, 5)
+    days = [(mon + timedelta(days=i), [L] if i in (0, 3) else []) for i in range(7)]
+    two = _img(schedule_card.render_week("Неделя 6", "5–11 октября", days, "@bot"))
+    days[1] = (days[1][0], [L])
+    three = _img(schedule_card.render_week("Неделя 6", "5–11 октября", days, "@bot"))
+    assert three.height > two.height
+
+
+def test_day_subtitle():
+    assert schedule_card.day_subtitle([]) == "пар нет"
+    assert schedule_card.day_subtitle([L, dict(L, start="10:40", end="12:10")]) == "2 пары · 09:00–12:10"
+
+
+def test_signed_key():
+    url = schedule_card.card_url("https://x.app/", "target", 2, 77)
+    key, sig = url.split("/card/")[1].split(".jpg?sig=")
+    assert schedule_card.parse_key(key, sig) == ("target", 2, 77)
+    assert schedule_card.parse_key(key.replace("77", "78"), sig) is None
+    assert schedule_card.parse_key(key, "0" * 24) is None
+
+
+def test_card_endpoint(monkeypatch):
+    from fastapi.testclient import TestClient
+    import schedule_parser
+    import webapp.server as server
+    calls = []
+
+    async def raw(force=False):
+        calls.append(1)
+        return b"BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n"
+
+    monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", raw)
+    server._card_cache.clear()
+    c = TestClient(server.app)
+    url = schedule_card.card_url("http://testserver", "week").replace("http://testserver", "")
+    r = c.get(url)
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    _img(r.content)
+    assert c.get(url).status_code == 200 and len(calls) == 1       # второй раз — из памяти
+    assert c.get(url.split("?")[0] + "?sig=bad").status_code == 403
+
+
+def test_build_own_today(monkeypatch):
+    import schedule_parser
+    monkeypatch.setattr(schedule_parser, "lessons_for_date", lambda raw, d, now=None: [L])
+    _img(schedule_card.build_own(b"", "today", datetime(2026, 10, 5, 8, 0, tzinfo=TZ), "УИБО", "bot"))
+
+
+@pytest.mark.asyncio
+async def test_inline_sends_photos_when_server_known(monkeypatch):
+    import config
+    monkeypatch.setattr(config, "WEBAPP_URL", "https://bot.example")
+    ans = await _ask("")
+    assert [type(r).__name__ for r in ans.results] == ["InlineQueryResultPhoto"] * 3
+    assert all(r.photo_url.startswith("https://bot.example/card/") for r in ans.results)
+    assert (await _ask("завтра")).results[0].photo_url.split("/card/")[1].startswith("tomorrow-")
