@@ -32,6 +32,7 @@ DEFAULTS = {
     **{k: v["default"] for k, v in REMIND.items()},
     "deadlines": True, "deadline_days": ALL_DAYS,
     "weekly": True,          # обзор недели в воскресенье вечером (weekly_digest.py)
+    "grades": True,          # новые баллы в СДО (grade_alerts.py)
 }
 DAYS_KEY = {"morning": "morning_days", "lessons": "lesson_days", "deadlines": "deadline_days"}
 _BOOLS = [k for k, v in DEFAULTS.items() if isinstance(v, bool)]
