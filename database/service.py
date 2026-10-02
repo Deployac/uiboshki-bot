@@ -60,3 +60,19 @@ async def purge_events(keep_days: int = 180):
     async with connect() as db:
         await db.execute("DELETE FROM events WHERE at < datetime('now', ?)", (f"-{int(keep_days)} days",))
         await db.commit()
+
+
+async def get_solver_rating(limit: int = 10) -> list[dict]:
+    """Рейтинг активности (/rating): кто больше всех решал задачи через бота."""
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        # Считаем по solver_history
+        cur = await db.execute("""
+            SELECT u.full_name, u.username, COUNT(s.id) as cnt
+            FROM solver_history s
+            JOIN users u ON u.user_id = s.user_id
+            GROUP BY s.user_id
+            ORDER BY cnt DESC
+            LIMIT ?
+        """, (limit,))
+        return [dict(r) for r in await cur.fetchall()]

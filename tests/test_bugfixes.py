@@ -299,8 +299,8 @@ def make_dp():
 
 @pytest.fixture
 def hw_db(db, monkeypatch):
-    # handlers/announce.py держит свой DATABASE_PATH (импорт из config).
-    monkeypatch.setattr(announce, "DATABASE_PATH", db.DATABASE_PATH)
+    # Доска ДЗ теперь в database/homework.py и читает тот же DATABASE_PATH,
+    # что и остальная база (раньше — своя копия в handlers/announce.py).
     return db
 
 
@@ -353,18 +353,18 @@ async def test_setzam_rejects_non_numeric_and_is_editor_survives_bad_value(hw_db
 
     await _feed(dp, bot, "/setzam @someone", user=STAROSTA)
     assert any("числовой Telegram ID" in t for _, t in sess.sent_texts)
-    assert await announce.get_setting("zam_id") is None
+    assert await hw_db.get_setting("zam_id") is None
 
     # Значение, записанное до появления проверки, больше не роняет is_editor.
-    await announce.set_setting("zam_id", "@someone")
-    assert await announce.is_editor(USER.id) is False
-    assert await announce.is_editor(STAROSTA_ID) is True
+    await hw_db.set_setting("zam_id", "@someone")
+    assert await hw_db.is_editor(USER.id) is False
+    assert await hw_db.is_editor(STAROSTA_ID) is True
 
 
 @pytest.mark.asyncio
 async def test_is_editor_on_fresh_db_without_settings_table(hw_db):
     # Первый /addhw на свежей базе (до любого /hw) раньше падал "no such table".
-    assert await announce.is_editor(USER.id) is False
+    assert await hw_db.is_editor(USER.id) is False
 
 
 @pytest.mark.asyncio

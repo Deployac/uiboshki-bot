@@ -34,7 +34,7 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
     # шлёт документ — см. handlers/start.py: cmd_start_deeplink.
     from database import get_file_ids_with_text
     from file_categories import CATEGORIES, LABELS, category_of
-    from handlers.announce import is_editor
+    from database import is_editor
     with_text = await get_file_ids_with_text()
     editor = await is_editor(user["id"])
     out = []
@@ -158,7 +158,7 @@ async def api_file_edit(file_id: int, body: FileMeta, user: dict = CurrentUser):
     текст лекции привязан к файлу, а не к предмету."""
     from database import get_files, update_file_meta
     from file_categories import LABELS
-    from handlers.announce import is_editor
+    from database import is_editor
     f = next((x for x in await get_files() if x["id"] == file_id), None)
     if not f:
         raise HTTPException(status_code=404, detail="файл не найден")

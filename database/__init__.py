@@ -5,7 +5,8 @@
 Модули: schema — таблицы и миграции; users; deadlines (и свои напоминания);
 files (и тексты лекций); sdo (входы и история баллов); schedule (снимки,
 запасной календарь, закреплённые); social (голосования, «Подслушано»,
-заметки к парам); service (решалка, очистка семестра, события /stats).
+заметки к парам); homework (доска ДЗ, настройки, is_editor); service
+(решалка и рейтинг, очистка семестра, события /stats).
 Подключение — database._conn.connect().
 """
 
@@ -118,6 +119,18 @@ from database.service import (
     add_event,
     events_since,
     purge_events,
+    get_solver_rating,
+)
+from database.homework import (
+    init_hw_table,
+    get_setting,
+    set_setting,
+    is_editor,
+    add_hw,
+    get_hw_for_date,
+    get_hw_subjects,
+    get_hw_by_subject,
+    delete_hw,
 )
 
 __all__ = ["DATABASE_PATH",
@@ -213,4 +226,14 @@ __all__ = ["DATABASE_PATH",
     "add_event",
     "events_since",
     "purge_events",
+    "get_solver_rating",
+    "init_hw_table",
+    "get_setting",
+    "set_setting",
+    "is_editor",
+    "add_hw",
+    "get_hw_for_date",
+    "get_hw_subjects",
+    "get_hw_by_subject",
+    "delete_hw",
 ]

@@ -260,7 +260,7 @@ STAROSTA_HELP = (
 async def cmd_help(message: Message):
     # Команды старосты видит только староста (и зам): остальным они только
     # мешали — и всё равно отвечали бы «только для старосты».
-    from handlers.announce import is_editor
+    from database import is_editor
     text = HELP_TEXT
     if await is_editor(message.from_user.id):
         text += STAROSTA_HELP
@@ -355,11 +355,11 @@ async def settings_change(callback: CallbackQuery):
 
 @router.message(F.text == "🏆 Рейтинг")
 async def rating_button(message: Message):
-    from handlers.announce import cmd_rating
+    from handlers.group_tools import cmd_rating
     await cmd_rating(message)
 
 
 @router.message(F.text == "📝 ДЗ")
 async def hw_button(message: Message):
-    from handlers.announce import cmd_hw
+    from handlers.homework import cmd_hw
     await cmd_hw(message)

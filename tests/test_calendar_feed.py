@@ -9,8 +9,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from icalendar import Calendar as ICalCalendar, Event as ICalEvent
 
-import handlers.announce as announce
-from handlers.announce import parse_lesson_date
+from handlers.homework import parse_lesson_date
 from webapp.calendar_feed import _matches_subject
 
 TZ = ZoneInfo("Europe/Moscow")
@@ -102,18 +101,17 @@ async def test_unknown_token_resolves_to_none(db):
 
 @pytest.mark.asyncio
 async def test_add_hw_with_and_without_lesson_date(db, monkeypatch):
-    monkeypatch.setattr(announce, "DATABASE_PATH", db.DATABASE_PATH)
-    await announce.init_hw_table()
+    await db.init_hw_table()
 
-    await announce.add_hw("Матан", "Решить №5-10", None, None, 111, lesson_date="2026-05-30")
-    await announce.add_hw("Физика", "Прочитать главу 2", None, None, 111)  # без даты — как раньше
+    await db.add_hw("Матан", "Решить №5-10", None, None, 111, lesson_date="2026-05-30")
+    await db.add_hw("Физика", "Прочитать главу 2", None, None, 111)  # без даты — как раньше
 
-    dated = await announce.get_hw_for_date("2026-05-30")
+    dated = await db.get_hw_for_date("2026-05-30")
     assert len(dated) == 1
     assert dated[0]["subject"] == "Матан"
     assert dated[0]["content"] == "Решить №5-10"
 
-    assert await announce.get_hw_for_date("2026-06-01") == []
+    assert await db.get_hw_for_date("2026-06-01") == []
 
 
 # ── Сборка ICS-фида ──────────────────────────────────────────────────────────
@@ -139,13 +137,12 @@ def _fake_ical_bytes(event_date, subject="Математический анал�
 async def test_build_ics_includes_matched_homework_and_notes(db, monkeypatch):
     import webapp.calendar_feed as calendar_feed
 
-    monkeypatch.setattr(announce, "DATABASE_PATH", db.DATABASE_PATH)
-    await announce.init_hw_table()
+    await db.init_hw_table()
 
     tomorrow = (datetime.now(TZ) + timedelta(days=1)).date()
     date_str = tomorrow.isoformat()
 
-    await announce.add_hw("Математический анализ", "Решить №5-10", None, None, 111, lesson_date=date_str)
+    await db.add_hw("Математический анализ", "Решить №5-10", None, None, 111, lesson_date=date_str)
     await db.add_lesson_note(date_str, "Математический анализ", "Принести калькулятор", 111)
 
     raw = _fake_ical_bytes(tomorrow)
@@ -168,13 +165,12 @@ async def test_build_ics_includes_matched_homework_and_notes(db, monkeypatch):
 async def test_build_ics_skips_unrelated_homework(db, monkeypatch):
     import webapp.calendar_feed as calendar_feed
 
-    monkeypatch.setattr(announce, "DATABASE_PATH", db.DATABASE_PATH)
-    await announce.init_hw_table()
+    await db.init_hw_table()
 
     tomorrow = (datetime.now(TZ) + timedelta(days=1)).date()
     date_str = tomorrow.isoformat()
 
-    await announce.add_hw("Физика", "Не должно попасть в это событие", None, None, 111, lesson_date=date_str)
+    await db.add_hw("Физика", "Не должно попасть в это событие", None, None, 111, lesson_date=date_str)
 
     raw = _fake_ical_bytes(tomorrow, subject="Математический анализ (ЛК)")
     monkeypatch.setattr(calendar_feed, "fetch_schedule_raw", lambda force=False: _AwaitableBytes(raw))

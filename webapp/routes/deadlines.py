@@ -16,7 +16,7 @@ router = APIRouter()
 @router.get("/api/deadlines")
 async def api_deadlines(include_done: bool = False, user: dict = CurrentUser):
     from database import get_active_deadlines, get_deadline_stats, is_shared_deadline
-    from handlers.announce import is_editor
+    from database import is_editor
     from sdo_submit import can_submit
     from database import get_user_deadline_reminders
     from deadline_reminders import label as dl_label
@@ -61,7 +61,7 @@ def _validate_deadline(body: NewDeadline) -> tuple[str, str, str | None, str]:
 
 async def _can_edit_deadline(existing: dict, user_id: int) -> bool:
     from database import is_shared_deadline
-    from handlers.announce import is_editor
+    from database import is_editor
     if is_shared_deadline(existing):
         return await is_editor(user_id)
     return existing["created_by"] == user_id
