@@ -44,7 +44,7 @@ function lessonRow(l, withStatus, tap) {
   const pairs = l.pairs > 1 ? " · " + l.pairs + " пары подряд" : "";
   return '<div class="lesson' + cls + '"' + (tap ? ' data-t="' + escapeHtml(l.title) + '" onclick="openLessonSdo(this.dataset.t)"' : '') + '>' +
     '<div class="l-time"><b>' + escapeHtml(l.start) + '</b><span>' + escapeHtml(l.end) + '</span></div>' +
-    '<div class="l-body"><div class="l-title">' + escapeHtml(l.title) + '</div>' +
+    '<div class="l-body"><div class="l-title">' + escapeHtml(l.title) + (tap ? lessonScore(l.title) : '') + '</div>' +
     '<div class="l-meta">' + lessonMeta(l) + escapeHtml(pairs) + '</div>' +
     (l.groups ? '<div class="l-groups">' + icon("users", "inl") + escapeHtml(l.groups) + '</div>' : '') + now + '</div>' +
     '<div class="l-num">' + escapeHtml(String(l.num)) + '</div></div>';
@@ -270,7 +270,17 @@ function scrollToWeek() {
   if (Math.abs(window.scrollY - top) > 4) window.scrollTo({ top: top, behavior: "smooth" });
 }
 
+// Баллы СДО у пар «Эта неделя» (sdo.js: lessonScore) приходят позже пар:
+// как загрузились — перерисовываем выбранный день.
+function rerenderSelectedDay() {
+  const list = document.getElementById("day-lessons");
+  if (list && lastDayData) renderDay(list, lastDayData);
+}
+
+let lastDayData = null;
+
 function renderDay(list, data) {
+  lastDayData = data;
   list.innerHTML = data.lessons.length
     ? data.lessons.map(l => lessonRow(l, !!l.status, true)).join("")
     : '<div class="empty">' + data.weekday + ' — пар нет ' + icon("party", "mood") + '</div>';
@@ -297,6 +307,7 @@ async function selectDay(btn, silent) {
     list.style.minHeight = "";
   }
   if (!silent) scrollToWeek();
+  loadLessonScores();
 }
 
 // «На экран Домой» (Telegram 8.0+, Bot API addToHomeScreen): ярлык WebApp на
