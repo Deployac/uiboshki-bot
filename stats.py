@@ -11,6 +11,10 @@
 Просмотры экранов пишутся не чаще раза в 30 минут на человека (иначе база
 раздуется на перелистываниях), действия — каждое.
 
+«Кто пользуется» (кнопка под картинкой): имя и ник в Telegram, когда
+заходил последний раз, сколько дней из периода и какими разделами — те же
+события, без содержимого.
+
 Картинка рисуется Pillow в цветах приложения (шрифт DejaVu лежит в
 assets/fonts — на сервере может не быть кириллических шрифтов).
 """
@@ -124,6 +128,76 @@ async def collect(days: int = 30) -> dict:
         "actions": [(label, actions.get(k, 0)) for k, label in ACTIONS],
         "heat": heat,
     }
+
+
+# Чем пользуется — коротко, для списка «кто пользуется»
+USES = {"open": "приложение", "bot": "бот", "deadlines": "дедлайны", "files": "файлы", "download": "файлы",
+        "ai": "ИИ", "sdo": "СДО", "sdo_connect": "СДО", "submit": "сдача работ", "search": "поиск"}
+
+
+def period_label(days: int) -> str:
+    return "семестр" if days >= 180 else f"{days} дн."
+
+
+async def people(days: int = 30) -> dict:
+    """Кто заходил за days дней (как в collect: сегодня и days−1 дней назад):
+    последний заход, сколько разных дней, чем пользуется; и кто в боте, но
+    за период не заходил."""
+    from database import events_since, get_all_users
+    rows = await events_since(days)
+    today = datetime.now(TZ).date()
+    since = today - timedelta(days=days - 1)
+    seen: dict[int, dict] = {}
+    for i, (uid, kind, at) in enumerate(rows):
+        t = _msk(at)
+        if t.date() < since:
+            continue
+        p = seen.setdefault(uid, {"last": t, "days": set(), "uses": Counter()})
+        p["last"], p["seq"] = max(p["last"], t), i     # seq — кто позже при равном времени (секунды)
+        p["days"].add(t.date())
+        if kind in USES:
+            p["uses"][USES[kind]] += 1
+    users = {u["user_id"]: u for u in await get_all_users()}
+
+    def who(uid: int) -> dict:
+        u = users.get(uid) or {}
+        return {"id": uid, "name": (u.get("full_name") or "").strip(), "username": u.get("username") or ""}
+
+    active = [{**who(uid), "last": p["last"], "days": len(p["days"]),
+               "uses": [label for label, _ in p["uses"].most_common(4)]}
+              for uid, p in sorted(seen.items(), key=lambda x: (x[1]["last"], x[1]["seq"]), reverse=True)]
+    idle = [who(uid) for uid in users if uid not in seen]
+    return {"days": days, "today": today, "active": active, "idle": idle}
+
+
+def _when(t: datetime, today) -> str:
+    if t.date() == today:
+        return f"сегодня {t:%H:%M}"
+    if (today - t.date()).days == 1:
+        return f"вчера {t:%H:%M}"
+    return f"{t:%d.%m}"
+
+
+def _person(p: dict) -> str:
+    from utils import esc
+    name = esc(p["name"] or (f"@{p['username']}" if p["username"] else f"id {p['id']}"))
+    nick = f" @{esc(p['username'])}" if p["username"] and p["name"] else ""
+    return f'<a href="tg://user?id={p["id"]}">{name}</a>{nick}'
+
+
+def people_text(p: dict) -> str:
+    """Список для старосты: имя (ссылкой на профиль) и ник, последний заход,
+    дней с заходами, чем пользуется. Никаких текстов, файлов и оценок."""
+    lines = [f"👥 <b>Кто пользуется · {period_label(p['days'])}</b> — {len(p['active'])} чел.", ""]
+    for i, a in enumerate(p["active"], 1):
+        uses = ", ".join(a["uses"]) or "—"
+        lines.append(f"{i}. {_person(a)} — {_when(a['last'], p['today'])} · дней: {a['days']} · {uses}")
+    if not p["active"]:
+        lines.append("За этот период никто не заходил.")
+    if p["idle"]:
+        lines += ["", f"В боте, но за период не заходили ({len(p['idle'])}): "
+                  + ", ".join(_person(u) for u in p["idle"])]
+    return "\n".join(lines)
 
 
 def summary(s: dict) -> str:

@@ -66,9 +66,11 @@ STATS_PERIODS = (7, 30, 180)
 
 
 def _stats_kb(days: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=("• " if d == days else "") + {7: "7 дней", 30: "30 дней", 180: "семестр"}[d],
-                             callback_data=f"stats:{d}") for d in STATS_PERIODS]])
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=("• " if d == days else "") + {7: "7 дней", 30: "30 дней", 180: "семестр"}[d],
+                              callback_data=f"stats:{d}") for d in STATS_PERIODS],
+        [InlineKeyboardButton(text="👥 Кто пользуется", callback_data=f"stats:people:{days}")],
+    ])
 
 
 async def _send_stats(bot, chat_id: int, days: int):
@@ -92,6 +94,15 @@ async def cb_stats(callback: CallbackQuery):
     if STAROSTA_ID and not is_starosta(callback.from_user.id):
         await callback.answer()
         return
-    days = int(callback.data.split(":")[1])
+    parts = callback.data.split(":")
+    if parts[1] == "people":
+        # «кто пользуется»: имена и ники, когда и чем — без содержимого (stats.people)
+        import stats
+        days = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 30
+        await callback.answer()
+        text = stats.people_text(await stats.people(days if days in STATS_PERIODS else 30))
+        await callback.message.answer(text, parse_mode="HTML", disable_web_page_preview=True)
+        return
+    days = int(parts[1]) if parts[1].isdigit() else 30
     await callback.answer("Считаю…")
     await _send_stats(callback.bot, callback.message.chat.id, days if days in STATS_PERIODS else 30)

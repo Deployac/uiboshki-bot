@@ -95,3 +95,50 @@ async def test_stats_command_only_for_starosta(db, monkeypatch):
     # остальным /stats по-прежнему показывает их дедлайны
     assert any("Статистика дедлайнов" in text for text, _ in bot.session.sent)
     assert "Статистика за 30 дн." in bot.session.photos[0][1]
+
+
+@pytest.mark.asyncio
+async def test_people_list_names_when_and_what(db, monkeypatch):
+    # Владелец: видеть, кто конкретно пользуется (имя и ник), — без содержимого.
+    monkeypatch.setattr(stats, "_last", {})
+    await db.upsert_user(1, "anya", "Аня <Б>")
+    await db.upsert_user(2, "", "Борис")
+    await db.upsert_user(3, "vova", "")          # в боте, но за период не заходил
+    for kind in ("ai", "ai", "files", "open"):
+        await stats.track(1, kind)
+    await stats.track(2, "sdo")
+    p = await stats.people(30)
+    assert [a["id"] for a in p["active"]] == [2, 1]           # свежие сверху
+    assert p["active"][1]["uses"][0] == "ИИ" and p["active"][1]["days"] == 1
+    assert [u["id"] for u in p["idle"]] == [3]
+    text = stats.people_text(p)
+    assert "Кто пользуется · 30 дн.</b> — 2 чел." in text
+    assert '<a href="tg://user?id=1">Аня &lt;Б&gt;</a> @anya — сегодня' in text
+    assert "ИИ, файлы, приложение" in text
+    assert "не заходили (1)" in text and "@vova" in text
+
+
+@pytest.mark.asyncio
+async def test_people_button_only_for_starosta(db, monkeypatch):
+    from aiogram import Bot, Dispatcher
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.types import CallbackQuery, Chat, Message, Update, User
+    from handlers import announce
+    from tests.conftest import STAROSTA_ID
+    from tests.test_solver_render import RecordingSession
+
+    await db.upsert_user(222, "anya", "Аня")
+    await db.add_event(222, "open")
+    bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=RecordingSession())
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(announce.router)
+    try:
+        for i, uid in enumerate((222, STAROSTA_ID)):
+            u = User(id=uid, is_bot=False, first_name="X")
+            msg = Message(message_id=1, date=0, chat=Chat(id=uid, type="private"), from_user=u, text="")
+            cb = CallbackQuery(id=str(i), from_user=u, chat_instance="c", data="stats:people:30", message=msg)
+            await dp.feed_update(bot, Update(update_id=int(time.time()) + i, callback_query=cb))
+    finally:
+        announce.router._parent_router = None
+    lists = [t for t, _ in bot.session.sent if "Кто пользуется" in t]
+    assert len(lists) == 1 and "Аня" in lists[0]
