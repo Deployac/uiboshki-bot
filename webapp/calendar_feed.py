@@ -21,7 +21,7 @@ from icalendar import Calendar, Event
 
 from config import TIMEZONE, GROUP_NAME
 from database import get_lesson_notes
-from handlers.announce import get_hw_for_date
+from database import get_hw_for_date
 from schedule_parser import fetch_schedule_raw, list_upcoming_events
 
 TZ = ZoneInfo(TIMEZONE)

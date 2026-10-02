@@ -10,7 +10,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Chat, Document, Message, Update, User
 
-from handlers.files import title_from_filename
+from handlers.files_upload import title_from_filename
 from tests.test_solver_render import RecordingSession
 
 USER = User(id=222, is_bot=False, first_name="Alice")
@@ -194,3 +194,21 @@ def test_files_sorted_by_type_then_number():
         "Практика 1 Знакомство", "Практика 2 Графики", "Практика 8 преподаватель",
         "Практическа работа 13 14", "Практическа работа 15 16",
     ]
+
+
+@pytest.mark.asyncio
+async def test_json_document_in_other_dialog_is_not_taken_by_sync(db, dp, bot, monkeypatch):
+    # Баг из старого плана: handle_sync_json (/syncfiles) ловил документ в
+    # любом состоянии — /addhw с файлом молча не срабатывал. Теперь — только
+    # вне диалогов (StateFilter(None)); после разбивки files.py проверяем.
+    from aiogram.fsm.storage.base import StorageKey
+    from handlers import files_admin
+    monkeypatch.setattr(files_admin, "is_starosta", lambda uid: uid == USER.id)
+    key = StorageKey(bot_id=bot.id, chat_id=CHAT.id, user_id=USER.id)
+    await dp.storage.set_state(key, "HWAdd:content")
+    await _feed(dp, bot, document=_doc("deadlines.json", "j1"))
+    assert not any("Импортирую" in t for _, t in bot.session.sent_texts)
+
+    await dp.storage.set_state(key, None)              # вне диалога — синк берёт
+    await _feed(dp, bot, document=_doc("deadlines.json", "j2"))
+    assert any("Импортирую" in t for _, t in bot.session.sent_texts)

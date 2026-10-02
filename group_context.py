@@ -28,7 +28,7 @@ def _plain(html: str) -> str:
 
 async def list_homework(limit: int = 30) -> list[dict]:
     """ДЗ с доски (/addhw), свежие сверху. Таблица создаётся лениво
-    (handlers/announce.init_hw_table) — на пустой базе её может не быть."""
+    (database/homework.init_hw_table) — на пустой базе её может не быть."""
     try:
         async with aiosqlite.connect(database.DATABASE_PATH) as db:
             db.row_factory = aiosqlite.Row

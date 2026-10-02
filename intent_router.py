@@ -106,10 +106,10 @@ async def dispatch_intent(intent: str, message) -> bool:
         from handlers.weather import cmd_weather
         await cmd_weather(message)
     elif intent == "homework":
-        from handlers.announce import cmd_hw
+        from handlers.homework import cmd_hw
         await cmd_hw(message)
     elif intent == "rating":
-        from handlers.announce import cmd_rating
+        from handlers.group_tools import cmd_rating
         await cmd_rating(message)
     elif intent == "history":
         from handlers.solver import cmd_history
