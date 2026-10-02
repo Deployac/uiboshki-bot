@@ -3,7 +3,7 @@ from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database import upsert_user, set_subscription, get_user
-from config import BOT_USERNAME, GROUP_NAME, STAROSTA_ID, WEBAPP_URL, SCHEDULE_HOUR, SCHEDULE_MINUTE
+from config import BOT_USERNAME, GROUP_NAME, SCHEDULE_HOUR, SCHEDULE_MINUTE
 from keyboards import MAIN_KB, ACTIONS_KB, app_button, webapp_keyboard
 from utils import esc, split_by_lines
 
@@ -283,7 +283,6 @@ async def cmd_unsubscribe(message: Message):
 
 @router.message(Command("setreminder"))
 async def cmd_setreminder(message: Message):
-    from database import set_reminder_minutes
     parts = message.text.split()
     if len(parts) < 2 or not parts[1].isdigit():
         await message.answer("Использование: /setreminder 15")
@@ -337,7 +336,6 @@ async def cmd_settings(message: Message):
 
 @router.callback_query(F.data.startswith("set:"))
 async def settings_change(callback: CallbackQuery):
-    from database import set_reminder_minutes
     uid = callback.from_user.id
     await upsert_user(uid, callback.from_user.username or "", callback.from_user.full_name or "")
     parts = callback.data.split(":")

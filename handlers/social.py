@@ -126,7 +126,6 @@ async def send_anon(message: Message, state: FSMContext):
     await state.clear()
 
     try:
-        from aiogram import Bot
         bot = message.bot
         await bot.send_message(
             STAROSTA_ID,

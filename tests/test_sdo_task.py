@@ -1,6 +1,5 @@
 """Экран задания СДО: описание, файлы преподавателя (📥), сдача до трёх файлов."""
 import base64
-from urllib.parse import parse_qs
 
 import httpx
 import pytest

@@ -28,5 +28,8 @@ jobs:
       - name: Compile check (весь репозиторий)
         run: python -m py_compile $(git ls-files '*.py')
 
+      - name: Lint (ruff — неопределённые имена, лишние импорты)
+        run: ruff check .
+
       - name: Run tests
         run: python -m pytest -v

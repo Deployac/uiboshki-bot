@@ -26,7 +26,7 @@ import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import unquote, urlparse
 
 import httpx
 from bs4 import BeautifulSoup

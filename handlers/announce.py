@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
-from database import get_all_subscribed_users, upsert_user
+from database import get_all_subscribed_users
 from config import STAROSTA_ID, is_starosta
 from utils import esc, parse_day_month, today_msk, utc_to_msk_date, plural
 

@@ -26,7 +26,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
-from config import BOT_TOKEN, SDO_BASE_URL, SDO_SESSION_COOKIE, STAROSTA_ID, is_starosta
+from config import BOT_TOKEN, SDO_BASE_URL, SDO_SESSION_COOKIE, is_starosta
 
 logger = logging.getLogger(__name__)
 

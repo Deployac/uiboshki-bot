@@ -4,7 +4,6 @@
 первому сообщению, а кнопки предметов («Математика», «Экономика»…) не
 совпадали ни с одним предметом, по которому реально есть лекции.
 """
-import time
 
 import pytest
 from aiogram import Bot, Dispatcher
@@ -74,7 +73,7 @@ async def test_solve_uses_lectures_in_first_answer_and_follow_ups(db, dp, bot, m
     monkeypatch.setattr(solver, "solve_with_history", fake_history)
 
     await _feed(dp, bot, "/solve")
-    kb = bot.session.sent[-1]
+    assert bot.session.sent            # меню предметов пришло
     await _feed(dp, bot, "📖 Анализ данных")
     await _feed(dp, bot, "Как найти коэффициенты регрессии?")
     await _feed(dp, bot, "А если точек три?")

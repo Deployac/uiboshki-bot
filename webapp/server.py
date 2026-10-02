@@ -24,7 +24,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -856,7 +856,7 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
     сообщение). В системный промпт — контекст группы: пары, дедлайны, ДЗ."""
     import asyncio
     import base64
-    from ai_solver import chat_with_reasoning, solve_image
+    from ai_solver import solve_image
     from database import get_subject_lecture_context, get_subjects_with_lecture_text
     from file_text import SUPPORTED_EXTENSIONS, extract_text
     from group_context import build_group_context
