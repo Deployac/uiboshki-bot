@@ -10,6 +10,7 @@
 Фото и OCR всегда идут через Gemini: у deepseek-chat нет зрения.
 """
 
+import asyncio
 import json
 import logging
 
@@ -84,12 +85,13 @@ async def _deepseek_chat(messages: list[dict], model: str = MODEL_DEEPSEEK, **pa
         return resp.json()["choices"][0]["message"]
 
 
-def lecture_system_prompt(subject: str, lectures: str) -> str:
+def lecture_system_prompt(subject: str, lectures: str, max_chars: int | None = None) -> str:
     """Промпт решалки + материалы лекций предмета (обрезанные по бюджету
     Gemini целыми лекциями, см. gemini_solver._fit_context_budget). Раньше
     лекции подключались только отдельной командой /solve_lectures и только
     к первому сообщению — обычная решалка про них не знала."""
-    fitted, truncated = gemini_solver._fit_context_budget(lectures)
+    fitted, truncated = (gemini_solver._fit_context_budget(lectures, max_chars) if max_chars
+                         else gemini_solver._fit_context_budget(lectures))
     note = " (часть последних лекций не влезла в лимит)" if truncated else ""
     source = ("Ниже — материалы лекций этого предмета, загруженные группой" if subject else
               "Ниже — отрывки лекций группы, подобранные под вопрос (по совпадению слов — могут быть не в тему)")
@@ -102,6 +104,52 @@ def lecture_system_prompt(subject: str, lectures: str) -> str:
     )
 
 
+# ── Запасной ИИ ─────────────────────────────────────────────────────────────
+# Gemini на бесплатном лимите: бывают 429, таймауты, 5xx. Тогда: таймаут/5xx —
+# ещё одна попытка через пару секунд; не вышло или лимит — DeepSeek (если есть
+# ключ), с пометкой в конце ответа. И наоборот: упал DeepSeek — отвечает Gemini.
+RETRY_DELAY = 2.0
+FALLBACK_LECTURE_CHARS = 40_000      # у DeepSeek окно меньше, лекции — короче
+FALLBACK_NOTE_DS = "\n\n_↪ Gemini сейчас перегружен — ответил запасной ИИ (DeepSeek)._"
+FALLBACK_NOTE_GEMINI = "\n\n_↪ DeepSeek не ответил — ответил Gemini._"
+
+
+async def _gemini_with_retry(history: list, system: str) -> str:
+    try:
+        return await gemini_solver.generate_text(history, system)
+    except gemini_solver.GeminiError as e:
+        if not e.transient or e.status == 429:      # на лимит повтор не поможет
+            raise
+        logger.info(f"Gemini: {e} — повторяю")
+        await asyncio.sleep(RETRY_DELAY)
+        return await gemini_solver.generate_text(history, system)
+
+
+async def _gemini_then_deepseek(history: list, system: str, ds_system: str) -> str:
+    try:
+        return await _gemini_with_retry(history, system)
+    except gemini_solver.GeminiError as e:
+        if not (e.transient and DEEPSEEK_API_KEY):
+            raise
+        logger.warning(f"Gemini недоступен ({e}) — отвечает DeepSeek")
+        try:
+            msg = await _deepseek_chat([{"role": "system", "content": ds_system}, *history],
+                                       max_tokens=2048, temperature=0.3)
+        except Exception as ds_error:
+            logger.warning(f"Запасной DeepSeek тоже не ответил: {ds_error}")
+            raise e
+        return msg["content"] + FALLBACK_NOTE_DS
+
+
+async def _deepseek_then_gemini(history: list, ds_system: str, gemini_system: str, **params) -> dict:
+    try:
+        return await _deepseek_chat([{"role": "system", "content": ds_system}, *history], **params)
+    except Exception as e:
+        logger.warning(f"DeepSeek не ответил ({type(e).__name__}) — отвечает Gemini")
+        text = await _gemini_with_retry(history, gemini_system)
+        return {"content": text + FALLBACK_NOTE_GEMINI, "reasoning_content": ""}
+
+
 async def solve_with_history(history: list, subject: str = "", backend: str = "gemini",
                              lectures: str = "", extra_system: str = "") -> str:
     """history — [{"role": "user"|"assistant", "content": str}, ...].
@@ -111,16 +159,16 @@ async def solve_with_history(history: list, subject: str = "", backend: str = "g
     if lectures.strip():
         backend = "gemini"
         system = lecture_system_prompt(subject, lectures)
+        ds_system = lecture_system_prompt(subject, lectures, FALLBACK_LECTURE_CHARS)
     else:
-        system = build_system_prompt(subject)
+        system = ds_system = build_system_prompt(subject)
     if extra_system:
         system += "\n\n" + extra_system
+        ds_system += "\n\n" + extra_system
     if _resolve_backend(backend) == "deepseek":
-        msg = await _deepseek_chat(
-            [{"role": "system", "content": system}, *history], max_tokens=2048, temperature=0.3,
-        )
+        msg = await _deepseek_then_gemini(history, system, system, max_tokens=2048, temperature=0.3)
         return msg["content"]
-    return await gemini_solver.generate_text(history, system)
+    return await _gemini_then_deepseek(history, system, ds_system)
 
 
 async def solve_text(task: str, subject: str = "", backend: str = "gemini", lectures: str = "") -> str:
@@ -165,10 +213,8 @@ async def chat_with_reasoning(history: list, subject: str = "", extra_system: st
                                            lectures=lectures, extra_system=extra_system)
         return {"content": content, "reasoning": ""}
     system = build_system_prompt(subject) + (f"\n\n{extra_system}" if extra_system else "")
-    msg = await _deepseek_chat(
-        [{"role": "system", "content": system}, *history],
-        model=MODEL_DEEPSEEK_REASONER, max_tokens=4096,
-    )
+    msg = await _deepseek_then_gemini(history, system, system,
+                                      model=MODEL_DEEPSEEK_REASONER, max_tokens=4096)
     return {
         "content": msg.get("content", ""),
         "reasoning": msg.get("reasoning_content", ""),

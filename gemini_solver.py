@@ -38,7 +38,14 @@ GEMINI_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{
 
 class GeminiError(RuntimeError):
     """Ошибка Gemini с уже человекочитаемым текстом — хендлеры показывают
-    str(e) пользователю как есть ("❌ Ошибка: ...")."""
+    str(e) пользователю как есть ("❌ Ошибка: ...").
+    transient — временная (таймаут, сеть, лимит 429, сбой 5xx): тогда
+    ai_solver пробует ещё раз и/или отвечает запасным DeepSeek."""
+
+    def __init__(self, text: str, *, transient: bool = False, status: int | None = None):
+        super().__init__(text)
+        self.transient = transient
+        self.status = status
 
 
 # Что показать пользователю вместо сырого httpx-исключения (в нём полный URL
@@ -77,14 +84,16 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
             # в Telegram (реальный баг, v1.6.3).
             resp = await client.post(url, headers={"x-goog-api-key": GEMINI_API_KEY}, json=payload)
     except httpx.TimeoutException:
-        raise GeminiError("Gemini не ответил вовремя — попробуй ещё раз")
+        raise GeminiError("Gemini не ответил вовремя — попробуй ещё раз", transient=True)
     except httpx.HTTPError as e:
-        raise GeminiError(f"Не достучался до Gemini ({type(e).__name__})")
+        raise GeminiError(f"Не достучался до Gemini ({type(e).__name__})", transient=True)
 
     if resp.status_code != 200:
         logger.warning(f"Gemini HTTP {resp.status_code}: {resp.text[:1000]}")
         template = _HTTP_ERROR_TEXT.get(resp.status_code, "Gemini ответил ошибкой HTTP {code}")
-        raise GeminiError(template.format(model=GEMINI_MODEL, code=resp.status_code))
+        raise GeminiError(template.format(model=GEMINI_MODEL, code=resp.status_code),
+                          transient=resp.status_code == 429 or resp.status_code >= 500,
+                          status=resp.status_code)
 
     data = resp.json()
     candidates = data.get("candidates") or []
