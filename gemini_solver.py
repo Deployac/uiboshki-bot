@@ -29,7 +29,7 @@ import base64
 import logging
 import httpx
 
-from config import GEMINI_API_KEY, GEMINI_MODEL
+from config import GEMINI_API_KEY, GEMINI_MODEL, GROUP_NAME, GROUP_PROGRAM
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ async def generate_from_image(image_bytes: bytes, mime: str, prompt: str, system
     )
 
 SYSTEM_INSTRUCTION = (
-    "Ты помощник студентов группы УИБО-03-24 РТУ МИРЭА (Бизнес-информатика). "
+    f"Ты помощник студентов группы {GROUP_NAME} РТУ МИРЭА ({GROUP_PROGRAM}). "
     "Тебе дан текст лекций по предмету — используй его как ОСНОВНОЙ источник при "
     "решении задания: если в лекциях есть подход, определение или метод для части "
     "задания — используй именно его и формулировки из лекции, а не общие знания. "

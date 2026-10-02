@@ -1285,6 +1285,14 @@ async def index_page():
         digest = hashlib.sha1((STATIC_DIR / m.group(2)).read_bytes()).hexdigest()[:10]
         return f'{m.group(1)}="{m.group(2)}?v={digest}"'
 
+    # имя группы и бота — из переменных (config.py): одна и та же вёрстка
+    # годится для копии бота у другой группы
+    import json
+    from html import escape
+    from config import BOT_USERNAME, GROUP_NAME
+    cfg = json.dumps({"group": GROUP_NAME, "bot": BOT_USERNAME}, ensure_ascii=False).replace("</", "<\\/")
+    html = html.replace("УИБО-03-24", escape(GROUP_NAME)).replace(
+        '<script src="js/core.js"', f'<script>window.APP_CONFIG = {cfg};</script>\n<script src="js/core.js"', 1)
     return Response(_ASSET_RE.sub(versioned, html), media_type="text/html",
                     headers={"Cache-Control": "no-cache"})
 

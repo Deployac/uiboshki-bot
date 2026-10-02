@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import BotCommand, ErrorEvent, MenuButtonWebApp, WebAppInfo
 
-from config import BOT_TOKEN, STAROSTA_ID, WEBAPP_PORT, WEBAPP_URL
+from config import BOT_TOKEN, STAROSTA_ID, WEBAPP_PORT, WEBAPP_URL, GROUP_NAME
 from database import init_db
 from handlers import register_handlers
 from scheduler import start_scheduler
@@ -160,7 +160,7 @@ async def main():
     import schedule_index
     index_task = asyncio.create_task(schedule_index.ensure_fresh())
 
-    logger.info("🚀 Бот УИБО-03-24 запущен!")
+    logger.info(f"🚀 Бот {GROUP_NAME} запущен!")
     try:
         await dp.start_polling(bot, skip_updates=True)
     except Exception as e:

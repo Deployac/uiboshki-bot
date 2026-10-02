@@ -40,7 +40,8 @@ branch** (в приложении GitHub на iOS такой кнопки нет
 WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в процессе
 бота (FastAPI + uvicorn, `webapp/server.py`, `bot.start_webapp`).
 
-Переменные окружения (см. `config.py`): `BOT_TOKEN`, `STAROSTA_ID` (можно
+Переменные окружения (см. `config.py`): `GROUP_NAME`, `BOT_USERNAME`,
+`GROUP_PROGRAM` (необязательно, по умолчанию УИБО-03-24), `BOT_TOKEN`, `STAROSTA_ID` (можно
 несколько через запятую — второй аккаунт; первый основной, `is_starosta()`),
 `GROUP_CHAT_ID` (пока не задан — лента «Подслушано» выключена), `ICAL_URL`
 (календарь группы, по умолчанию УИБО-03-24 = группа 4928 на зеркале),
@@ -131,8 +132,9 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   группы на главной, закрытие дедлайнов, файлов и ИИ для не-участников чата
   группы (проверка через `GROUP_CHAT_ID`), лимит ИИ для чужих. Для другой группы
   со своим СДО — отдельная копия (свой бот, Railway, кука студента, свой ключ
-  Gemini). Перед этим вынести в переменные `GROUP_NAME` и `BOT_USERNAME`
-  (сейчас «УИБО-03-24» и `uiboshkibot` местами зашиты в код).
+  Gemini); имя группы, бота и направление — переменные `GROUP_NAME`,
+  `BOT_USERNAME`, `GROUP_PROGRAM` (по умолчанию УИБО-03-24, uiboshkibot,
+  «Бизнес-информатика»), календарь — `ICAL_URL`.
 - Восстановление из бэкапа — `/restore` у старосты (backup.py: inspect_backup, apply_backup).
 - Подбор лекций — по словам (с окончаниями, опечатками и словарём сокращений `lecture_picker.SYNONYMS`), не по смыслу.
 - Gemini и DeepSeek на бесплатных лимитах: бывают сбои.
