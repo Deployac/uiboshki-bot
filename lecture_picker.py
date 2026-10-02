@@ -31,12 +31,84 @@ _cache: dict[tuple, list[tuple]] = {}
 _JUNK = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff]")
 
 
+# Сокращения и синонимы в вопросе → полные слова, которые встречаются в
+# лекциях. Слова короче 4 букв раньше выбрасывались целиком — «ООП», «SQL»,
+# «БД» в вопросе не помогали найти лекцию вовсе.
+SYNONYMS = {
+    "ооп": "объектно ориентированное программирование",
+    "ооаип": "объектно ориентированный анализ программирование",
+    "оаип": "объектно ориентированный анализ программирование",
+    "матан": "математический анализ",
+    "линал": "линейная алгебра матрица",
+    "линейка": "линейная алгебра",
+    "тервер": "теория вероятностей",
+    "твимс": "теория вероятностей математическая статистика",
+    "матстат": "математическая статистика",
+    "диффуры": "дифференциальные уравнения",
+    "диффур": "дифференциальные уравнения",
+    "бд": "база данных",
+    "субд": "система управления базами данных",
+    "ис": "информационная система",
+    "аис": "автоматизированная информационная система",
+    "ит": "информационные технологии",
+    "ии": "искусственный интеллект",
+    "мо": "машинное обучение",
+    "бп": "бизнес процесс",
+    "бизнес-процесс": "бизнес процесс",
+    "бизнеспроцесс": "бизнес процесс",
+    "эконом": "экономика",
+    "фин": "финансовый",
+    "бухучет": "бухгалтерский учет",
+    "бух": "бухгалтерский",
+    "пр": "практическая",
+    "кр": "контрольная",
+    "лаба": "лабораторная",
+    "лабу": "лабораторная",
+    "фирма": "предприятие организация компания",
+    "фирмы": "предприятие организация компания",
+    "компания": "предприятие организация",
+    "выручка": "выручка доход",
+    "зарплата": "заработная оплата труда",
+    "зп": "заработная оплата труда",
+    "сотрудники": "персонал работники",
+}
+# Короткие латинские аббревиатуры, которые стоит искать как есть.
+ACRONYMS = {"sql", "erp", "crm", "uml", "kpi", "bpm", "api", "itil", "swot", "pest", "idef", "bpmn", "epc",
+            "aris", "scm", "mrp", "olap", "etl", "ооп"}
+_SHORT = re.compile(r"(?<![а-яёa-z])[а-яёa-z]{2,4}(?![а-яёa-z])", re.I)
+
+
+def expand(query: str) -> str:
+    """Вопрос + расшифровка сокращений/синонимов из SYNONYMS."""
+    low = (query or "").lower().replace("ё", "е")
+    # у слов от 4 букв — любые окончания («матаном», «лабу»), короткие — только целиком
+    extra = [full for short, full in SYNONYMS.items()
+             if re.search(r"(?<![а-яёa-z])" + re.escape(short) + (r"[а-яё]{0,3}" if len(short) >= 4 else "")
+                          + r"(?![а-яёa-z])", low)]
+    return query + (" " + " ".join(extra) if extra else "")
+
+
+# Окончания: «база», «базы», «базами» → «баз» (раньше считались разными
+# словами — совпадение ловилось, только если вопрос в том же падеже).
+_ENDING = re.compile(r"(?:иями|ями|ами|ого|его|ому|ему|ыми|ими|ией|ия|ие|ий|ый|ой|ая|яя|ое|ее|ые|ых|их|"
+                     r"ов|ев|ей|ам|ям|ах|ях|ом|ем|ую|юю|ы|и|а|я|е|у|ю|о|ь)$")
+
+
+def _stem(w: str) -> str:
+    if w.isdigit() or not re.match(r"[а-я]", w):
+        return w[:6]
+    cut = _ENDING.sub("", w)
+    return (cut if len(cut) >= 3 else w)[:6]
+
+
 def _stems(text: str) -> set[str]:
     out = set()
-    for w in _WORD.findall(text.lower().replace("ё", "е")):
+    low = text.lower().replace("ё", "е")
+    for w in _WORD.findall(low):
         if w in _STOP:
             continue
-        out.add(w if w.isdigit() else w[:6])
+        out.add(_stem(w))
+    out |= {w for w in _SHORT.findall(low) if w in ACRONYMS}
     return out
 
 
@@ -104,7 +176,7 @@ def pick(context: str, query: str, budget: int = SUBJECT_BUDGET, min_score: int 
     if min_score == 0 and len(context) <= budget:
         return _JUNK.sub("", context)
     blocks = _blocks(context)
-    q = _fix_typos(_stems(query or ""), blocks, (len(context), context[:200], context[-200:]))
+    q = _fix_typos(_stems(expand(query or "")), blocks, (len(context), context[:200], context[-200:]))
     scored = [(_score(q, t, b), i) for i, (_, _, t, b) in enumerate(blocks)] if q else []
     order = [i for s, i in sorted(scored, key=lambda x: (-x[0], x[1])) if s > 0 and s >= min_score]
     if one_subject and order:
@@ -145,7 +217,7 @@ def subject_scores(context: str, query: str, min_score: int = AUTO_MIN_SCORE) ->
     if not context.strip():
         return []
     blocks = _blocks(context)
-    q = _fix_typos(_stems(query or ""), blocks, (len(context), context[:200], context[-200:]))
+    q = _fix_typos(_stems(expand(query or "")), blocks, (len(context), context[:200], context[-200:]))
     if not q:
         return []
     best: dict[str, int] = {}
