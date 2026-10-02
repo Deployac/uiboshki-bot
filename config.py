@@ -13,7 +13,8 @@ ICAL_URL      = os.getenv("ICAL_URL", "https://english.mirea.ru/schedule/api/ica
 DATABASE_PATH = os.getenv("DATABASE_PATH", "mirea_bot.db")
 
 # ─── Группа ───────────────────────────────────────────────────────────────────
-GROUP_NAME = "УИБО-03-24"
+GROUP_NAME = os.getenv("GROUP_NAME", "УИБО-03-24")
+BOT_USERNAME = os.getenv("BOT_USERNAME", "uiboshkibot").lstrip("@")   # для ссылок t.me/…
 # Предметы по выбору: ходят не все (военная кафедра — двое из группы).
 # Пары скрыты, пока человек не ответит «хожу» (WebApp спросит на главной,
 # бот — при /start). Через запятую.

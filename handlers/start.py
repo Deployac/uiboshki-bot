@@ -3,7 +3,7 @@ from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database import upsert_user, set_subscription, get_user
-from config import GROUP_NAME, STAROSTA_ID, WEBAPP_URL, SCHEDULE_HOUR, SCHEDULE_MINUTE
+from config import BOT_USERNAME, GROUP_NAME, STAROSTA_ID, WEBAPP_URL, SCHEDULE_HOUR, SCHEDULE_MINUTE
 from keyboards import MAIN_KB, ACTIONS_KB, app_button, webapp_keyboard
 from utils import esc, split_by_lines
 
@@ -231,7 +231,8 @@ HELP_TEXT = (
     "<i>Классика: команды работают как раньше, а всё новое появляется в приложении.</i>\n"
     "/schedule · /tomorrow · /week — расписание\n"
     "/next — следующая пара · /deadlines — дедлайны\n"
-    "/teacher Фамилия · /group УИБО-03-24 · /room А-18 — чужое расписание\n\n"
+    "/teacher Фамилия · /group УИБО-03-24 · /room А-18 — чужое расписание\n"
+    f"В любом чате набери <code>@{BOT_USERNAME}</code> — и отправь туда расписание\n\n"
     "⚙️ <b>Уведомления</b>\n"
     "В приложении: ☰ Ещё → Уведомления — дни, погода, корпус, напоминания.\n"
     "/settings — коротко в чате · /optional — предметы по выбору\n\n"

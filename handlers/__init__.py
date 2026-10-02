@@ -7,6 +7,7 @@ from .social   import router as social_router
 from .weather  import router as weather_router
 from .announce import router as announce_router
 from .feed     import router as feed_router
+from .inline   import router as inline_router
 from .solver   import router as solver_router  # всегда последним
 
 
@@ -19,4 +20,5 @@ def register_handlers(dp: Dispatcher):
     dp.include_router(weather_router)
     dp.include_router(announce_router)
     dp.include_router(feed_router)
+    dp.include_router(inline_router)
     dp.include_router(solver_router)
