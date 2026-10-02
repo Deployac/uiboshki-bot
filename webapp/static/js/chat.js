@@ -7,9 +7,21 @@
 // закрыл WebApp — открыл — разговор на месте. «＋ Новый» не стирает старый —
 // он остаётся в «☰ Чаты» (до 20 последних).
 const CHATS_KEY = "chats.v1", OLD_CHAT_KEY = "chatLog.v1";
+// Какой чат был открыт: «new» — нажали «＋ Новый» и ещё ничего не написали;
+// тогда при следующем заходе открывается этот новый, а не старый (просьба владельца).
+const CHAT_CUR_KEY = "chats.current";
 let chats = loadChats();              // [{id, title, updated, log}]
-let chatId = chats.length ? chats[0].id : null;
-let chatLog = chats.length ? chats[0].log : [];   // [{role, content, html, att, files, sources}]
+let chatId = null, chatLog = [];      // [{role, content, html, att, files, sources}]
+(function () {
+  let cur = null;
+  try { cur = localStorage.getItem(CHAT_CUR_KEY); } catch (e) {}
+  const c = cur === "new" ? null : (chats.find(x => x.id === cur) || chats[0]);
+  if (c) { chatId = c.id; chatLog = c.log; }
+})();
+
+function rememberChat() {
+  try { localStorage.setItem(CHAT_CUR_KEY, chatId || "new"); } catch (e) {}
+}
 let pendingAttachment = null;         // {name, mime, data(base64), url}
 
 function loadChats() {
@@ -32,6 +44,7 @@ function saveChatLog() {
   cur.log = chatLog.slice(-40); cur.title = chatTitle(chatLog); cur.updated = Date.now();
   chats = [cur, ...chats.filter(c => c !== cur)].slice(0, 20);
   try { localStorage.setItem(CHATS_KEY, JSON.stringify(chats)); } catch (e) {}
+  rememberChat();
 }
 
 const SUGGESTIONS = [
@@ -71,6 +84,7 @@ function newChat() {
   haptic();
   chatId = null;
   chatLog = [];
+  rememberChat();
   clearAttachment();
   renderChat();
 }
@@ -92,6 +106,7 @@ function switchChat(i) {
   if (!c) return;
   haptic();
   chatId = c.id; chatLog = c.log;
+  rememberChat();
   clearAttachment();
   renderChat();
   scrollChatToEnd();
@@ -108,7 +123,7 @@ function deleteChat(i) {
   if (!c) return;
   chats.splice(i, 1);
   try { localStorage.setItem(CHATS_KEY, JSON.stringify(chats)); } catch (e) {}
-  if (c.id === chatId) { chatId = null; chatLog = []; }
+  if (c.id === chatId) { chatId = null; chatLog = []; rememberChat(); }
   chats.length ? openChats() : renderChat();
 }
 

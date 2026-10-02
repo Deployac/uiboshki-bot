@@ -25,9 +25,11 @@
       <button onclick="addToHome()">Добавить</button>
       <button class="x" onclick="hideHomeAdd()" aria-label="Скрыть"><svg class="ico" aria-hidden="true"><use href="#i-cross"/></svg></button>
     </div>
-    <div class="weather-pill" id="weather" style="display:none;"></div>
-    <div class="campus-pill" id="campus" style="display:none;"></div>
-    <div class="campus-pill stale-pill" id="stale" style="display:none;"></div>
+    <div class="pill-row" id="pill-row" style="display:none;">
+      <div class="weather-pill" id="weather" style="display:none;"></div>
+      <div class="campus-pill" id="campus" style="display:none;"></div>
+      <div class="campus-pill stale-pill" id="stale" style="display:none;"></div>
+    </div>
     <div id="hero"><div class="skel" style="height:118px"></div></div>
 
     <h2 class="section" id="today-head"><span>Сегодня</span><span class="stat" id="today-count"></span></h2>
@@ -99,6 +101,7 @@
         <div style="min-width:0"><p class="eyebrow" id="target-kind"></p><p class="t-title" id="target-title"></p></div>
         <button class="pin-btn" id="target-pin" onclick="togglePin()" aria-label="Закрепить"><span><svg class="ico" aria-hidden="true"><use href="#i-pin"/></svg></span></button>
       </div>
+      <div id="target-stale"></div>
       <h2 class="section">
         <span><span id="tw-label">Эта неделя</span><span class="stat" id="tw-num"></span></span>
         <span class="week-nav">

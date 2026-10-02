@@ -136,15 +136,28 @@ function showBadge(id, html) {
   const el = document.getElementById(id);
   el.innerHTML = html || "";
   el.style.display = html ? (id === "weather" ? "inline-block" : "inline-flex") : "none";
+  // погода, корпус и «МИРЭА не отвечает» — одной строкой с прокруткой вбок,
+  // а не столбиком над парами (дизайн-ревью, п. 10)
+  const row = document.getElementById("pill-row");
+  row.style.display = ["weather", "campus", "stale"].some(i => document.getElementById(i).style.display !== "none") ? "" : "none";
+  row.onscroll = pillRowEdge;
+  requestAnimationFrame(pillRowEdge);
+}
+
+// Затухание справа — только пока есть что листать: в конце последняя плашка видна целиком
+function pillRowEdge() {
+  const row = document.getElementById("pill-row");
+  row.classList.toggle("at-end", row.scrollLeft + row.clientWidth >= row.scrollWidth - 2);
 }
 
 function renderToday() {
   document.getElementById("subtitle").textContent = todayData.weekday + ", " + todayData.label + " · " + GROUP_NAME;
   showBadge("weather", todayData.weather ? escapeHtml(todayData.weather) : "");
   // зеркало МИРЭА лежит — расписание сохранённое
-  showBadge("stale", todayData.stale ? icon("warning") + " сайт МИРЭА не отвечает · данные от " + escapeHtml(todayData.stale) : "");
-  // пары не в своём корпусе — заметно, до первой пары
-  showBadge("campus", todayData.campus ? icon("place") + " " + escapeHtml(todayData.campus) : "");
+  showBadge("stale", todayData.stale ? icon("warning") + " МИРЭА не отвечает · данные от " + escapeHtml(todayData.stale) : "");
+  // пары не в своём корпусе — заметно, до первой пары («сегодня МП-1»)
+  const campus = (todayData.campus || "").replace(/^Сегодня пары на (.+?) — не на .+$/, "сегодня $1");
+  showBadge("campus", campus ? icon("place") + " " + escapeHtml(campus) : "");
   const n = todayData.lessons.reduce((a, l) => a + (l.pairs || 1), 0);
   document.getElementById("today-count").textContent = n ? n + " " + plural(n, "пара", "пары", "пар") : "";
   refreshStatuses();

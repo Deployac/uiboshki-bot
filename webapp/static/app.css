@@ -729,7 +729,7 @@
   .t-file .nm { flex: 1; min-width: 0; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
   .dlb { width: 38px; height: 38px; border-radius: 11px; border: none; background: rgba(124,127,245,.16); font-size: 17px; flex: none; }
   .dlb.sending { opacity: .5; }
-  .t-go { margin-top: 4px; }
+  .t-go { margin-top: 14px; }   /* «Сдать работу» не впритык к файлам (дизайн-ревью, п. 7) */
   .fcount { display: flex; gap: 5px; margin: 2px 0 12px; }
   .fcount i { flex: 1; height: 4px; border-radius: 4px; background: var(--bg-raised); }
   .fcount i.on { background: var(--accent); }
@@ -863,11 +863,12 @@
                      font-size: 11.5px; font-weight: 700; color: var(--hint); background: var(--bg-raised); border: 1px solid var(--border); }
   .lesson .l-score.ok { color: var(--ok-text); border-color: rgba(61,220,132,.35); background: rgba(61,220,132,.1); }
   /* свои напоминания о дедлайне */
-  .chip.remind { color: var(--warn-text); border-color: rgba(255,178,56,.3); background: rgba(255,178,56,.1); }
+  /* своё напоминание — фиолетовым, а не оранжевым, как срок «завтра» (дизайн-ревью, п. 8) */
+  .chip.remind { color: var(--accent); border-color: rgba(124,127,245,.35); background: rgba(124,127,245,.1); }
   .chip.remind .ico { width: 13px; height: 13px; }
   .rm-list { margin: 4px 0 6px; }
   .rm-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border); color: var(--text); }
-  .rm-row .ico { color: var(--warn-text); }
+  .rm-row .ico { color: var(--accent); }
   .rm-row span { flex: 1; }
   .rm-row button { background: none; border: none; color: var(--hint); padding: 4px; }
   .rm-presets { margin-top: 14px; }
@@ -925,3 +926,19 @@
   .hist-mark { stroke: var(--border); stroke-dasharray: 3 4; vector-effect: non-scaling-stroke; }
   .hist-lbl { fill: var(--hint); font-size: 9px; text-anchor: end; }
   .hist-axis { display: flex; justify-content: space-between; color: var(--hint); font-size: 12px; margin-top: 4px; }
+
+  /* ── Дизайн-ревью 6–10 ── */
+  .target-retry { display: flex; align-items: center; justify-content: center; gap: 8px; max-width: 260px; margin: 4px auto 0; }
+  #target-stale .stale-pill { margin: 10px 0 0; }
+  body.compact-head header.top { display: none; }
+  body.compact-head main { padding-top: 12px; }
+  html.fullscreen body.compact-head main { padding-top: calc(max(var(--safe-top, 0px), env(safe-area-inset-top), 44px) + 8px); }
+  .pill-row { display: flex; gap: 8px; overflow-x: auto; margin: 0 -14px 12px; padding: 0 14px 2px;
+              -webkit-mask-image: linear-gradient(to right, #000 88%, transparent); mask-image: linear-gradient(to right, #000 88%, transparent); }
+  .pill-row > div { flex: none; margin: 0; white-space: nowrap; }
+  .pill-row.at-end { -webkit-mask-image: none; mask-image: none; }
+  .pill-row { scrollbar-width: none; }
+  .pill-row::-webkit-scrollbar { display: none; }
+  details.done-group .done-chev { width: 14px; height: 14px; vertical-align: -2px; transition: transform .2s; }
+  details.done-group[open] .done-chev { transform: rotate(90deg); }
+

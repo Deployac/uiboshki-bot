@@ -21,9 +21,17 @@ function fmtNum(x) {
   return (Math.round(x * 10) / 10).toString().replace(".", ",");
 }
 
+// Что уже есть: «закрыт» у экзамена было непонятно — что закрыто? Пишем
+// оценку, которая уже набрана (дизайн-ревью, п. 7).
+function gotText(c) {
+  if (c.kind === "credit") return "зачёт уже есть";
+  const got = c.marks.filter(m => c.score >= m.at);
+  return got.length ? "«" + escapeHtml(got[got.length - 1].label) + "» уже есть" : "";
+}
+
 function needText(c) {
-  if (c.closed && !c.need) return icon("check", "inl") + "все пороги взяты";
-  if (c.closed) return icon("check", "inl") + "закрыт · до «" + escapeHtml(c.need_label) + "» ещё <b>" + fmtNum(c.need) + "</b>";
+  if (c.closed && !c.need) return icon("check", "inl") + gotText(c);
+  if (c.closed) return icon("check", "inl") + gotText(c) + " · до «" + escapeHtml(c.need_label) + "» ещё <b>" + fmtNum(c.need) + "</b>";
   return (c.kind === "credit" ? "до зачёта" : "до «" + escapeHtml(c.need_label) + "»") + " ещё <b>" + fmtNum(c.need) + "</b>";
 }
 
@@ -305,7 +313,7 @@ function renderTk() {
   const shown = works.filter(w => tkFilter === "all" || (tkFilter === "todo" ? w.status === "todo" : w.grade != null));
   const sq = s => ({ ok: "g", low: "r", wait: "b" })[s] || "";
   box.innerHTML =
-    '<h2 class="section" style="margin-top:6px"><span>Текущий контроль</span><span class="stat">' + escapeHtml(c.title) + '</span></h2>' +
+    '<h2 class="section" style="margin-top:6px"><span>Текущий контроль</span></h2>' +
     '<div class="card"><div class="sd-head"><span class="n">' + fmtNum(tk.score) + '</span><span class="of">из ' + fmtNum(tk.max) + '</span>' +
       '<div class="st">зачтено<b' + (passed >= need ? ' class="ok"' : '') + '>' + passed + ' из ' + works.length + ' · нужно ' + need + '</b></div></div>' +
       '<div class="tkbar">' + works.map(w => '<i class="' + sq(w.status) + '"></i>').join("") + '</div>' +
@@ -367,7 +375,7 @@ function renderTask() {
     '<div class="card">' +
       (t.due ? '<div class="t-due"><div><div class="eyebrow">Срок сдачи</div><b>' + shortDate(t.due) + '</b></div>' +
         (remain ? '<span class="t-tag ' + tag[0] + '">' + remain + '</span>' : '') + '</div>' : '') +
-      '<div class="t-tags">' + (t.status ? '<span class="t-tag">' + escapeHtml(t.status) + '</span>' : '') +
+      '<div class="t-tags">' + (t.status ? '<span class="t-tag">' + escapeHtml(humanStatus(t.status)) + '</span>' : '') +
         '<span class="t-tag">' + (w.grade != null ? "Оценка " + fmtNum(w.grade) + " / " + fmtNum(w.max) : "Не оценено") + '</span></div>' +
       (t.description ? '<p class="t-desc">' + escapeHtml(t.description).replace(/\n/g, "<br>") + '</p>' : '') + '</div>' +
     (t.files.length ? '<h2 class="section">Файлы задания' + (t.files.length > 1 ? '<button class="link-btn" onclick="downloadAllSdo(this)">' + icon("download", "inl") + ' Скачать все · ' + t.files.length + '</button>' : '') + '</h2>' +
@@ -377,6 +385,15 @@ function renderTask() {
       (t.limit > 1 ? ' · до ' + t.limit + ' ' + plural(t.limit, "файла", "файлов", "файлов") : '') + '</button>' :
       (w.status === "offline" ? '<p class="sheet-hint" style="text-align:center">Эту работу сдают на занятии, не через СДО.</p>' : '')) +
     '<button class="ghost" onclick="openLink(' + escapeHtml(JSON.stringify(t.url)) + ')">Открыть в СДО</button>';
+}
+
+// Статус ответа — по-человечески, а не сырым текстом Moodle (дизайн-ревью, п. 7)
+const MOODLE_STATUS = [[/не представлен|нет ответа|no attempt/i, "Ещё не сдано"], [/черновик|draft/i, "Черновик — не отправлен"],
+  [/отправлено для оценивания|submitted for grading/i, "Сдано, ждёт оценки"], [/вне сайта/i, "Сдаётся на занятии"]];
+
+function humanStatus(s) {
+  const hit = MOODLE_STATUS.find(([re]) => re.test(s || ""));
+  return hit ? hit[1] : s;
 }
 
 function submitFromTask() {
