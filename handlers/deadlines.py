@@ -138,7 +138,9 @@ async def cmd_deadlines(message: Message):
     await message.answer(format_deadlines(active, done), parse_mode="HTML", disable_web_page_preview=True)
 
 
-@router.message(Command("stats"))
+# У старосты /stats — статистика бота (announce.py); этот роутер подключён
+# раньше и без фильтра перехватывал команду.
+@router.message(Command("stats"), F.from_user.func(lambda u: not is_starosta(u.id)))
 async def cmd_stats(message: Message):
     s      = await get_deadline_stats(message.from_user.id)
     total  = s["total"]
