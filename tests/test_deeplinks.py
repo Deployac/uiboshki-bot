@@ -77,8 +77,8 @@ async def test_webapp_send_file_goes_to_chat_without_start(db, monkeypatch):
     from tests.test_webapp_home import BOT_TOKEN, _make_init_data
     fid = await add_file("ЛК2", "ОПД", "TGF2", "lk2.pdf", 0)
     bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=DocSession())
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
-    monkeypatch.setattr(server, "tg_bot", lambda: bot)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "tg_bot", lambda: bot)
     c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
     assert c.post(f"/api/files/{fid}/send", headers=headers).json() == {"ok": True}
     assert bot.session.docs == [("SendDocument", "TGF2", "📄 <b>ЛК2</b> (ОПД)")]

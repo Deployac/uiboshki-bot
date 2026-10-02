@@ -152,7 +152,7 @@ async def test_webapp_search_and_target_endpoints(db, monkeypatch):
     resp = client.get("/api/target/2/100", headers=headers)
     data = resp.json()
     assert data["title"] == "Блеко В. В." and data["pinned"] is False
-    assert len(data["weeks"]) == server.TARGET_WEEKS
+    assert len(data["weeks"]) == server.schedule.TARGET_WEEKS
     lessons = [l for w in data["weeks"] for d in w["days"] for l in d["lessons"]]
     # как на главной — карточкой: 3-я пара по звонку, лаба, у преподавателя — группа
     assert [(l["num"], l["start"], l["title"], l["kind"], l["room"], l["groups"]) for l in lessons] == [

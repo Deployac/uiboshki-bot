@@ -140,7 +140,7 @@ async def test_webapp_connect_and_submit(db, moodle, monkeypatch):
     from fastapi.testclient import TestClient
     import webapp.server as server
     from tests.test_webapp_home import BOT_TOKEN, _make_init_data
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     did = await db.add_deadline("Практическая работа №3", ASSIGN, "2026-10-05", None, 0, external_id="sdo:1")
     c, h = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
 

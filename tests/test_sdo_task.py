@@ -85,8 +85,8 @@ async def test_webapp_task_and_signed_download(db, monkeypatch):
     import webapp.server as server
     from tests.test_sdo_submit import COOKIE, EDIT_PAGE
     from tests.test_webapp_home import BOT_TOKEN, _make_init_data
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
-    monkeypatch.setattr(server, "WEBAPP_URL", "https://app.example")
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "WEBAPP_URL", "https://app.example")
     seen = []
 
     def moodle(request):
@@ -116,7 +116,7 @@ async def test_webapp_task_and_signed_download(db, monkeypatch):
     # кончалась на «0», она не менялась, и тест краснел ~1 раз из 16)
     bad = token[:-1] + ("1" if token[-1] == "0" else "0")
     assert c.get(f"/sdl/{bad}/x.pdf").status_code == 403
-    forged = server._sdl_token(222, "/login/index.php", 4102444800)
+    forged = server.sdo._sdl_token(222, "/login/index.php", 4102444800)
     assert c.get(f"/sdl/{forged}/x").status_code == 403                               # только pluginfile.php
 
 
@@ -127,7 +127,7 @@ async def test_webapp_submit_several_files(db, monkeypatch):
     import webapp.server as server
     from tests.test_sdo_submit import COOKIE, FakeMoodle
     from tests.test_webapp_home import BOT_TOKEN, _make_init_data
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     fake = FakeMoodle()
     real = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: real(*a, transport=httpx.MockTransport(fake), **kw))

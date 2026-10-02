@@ -37,7 +37,7 @@ def test_lessons_for_date_statuses_and_merge():
 @pytest.fixture
 def client(monkeypatch):
     import webapp.server as server
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     return TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
 
 

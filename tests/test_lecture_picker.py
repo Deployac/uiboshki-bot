@@ -165,7 +165,7 @@ async def test_chat_asks_subject_when_lecture_question_is_ambiguous(db, monkeypa
         raise AssertionError("должен переспросить предмет, а не звать ИИ")
 
     monkeypatch.setattr(ai_solver, "chat_with_reasoning", no_ai)
-    monkeypatch.setattr(server, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
     c, headers = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
     data = c.post("/api/chat", headers=headers, json={"history": [
         {"role": "user", "content": "объясни баланс предприятия из 3 лекции"}], "subject": ""}).json()

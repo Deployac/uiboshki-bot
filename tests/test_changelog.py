@@ -18,9 +18,9 @@ def test_no_duplicate_names_or_versions():
     assert len({v for v, _ in vs}) == len(vs)
 
 
-def test_reserved_names_unused_except_kornilov():
+def test_reserved_names_used_only_where_given():
     used = {n for _, n in versions(TEXT)}
-    assert used & set(RESERVED) == {"Корнилов"}
+    assert used & set(RESERVED) == {"Корнилов", "Кайзер"}
 
 
 def test_new_versions_only_from_songs():
