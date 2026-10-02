@@ -134,5 +134,5 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   Gemini). Перед этим вынести в переменные `GROUP_NAME` и `BOT_USERNAME`
   (сейчас «УИБО-03-24» и `uiboshkibot` местами зашиты в код).
 - Восстановление из бэкапа — `/restore` у старосты (backup.py: inspect_backup, apply_backup).
-- Подбор лекций — по словам, не по смыслу (синонимы не находит).
+- Подбор лекций — по словам (с окончаниями, опечатками и словарём сокращений `lecture_picker.SYNONYMS`), не по смыслу.
 - Gemini и DeepSeek на бесплатных лимитах: бывают сбои.
