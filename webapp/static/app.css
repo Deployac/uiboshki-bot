@@ -727,7 +727,7 @@
   .more-grid .sq { color: #fff; }
   .more-grid .sq .ico { width: 30px; height: 30px; stroke-width: 1.8; }
   .more-grid .sq.t-search { background: linear-gradient(145deg, #4a8ff7, #3164d9); }
-  .more-grid .sq.t-cal { background: linear-gradient(145deg, #f0884b, #e0553f); }
+  .more-grid .sq.t-cal { background: linear-gradient(145deg, #38bdf8, #0284c7); }
   .more-grid .sq.t-phone { background: linear-gradient(145deg, #8b7cf6, #6a4fe0); }
   .ftype { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center;
     flex: none; background: var(--bg-raised); color: var(--hint); font-size: 17px; }
@@ -764,7 +764,7 @@
   /* ── Нижняя панель: у каждой вкладки свой цвет (как плитки «Ещё»).
      Невыбранные — своим цветом, но приглушённые; выбранная — цветная плитка. ── */
   nav.tabs button[data-tab="today"]     { --tc: #4a8ff7; --tc2: #3164d9; }
-  nav.tabs button[data-tab="deadlines"] { --tc: #f0884b; --tc2: #e0553f; }
+  nav.tabs button[data-tab="sdo"]       { --tc: #2aa39a; --tc2: #2366b0; }
   nav.tabs button[data-tab="files"]     { --tc: #2bb3a3; --tc2: #2366b0; }
   nav.tabs button[data-tab="chat"]      { --tc: #9b7cf6; --tc2: #6a4fe0; }
   nav.tabs button[data-tab="more"]      { --tc: #f06292; --tc2: #c2185b; }
@@ -829,3 +829,7 @@
   .nt-custom button { flex: none; padding: 0 16px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-weight: 700; }
   .lesson.tap { cursor: pointer; transition: transform .12s ease; }
   .lesson.tap:active { transform: scale(.98); }
+  .more-grid .sq.t-dl { background: linear-gradient(145deg, #f0884b, #e0553f); }
+  nav.tabs button .ic.bad { position: relative; }
+  nav.tabs button .ic.bad::after { content: ""; position: absolute; top: 0; right: calc(50% - 20px); width: 8px; height: 8px;
+                                   border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--bg-card); }

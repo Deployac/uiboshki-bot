@@ -155,7 +155,7 @@ async def keepalive_all(bot=None):
                 from keyboards import app_button
                 await bot.send_message(row["user_id"],
                     "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
-                    "Подключи заново: приложение → ☰ Ещё → СДО.",
+                    "Подключи заново: приложение → СДО → Вход.",
                     reply_markup=app_button("🎓 Подключить СДО", "sdo"))
             except Exception:
                 pass

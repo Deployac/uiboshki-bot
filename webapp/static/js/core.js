@@ -102,8 +102,10 @@ function switchTab(name) {
   document.getElementById("view-" + name).classList.add("active");
   const menu = document.getElementById("more-menu");
   if (menu) menu.classList.remove("open");
-  // Поиск и СДО живут в меню «Ещё» — тогда подсвечена ☰
-  const tab = ["search", "sdo", "subject", "tk", "task"].includes(name) ? "more" : name;
+  // СДО — своя кнопка внизу (и его экраны: предмет, ТК, задание); поиск и
+  // дедлайны живут в меню «Ещё» — тогда подсвечена ☰
+  const tab = ["sdo", "subject", "tk", "task"].includes(name) ? "sdo"
+    : (["search", "deadlines"].includes(name) ? "more" : name);
   document.querySelectorAll("nav.tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
   haptic();
   if (name === "deadlines") loadDeadlines();

@@ -195,7 +195,7 @@
 
 <nav class="tabs">
   <button class="active" data-tab="today" onclick="switchTab('today')"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-today"/></svg></span>Сегодня</button>
-  <button data-tab="deadlines" onclick="switchTab('deadlines')"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-deadlines"/></svg></span>Дедлайны</button>
+  <button data-tab="sdo" onclick="openSdo()"><span class="ic" id="nav-sdo"><svg class="ico" aria-hidden="true"><use href="#i-cap"/></svg></span>СДО</button>
   <button data-tab="files" onclick="switchTab('files')"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span>Файлы</button>
   <button data-tab="chat" onclick="switchTab('chat')"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-chat"/></svg></span>Чат</button>
   <button data-tab="more" id="more-btn" onclick="toggleMore()"><span class="ic"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg></span>Ещё</button>
@@ -205,7 +205,7 @@
   <div class="more-pop">
     <div class="more-grid">
       <button onclick="toggleMore(false); switchTab('search')"><span class="sq t-search"><svg class="ico" aria-hidden="true"><use href="#i-search"/></svg></span>Поиск</button>
-      <button onclick="toggleMore(false); openSdo()"><span class="sq sdo" id="more-sdo"><svg class="ico" aria-hidden="true"><use href="#i-cap"/></svg></span>СДО</button>
+      <button onclick="toggleMore(false); switchTab('deadlines')"><span class="sq t-dl"><svg class="ico" aria-hidden="true"><use href="#i-deadlines"/></svg></span>Дедлайны</button>
       <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq t-cal"><svg class="ico" aria-hidden="true"><use href="#i-calsub"/></svg></span>Календарь</button>
       <button onclick="toggleMore(false); addToHome()"><span class="sq t-phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span>Ярлык</button>
       <button onclick="toggleMore(false); openNotify()"><span class="sq t-bell"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg></span>Уведомления</button>

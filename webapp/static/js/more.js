@@ -34,9 +34,8 @@ let sdoState = { state: "off" };
 
 async function loadSdoStatus() {
   try { sdoState = await api("/api/sdo/status"); } catch (e) { return sdoState; }
-  const sq = document.getElementById("more-sdo");
-  sq.classList.toggle("badge", sdoState.state !== "off");
-  sq.classList.toggle("bad", sdoState.state === "expired");
+  // вход в СДО устарел — красная точка на кнопке СДО внизу
+  document.getElementById("nav-sdo").classList.toggle("bad", sdoState.state === "expired");
   return sdoState;
 }
 
