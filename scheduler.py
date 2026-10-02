@@ -11,8 +11,8 @@ from config import (
     TIMEZONE, SCHEDULE_HOUR, SCHEDULE_MINUTE, DEADLINE_REMINDER_HOUR, DEADLINE_REMINDER_MINUTE,
     SDO_SYNC_INTERVAL_HOURS, STAROSTA_ID, SCHEDULE_DIFF_CHECK_MINUTES, GROUP_CHAT_ID,
 )
-from database import get_all_subscribed_users, get_deadlines_soon, get_user
-from schedule_parser import get_today_schedule, fetch_schedule_raw, parse_events_for_date, format_lesson, is_self_study
+from database import get_all_subscribed_users, get_deadlines_soon
+from schedule_parser import get_today_schedule, fetch_schedule_raw, parse_events_for_date, format_lesson
 from utils import esc, today_msk, esc_attr
 from keyboards import app_button
 

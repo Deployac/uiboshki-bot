@@ -16,7 +16,7 @@
 """
 
 import logging
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from config import GROUP_CHAT_ID, TIMEZONE

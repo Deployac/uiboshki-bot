@@ -11,7 +11,7 @@ from icalendar import Calendar as ICalCalendar, Event as ICalEvent
 
 import handlers.announce as announce
 from handlers.announce import parse_lesson_date
-from webapp.calendar_feed import _matches_subject, build_ics_for_user
+from webapp.calendar_feed import _matches_subject
 
 TZ = ZoneInfo("Europe/Moscow")
 
