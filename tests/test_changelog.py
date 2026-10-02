@@ -20,7 +20,7 @@ def test_no_duplicate_names_or_versions():
 
 def test_reserved_names_used_only_where_given():
     used = {n for _, n in versions(TEXT)}
-    assert used & set(RESERVED) == {"Корнилов", "Кайзер"}
+    assert used & set(RESERVED) == {"Корнилов", "Кайзер", "Брусилов"}
 
 
 def test_new_versions_only_from_songs():

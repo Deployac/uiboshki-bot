@@ -120,7 +120,7 @@ def test_schedule_diff_escapes_summary():
 
 @pytest.mark.asyncio
 async def test_deadline_queries_use_moscow_today(db, monkeypatch):
-    monkeypatch.setattr(db, "today_msk", lambda: date(2099, 1, 10))
+    monkeypatch.setattr(db.deadlines, "today_msk", lambda: date(2099, 1, 10))
     yesterday = await db.add_deadline("Вчера", "", "2099-01-09", None, USER.id)
     today = await db.add_deadline("Сегодня", "", "2099-01-10", None, USER.id)
     in_3_days = await db.add_deadline("Через 3 дня", "", "2099-01-13", None, USER.id)

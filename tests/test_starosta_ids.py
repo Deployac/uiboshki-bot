@@ -17,7 +17,7 @@ def test_parse_ids():
 async def test_second_account_is_starosta_everywhere(db, monkeypatch):
     # раньше int("111,222") ронял бота при запуске
     monkeypatch.setattr(config, "STAROSTA_IDS", (111, 222))
-    monkeypatch.setattr(db, "STAROSTA_IDS", (111, 222))
+    monkeypatch.setattr(db.deadlines, "STAROSTA_IDS", (111, 222))
     assert config.is_starosta(222) and not config.is_starosta(333)
     # общий дедлайн, добавленный со второго аккаунта, видят все
     await db.add_deadline("Курсовая", "", "2026-10-05", None, 222)
