@@ -107,8 +107,36 @@ async def delete_files(fids: list[int]) -> int:
         cursor = await db.execute(f"DELETE FROM files WHERE id IN ({marks})", fids)
         deleted = cursor.rowcount
         await db.execute(f"DELETE FROM file_text WHERE file_id IN ({marks})", fids)
+        await db.execute(f"DELETE FROM file_summaries WHERE file_id IN ({marks})", fids)
         await db.commit()
         return deleted
+
+
+async def get_file_text(file_id: int) -> str:
+    """Текст одной лекции (для конспекта); пусто — текста нет."""
+    async with connect() as db:
+        row = await (await db.execute("SELECT content FROM file_text WHERE file_id=?", (file_id,))).fetchone()
+        return row[0] if row else ""
+
+
+async def get_file_summary(file_id: int) -> dict | None:
+    """Готовый конспект лекции (общий для всех) или None."""
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        row = await (await db.execute("SELECT * FROM file_summaries WHERE file_id=?", (file_id,))).fetchone()
+        return dict(row) if row else None
+
+
+async def save_file_summary(file_id: int, content: str, created_by: int):
+    async with connect() as db:
+        await db.execute("INSERT OR REPLACE INTO file_summaries (file_id, content, created_by) VALUES (?, ?, ?)",
+                         (file_id, content, created_by))
+        await db.commit()
+
+
+async def get_file_ids_with_summary() -> set[int]:
+    async with connect() as db:
+        return {r[0] for r in await (await db.execute("SELECT file_id FROM file_summaries")).fetchall()}
 
 
 async def save_file_text(file_id: int, text: str):

@@ -284,6 +284,22 @@
   .hw-card .hw-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
   .hw-card .dl-meta { margin-top: 8px; }
   .file-card .badge { font-size: 11px; font-weight: 800; color: var(--accent-2); margin-left: 6px; }
+  .file-card .badge.sum { color: var(--accent); }
+  .file-card .fbody { min-width: 0; }
+  .file-card .fbody.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .file-card .fbody.tap:active { opacity: .6; }
+
+  /* ── Конспект лекции ── */
+  .sum-body { background: var(--bg-raised); border: 1px solid var(--border); border-radius: 16px; padding: 14px 15px;
+    font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+  .sum-body b { font-weight: 800; }
+  .sum-foot { margin: 10px 2px 0; }
+  .sum-empty { text-align: center; padding: 14px 8px 18px; }
+  .sum-empty .sum-ic { display: inline-flex; width: 52px; height: 52px; border-radius: 16px; align-items: center; justify-content: center;
+    background: linear-gradient(145deg, #9b7cf6, #4a8ff7); color: #fff; font-size: 26px; margin-bottom: 10px; }
+  .sum-empty b { display: block; font-size: 16px; }
+  .sum-empty p { color: var(--hint); font-size: 13.5px; margin: 6px auto 0; max-width: 300px; }
+  .sum-wait { text-align: center; margin: 10px 0 0; }
   .chat-files { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
   .file-card button.dl { background: none; padding: 6px 4px; font-size: 18px; }
   .file-card.hl { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; }
