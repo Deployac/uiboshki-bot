@@ -24,3 +24,47 @@ loadChatSubjects();
   else if (tab === "notify") openNotify();
   else if (["deadlines", "files", "chat", "search"].includes(tab)) switchTab(tab);
 })();
+
+// Системная «Назад» Telegram и листы снизу: пока открыт лист (или меню
+// «Ещё»), «Назад» закрывает его, а не уводит с экрана под ним. Свои
+// обработчики экранов (папка, предмет СДО, расписание из поиска) на это
+// время снимаются и потом возвращаются — Telegram вызывает все сразу.
+(function () {
+  if (!tg || !tg.BackButton) return;
+  const NESTED = () => [closeFolder, sdoBack, closeTarget];
+  let sheetBack = false;
+
+  function closeTopSheet() {
+    haptic();
+    const more = document.getElementById("more-menu");
+    if (more.classList.contains("open")) { toggleMore(false); return; }
+    const open = document.querySelectorAll(".sheet-backdrop.open");
+    if (open.length) open[open.length - 1].classList.remove("open");
+  }
+
+  function restoreBack() {
+    const active = (document.querySelector(".view.active") || {}).id || "";
+    if (["view-subject", "view-tk", "view-task"].includes(active)) { tg.BackButton.onClick(sdoBack); tg.BackButton.show(); }
+    else if (active === "view-search" && document.getElementById("target-view").style.display === "block") {
+      tg.BackButton.onClick(closeTarget); tg.BackButton.show();
+    } else if (active === "view-files") syncFileBack();
+    else tg.BackButton.hide();
+  }
+
+  function sync() {
+    const anyOpen = !!document.querySelector(".sheet-backdrop.open, #more-menu.open");
+    if (anyOpen && !sheetBack) {
+      sheetBack = true;
+      NESTED().forEach(fn => tg.BackButton.offClick(fn));
+      tg.BackButton.onClick(closeTopSheet);
+      tg.BackButton.show();
+    } else if (!anyOpen && sheetBack) {
+      sheetBack = false;
+      tg.BackButton.offClick(closeTopSheet);
+      restoreBack();
+    }
+  }
+
+  const obs = new MutationObserver(sync);
+  document.querySelectorAll(".sheet-backdrop, #more-menu").forEach(el => obs.observe(el, { attributes: true, attributeFilter: ["class"] }));
+})();
