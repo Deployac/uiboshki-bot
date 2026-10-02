@@ -18,6 +18,10 @@ from utils import esc, today_msk
 router = Router()
 
 
+class RestoreDb(StatesGroup):
+    waiting_file = State()
+
+
 class UploadFile(StatesGroup):
     waiting_subject  = State()
     waiting_category = State()
@@ -613,6 +617,93 @@ async def cmd_backup(message: Message):
         return
     from backup import send_backup
     await send_backup(message.bot, message.chat.id, silent=False)
+
+
+# ── Восстановление базы из копии (/restore) ─────────────────────────────────
+# Проверенная копия ждёт подтверждения тут (uid → путь к временному .db).
+_restore_pending: dict[int, str] = {}
+
+
+@router.message(Command("restore"))
+async def cmd_restore(message: Message, state: FSMContext):
+    if not is_starosta(message.from_user.id):
+        await message.answer("❌ Только для старосты.")
+        return
+    await state.set_state(RestoreDb.waiting_file)
+    await message.answer(
+        "♻️ <b>Восстановление базы</b>\n\nПришли файл копии — <code>uiboshki-….db.gz</code> из /backup "
+        "(до 20 МБ). Я проверю его и покажу, что внутри; ничего не заменю без твоего «да».\n\n"
+        "Передумал — /cancel или «❌ Отмена».", parse_mode="HTML")
+
+
+@router.message(RestoreDb.waiting_file, F.document)
+async def restore_file(message: Message, state: FSMContext):
+    import os
+    from backup import MAX_RESTORE_BYTES, RestoreError, inspect_backup
+    await state.clear()
+    if not is_starosta(message.from_user.id):
+        return
+    doc = message.document
+    if doc.file_size and doc.file_size > MAX_RESTORE_BYTES:
+        await message.answer("❌ Файл больше 20 МБ — бот не может его скачать (ограничение Telegram). "
+                             "Такую копию можно положить на том Railway вручную.")
+        return
+    buf = await message.bot.download(doc)
+    try:
+        tmp, info = inspect_backup(buf.read())
+    except RestoreError as e:
+        await message.answer(f"❌ Копия не подходит: {esc(str(e))}", parse_mode="HTML")
+        return
+    old = _restore_pending.pop(message.from_user.id, None)
+    if old and os.path.exists(old):
+        os.remove(old)
+    _restore_pending[message.from_user.id] = tmp
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="♻️ Да, восстановить", callback_data="restore:yes"),
+        InlineKeyboardButton(text="Отмена", callback_data="restore:no"),
+    ]])
+    await message.answer(
+        f"✅ Копия целая ({info['size_mb']} МБ).\nВнутри: людей — <b>{info['users']}</b>, дедлайнов — "
+        f"<b>{info['deadlines']}</b>, файлов — <b>{info['files']}</b>, входов СДО — <b>{info['sdo']}</b>.\n\n"
+        "Заменить ею текущую базу? Перед заменой пришлю копию текущей — на всякий случай.",
+        parse_mode="HTML", reply_markup=kb)
+
+
+@router.message(RestoreDb.waiting_file, F.text)
+async def restore_wait_text(message: Message, state: FSMContext):
+    if message.text.strip().lower() in ("/cancel", "отмена"):
+        await state.clear()
+        await message.answer("Отменено — база не тронута.")
+        return
+    await message.answer("Жду файл копии (.db.gz). Передумал — /cancel.")
+
+
+@router.callback_query(F.data.startswith("restore:"))
+async def restore_confirm(callback: CallbackQuery):
+    import os
+    uid = callback.from_user.id
+    tmp = _restore_pending.pop(uid, None)
+    if not is_starosta(uid) or not tmp or not os.path.exists(tmp):
+        await callback.answer("Нечего восстанавливать — пришли копию заново через /restore", show_alert=True)
+        return
+    if callback.data != "restore:yes":
+        os.remove(tmp)
+        await callback.message.edit_text("Отменено — база не тронута.")
+        await callback.answer()
+        return
+    await callback.answer("Восстанавливаю…")
+    from backup import apply_backup, send_backup
+    if not await send_backup(callback.bot, uid, silent=False):      # сначала — копия текущей
+        os.remove(tmp)
+        await callback.message.edit_text("⚠️ Не смог снять копию текущей базы — восстанавливать не стал.")
+        return
+    try:
+        await apply_backup(tmp)
+    except Exception as e:
+        await callback.message.edit_text(f"❌ Не получилось: {esc(str(e))}. Текущая база — в файле выше.",
+                                         parse_mode="HTML")
+        return
+    await callback.message.edit_text("✅ База восстановлена из копии. Копия прежней — сообщением выше.")
 
 
 # ── Синхронизация файлов из локальной базы ────────────────────────────────────
