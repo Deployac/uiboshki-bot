@@ -410,7 +410,10 @@ function renderNotify() {
       ntCard("deadlines", "Дедлайны", "в " + s.deadline_time + " — что сдать в ближайшие 3 дня", "deadlines", "deadline_days") +
       '<div class="nt-card' + (p.weekly ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("calendar") + '</span>' +
         '<div><b>Обзор недели</b><p>в воскресенье в 19:00 — пары по дням и что сдать</p></div>' +
-        ntSwitch(p.weekly, "toggleNotify('weekly')") + '</div></div>';
+        ntSwitch(p.weekly, "toggleNotify('weekly')") + '</div></div>' +
+      '<div class="nt-card' + (p.grades ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("medal") + '</span>' +
+        '<div><b>Новые баллы</b><p>напишу, когда в СДО изменятся баллы по предмету (если подключён вход)</p></div>' +
+        ntSwitch(p.grades, "toggleNotify('grades')") + '</div></div>';
   }
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';
 }
@@ -482,7 +485,7 @@ function onboardStore(get, done) {
 const NEWS = {
   id: "2026-10-02",
   items: [
-    ["cap", "Баллы прямо в расписании", "У пар в «Эта неделя» — твои баллы по предмету, а нажатие ведёт в его текущий контроль."],
+    ["cap", "Баллы прямо в расписании", "У пар в «Эта неделя» — твои баллы по предмету, а нажатие ведёт в его текущий контроль. Новые баллы в СДО — бот напишет сам."],
     ["bell", "Напоминания как удобно", "Перед первой парой — за час или за три, после перемены — за 5 минут. И своё напоминание к любому дедлайну."],
     ["place", "Другой корпус", "Если сегодня пары не в своём корпусе — утром придёт подсказка и плашка на главной."],
     ["chat", "Расписание в любом чате", "Набери @" + BOT_USERNAME + " в любом чате — и отправь туда пары на сегодня, завтра или неделю."],

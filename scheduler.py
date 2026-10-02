@@ -314,6 +314,8 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(check_lesson_reminders,  "cron", minute="*",                  args=[bot])
     from weekly_digest import send_all as send_weekly_digest      # обзор недели — воскресенье, 19:00
     scheduler.add_job(send_weekly_digest,      "cron", day_of_week="sun", hour=19, minute=0, args=[bot])
+    from grade_alerts import check_all as check_new_grades     # новые баллы СДО — днём раз в 3 часа
+    scheduler.add_job(check_new_grades,        "cron", hour="10,13,16,19,22", minute=7, args=[bot])
     from deadline_reminders import send_due as send_deadline_custom_reminders   # свои напоминания о дедлайне
     scheduler.add_job(send_deadline_custom_reminders, "cron", minute="*",        args=[bot])
     # Первый синк — через минуту после запуска: после деплоя СДО иначе молчал

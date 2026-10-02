@@ -1028,6 +1028,16 @@ async def get_score_points(user_id: int, course_id: int, since: str) -> list[tup
         return [(d, s) for d, s in rows]
 
 
+async def get_last_scores(user_id: int) -> dict[int, float]:
+    """Последняя записанная сумма баллов по каждому предмету человека."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        rows = await (await db.execute(
+            "SELECT h.course_id, h.score FROM sdo_score_history h JOIN (SELECT course_id, MAX(day) d "
+            "FROM sdo_score_history WHERE user_id=? GROUP BY course_id) m "
+            "ON h.course_id=m.course_id AND h.day=m.d WHERE h.user_id=?", (user_id, user_id))).fetchall()
+        return {cid: sc for cid, sc in rows}
+
+
 async def save_schedule_backup(data: bytes, saved_at: str):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("INSERT OR REPLACE INTO schedule_backup (id, data, saved_at) VALUES (1, ?, ?)",

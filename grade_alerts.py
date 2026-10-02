@@ -1,0 +1,81 @@
+"""
+Новые баллы в СДО — сообщением в личку (тумблер «Новые баллы» в
+уведомлениях, notify_prefs: grades). Раз в 3 часа днём бот по очереди
+открывает журнал БРС каждого, кто подключил свой вход в СДО (sdo_grades.
+overview), и сравнивает сумму по предмету с последней точкой истории баллов
+(sdo_history). Выросла или упала — одно сообщение со всеми предметами:
+«Моделирование: 34 → 39 (+5)». Первый раз (истории нет) — только запоминаем.
+Хранится лишь сумма по предмету, как и для графика.
+"""
+
+import asyncio
+import logging
+
+from utils import esc
+
+logger = logging.getLogger(__name__)
+PAUSE_SEC = 20          # между людьми: не открывать журналы всех разом
+
+
+def _num(x: float) -> str:
+    return f"{x:g}"
+
+
+def changes(last: dict[int, float], courses: list[dict]) -> list[tuple[dict, float, float]]:
+    """[(курс, было, стало)] — только где сумма изменилась и было с чем сравнить."""
+    out = []
+    for c in courses:
+        if c.get("id") is None or c.get("score") is None:
+            continue
+        old = last.get(c["id"])
+        new = float(c["score"])
+        if old is not None and abs(new - old) >= 0.05:
+            out.append((c, old, new))
+    return out
+
+
+def message(diff: list[tuple[dict, float, float]]) -> str:
+    lines = ["🎓 <b>Новые баллы в СДО</b>"]
+    for c, old, new in sorted(diff, key=lambda x: x[0].get("name") or ""):
+        d = round(new - old, 1)
+        lines.append(f"• {esc(c.get('name') or c.get('title') or 'Предмет')}: {_num(old)} → <b>{_num(new)}</b> "
+                     f"({'+' if d > 0 else ''}{_num(d)})")
+    return "\n".join(lines)
+
+
+async def check_user(bot, user_id: int, cookie: str) -> bool:
+    """Сверить баллы одного человека; True — сообщение отправлено."""
+    import sdo_grades
+    import sdo_history
+    from database import get_last_scores
+    from keyboards import app_button
+    data = await sdo_grades.overview(user_id, cookie, fresh=True)
+    courses = data.get("courses") or []
+    diff = changes(await get_last_scores(user_id), courses)
+    await sdo_history.record(user_id, courses)
+    if not diff:
+        return False
+    await bot.send_message(user_id, message(diff), parse_mode="HTML",
+                           reply_markup=app_button("🎓 Открыть баллы", "sdo"))
+    return True
+
+
+async def check_all(bot, pause: float = PAUSE_SEC):
+    """По расписанию (scheduler.py): все с рабочим входом и включённым тумблером."""
+    import notify_prefs
+    from database import get_sdo_sessions, get_user
+    from sdo_accounts import decrypt
+    for row in await get_sdo_sessions("ok"):
+        uid = row["user_id"]
+        user = await get_user(uid)
+        if not user or not user.get("subscribed") or not notify_prefs.merge(user.get("notify")).get("grades"):
+            continue
+        cookie = decrypt(row["cookie_enc"])
+        if not cookie:
+            continue
+        try:
+            await check_user(bot, uid, cookie)
+        except Exception as e:          # вход устарел, СДО лежит — молча до следующего раза
+            logger.info(f"новые баллы {uid}: {type(e).__name__}")
+        if pause:
+            await asyncio.sleep(pause)
