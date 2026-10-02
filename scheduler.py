@@ -243,11 +243,37 @@ _sdo_expired_notified = False  # не спамим старосте одним �
 _sdo_error_notified = False    # то же для сетевой недоступности СДО
 
 
+async def _note_sync(result: dict):
+    """Чем кончился синк — для /status (health.py)."""
+    import health
+    if result.get("missing"):
+        return
+    if "error" in result:
+        await health.note("sdo_sync", False, "СДО не ответил")
+    elif result.get("expired"):
+        await health.note("sdo_sync", False, "кука протухла")
+        await health.note("sdo_cookie", False, "протухла — обнови SDO_SESSION_COOKIE")
+    else:
+        await health.note("sdo_sync", True, f"новых {result.get('added', 0)}, изменено {result.get('updated', 0)}")
+
+
+async def sdo_keepalive():
+    """Лёгкий запрос в СДО раз в час (сессия не гаснет) + отметка для /status."""
+    import health
+    from sdo_parser import keepalive
+    from config import SDO_SESSION_COOKIE
+    if not SDO_SESSION_COOKIE:
+        return
+    ok = await keepalive()
+    await health.note("sdo_cookie", ok, "" if ok else "СДО не пустил — возможно, кука протухла")
+
+
 async def sync_sdo_deadlines(bot: Bot):
     global _sdo_expired_notified
     from sdo_parser import sync_deadlines
 
     result = await sync_deadlines()
+    await _note_sync(result)
 
     if result.get("missing"):
         return  # СДО не подключали (нет SDO_SESSION_COOKIE) — не о чем напоминать
@@ -321,10 +347,9 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     # Первый синк — через минуту после запуска: после деплоя СДО иначе молчал
     # до 6 часов, и сессия Moodle успевала истечь. Плюс лёгкий запрос в СДО
     # каждый час, чтобы сессия не гасла без обращений (sdo_parser.keepalive).
-    from sdo_parser import keepalive
     scheduler.add_job(sync_sdo_deadlines,      "interval", hours=SDO_SYNC_INTERVAL_HOURS, args=[bot],
                       next_run_time=datetime.now(ZoneInfo(TIMEZONE)) + timedelta(minutes=1))
-    scheduler.add_job(keepalive,               "interval", minutes=55)
+    scheduler.add_job(sdo_keepalive,           "interval", minutes=55)
     # Входы студентов в СДО — вразнобой: раз в минуту проверяются те, чья
     # очередь (50–59 мин случайно, потом 55), а не все разом (sdo_accounts.py)
     from sdo_accounts import keepalive_due

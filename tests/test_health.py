@@ -1,0 +1,74 @@
+"""/status у старосты (health.py): СДО, расписание, бэкап, ошибки за сутки."""
+import logging
+import time
+
+import pytest
+
+import health
+
+
+def test_areas_and_version():
+    assert health.area_of("ai_solver") == "ИИ" and health.area_of("webapp.routes.chat") == "ИИ"
+    assert health.area_of("sdo_parser") == "СДО" and health.area_of("schedule_parser") == "Расписание"
+    assert health.area_of("handlers.files") == "Прочее"
+    assert health.version().startswith("v5.")
+
+
+def test_error_counter_by_area(monkeypatch):
+    c = health.ErrorCounter()
+    log = logging.getLogger("gemini_solver")
+    log.addHandler(c)
+    try:
+        log.error("лимит запросов")
+        log.warning("медленно")
+        logging.getLogger("gemini_solver").info("не считается")
+    finally:
+        log.removeHandler(c)
+    day = c.last_day()
+    assert [(lvl, area) for _, lvl, area, _ in day] == [(logging.ERROR, "ИИ"), (logging.WARNING, "ИИ")]
+    c.records.append((time.time() - 2 * health.DAY, logging.ERROR, "СДО", "старое"))
+    assert len(c.last_day()) == 2                      # старше суток — не в отчёте
+
+
+@pytest.mark.asyncio
+async def test_report_shows_notes_and_errors(db, monkeypatch):
+    import config
+    monkeypatch.setattr(config, "SDO_SESSION_COOKIE", "x")
+    monkeypatch.setattr(health, "counter", health.ErrorCounter())
+    await health.note("sdo_cookie", True)          # на свежей базе отметка не теряется
+    assert "✅ Кука жива — сегодня" in await health.report()
+    await health.note("sdo_cookie", False, "")
+    text = await health.report()
+    assert "Синк дедлайнов — ещё не было" in text and "Ни одной" in text
+
+    await health.note("sdo_cookie", True)
+    await health.note("sdo_sync", False, "кука протухла")
+    await health.note("backup", True, "3.2 МБ")
+    health.counter.records.append((time.time(), logging.ERROR, "ИИ", "Gemini <лимит>"))
+    text = await health.report()
+    assert "✅ Кука жива — сегодня" in text
+    assert "⚠️ Синк дедлайнов — сегодня" in text and "кука протухла" in text
+    assert "✅ Копия базы — сегодня" in text and "3.2 МБ" in text
+    assert "❌ Ошибки: ИИ 1" in text and "Gemini &lt;лимит&gt;" in text
+
+
+@pytest.mark.asyncio
+async def test_status_only_for_starosta(db):
+    from aiogram import Bot, Dispatcher
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from aiogram.types import Chat, Message, Update, User
+    from handlers import announce
+    from tests.conftest import STAROSTA_ID
+    from tests.test_solver_render import RecordingSession
+    bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=RecordingSession())
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(announce.router)
+    try:
+        for i, uid in enumerate((222, STAROSTA_ID)):
+            u = User(id=uid, is_bot=False, first_name="X")
+            msg = Message(message_id=i + 1, date=0, chat=Chat(id=uid, type="private"), from_user=u, text="/status")
+            await dp.feed_update(bot, Update(update_id=int(time.time()) + i, message=msg))
+    finally:
+        announce.router._parent_router = None
+    sent = [t for t, _ in bot.session.sent if "Состояние бота" in t]
+    assert len(sent) == 1

@@ -22,6 +22,7 @@ import zlib
 from datetime import datetime
 
 import database
+import health
 from utils import TZ
 
 logger = logging.getLogger(__name__)
@@ -57,10 +58,12 @@ async def send_backup(bot, chat_id: int, silent: bool = True) -> bool:
         data, name = await make_backup()
     except Exception as e:
         logger.error(f"backup: не снялась копия базы: {e}")
+        await health.note("backup", False, "копия не снялась")
         await bot.send_message(chat_id, f"⚠️ Не получилось снять копию базы: {e}")
         return False
     size_mb = len(data) / 1024 / 1024
     if len(data) > MAX_SEND_BYTES:
+        await health.note("backup", False, f"{size_mb:.0f} МБ — больше лимита Telegram")
         await bot.send_message(chat_id, f"⚠️ Копия базы — {size_mb:.0f} МБ, больше лимита Telegram (50 МБ).")
         return False
     await bot.send_document(
@@ -68,6 +71,7 @@ async def send_backup(bot, chat_id: int, silent: bool = True) -> bool:
         caption=(f"💾 Копия базы ({size_mb:.1f} МБ). Храни — это все файлы, дедлайны и заметки.\n"
                  "Восстановить: распаковать .gz и положить вместо базы на томе Railway."),
     )
+    await health.note("backup", True, f"{size_mb:.1f} МБ")
     return True
 
 

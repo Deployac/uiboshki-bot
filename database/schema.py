@@ -183,6 +183,15 @@ async def init_db():
                 extracted_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Настройки группы (зам старосты) и отметки /status (health.py). Раньше
+        # создавалась лениво в init_hw_table — первая отметка на свежей базе
+        # молча терялась.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
         # Конспект лекции от ИИ (lecture_summary.py): один на файл и общий для
         # всех — делается, только когда кто-то нажмёт «Сделать конспект».
         await db.execute("""
