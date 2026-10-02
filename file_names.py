@@ -20,12 +20,14 @@ from file_categories import category_of, natural_key
 
 NUMBERED = ("lecture", "practice", "control")
 
-_KEY = (r"лекци\w*|лк|тем[аы]?|практ\w*|пр|лаб\w*|лр|семинар\w*|занят\w*|работ\w*|кр|"
-        r"контрольн\w*|тест\w*|задани\w*|модул\w*|раздел\w*|часть|ч\.")
-# «Лекция 3», «ЛК3», «Тема №2», «ПР_4», «Практическое занятие № 5»
-_NUM = re.compile(r"(?<![а-яёa-z])(?:" + _KEY + r")(?:\s+\w+)?\s*[№#]?\s*(\d{1,2})(?!\d)", re.I)
+_KEY = (r"лекци[а-яё]*|лк|тем[аы]?|практ[а-яё]*|пр|лаб[а-яё]*|лр|семинар[а-яё]*|занят[а-яё]*|работ[а-яё]*|кр|"
+        r"контрольн[а-яё]*|тест[а-яё]*|задани[а-яё]*|модул[а-яё]*|раздел[а-яё]*|часть|ч\.")
+# «Лекция 3», «ЛК3», «Тема №2», «ПР_4», «Практическое занятие № 5», «Практика11 12» (11–12),
+# «Практическая работа 5 6» / «5-6» / «5 и 6» — две практики в одном файле
+_RANGE = r"(\d{1,2})(?:\s*(?:[-–—,]|и)\s*|\s+)(\d{1,2})(?![\da-z])"
+_NUM = re.compile(r"(?<![а-яёa-z])(?:" + _KEY + r")(?:\s+[а-яё]+)?\s*[№#]?\s*(?:" + _RANGE + r"|(\d{1,2})(?!\d))", re.I)
 _EXT = re.compile(r"\.(pdf|docx?|pptx?|xlsx?|odt|odp|rtf|txt|zip|rar|7z|png|jpe?g)$", re.I)
-_PREFIX = re.compile(r"^\s*(?:" + _KEY + r")(?:\s+\w+)?\s*[№#]?\s*\d{1,2}(?!\d)\s*[.:)\-–—]*\s*", re.I)
+_PREFIX = re.compile(r"^\s*(?:" + _KEY + r")(?:\s+[а-яё]+)?\s*[№#]?\s*(?:" + _RANGE + r"|\d{1,2}(?!\d))\s*[.:)\-–—]*\s*", re.I)
 _GENERIC = re.compile(r"^(?:презентац\w*|материал\w*|файл|слайды|конспект|лекци\w*|практ\w*|"
                       r"задани\w*|к\s+лекции|к\s+практике)$", re.I)
 
@@ -38,9 +40,17 @@ def clean(title: str) -> str:
     return t[:1].upper() + t[1:] if t else t
 
 
-def number_of(title: str) -> int | None:
+def number_of(title: str) -> str | None:
+    """Номер из названия: «3», а для двух подряд — «5–6» («Практика 5 6»)."""
     m = _NUM.search((title or "").replace("_", " "))
-    return int(m.group(1)) if m else None
+    if not m:
+        return None
+    a, b, one = m.group(1), m.group(2), m.group(3)
+    if one:
+        return str(int(one))
+    if int(b) == int(a) + 1:
+        return f"{int(a)}–{int(b)}"
+    return str(int(a))           # «Практика 1 Знакомство 7» сюда не попадёт, а «Тема 2 3D» — номер 2
 
 
 def word_for(cat: str, title: str) -> str:
@@ -85,7 +95,7 @@ def tidy_titles(files: list[dict]) -> dict[int, str]:
         if not any(numbered.values()):
             # номеров нет ни у кого — по порядку выгрузки (id растёт по курсу СДО)
             for i, f in enumerate(sorted(items, key=lambda f: f["id"]), 1):
-                numbered[f["id"]] = i
+                numbered[f["id"]] = str(i)
         for f in items:
             n = numbered[f["id"]]
             if not n:
@@ -121,3 +131,17 @@ def preview(files: list[dict], changes: dict[int, str], limit: int = 25) -> list
             last = subj
         lines.append(f"• {esc(by_id[fid]['title'])} → <b>{esc(new)}</b>")
     return lines
+
+
+def full_list(files: list[dict], changes: dict[int, str]) -> str:
+    """Все переименования текстом для файла: по предметам, «было → стало»."""
+    by_id = {f["id"]: f for f in files}
+    rows = sorted(changes.items(), key=lambda kv: (by_id[kv[0]].get("subject") or "", natural_key(kv[1])))
+    out, last = [], None
+    for fid, new in rows:
+        subj = by_id[fid].get("subject") or "Без предмета"
+        if subj != last:
+            out.append(("\n" if out else "") + f"== {subj} ==")
+            last = subj
+        out.append(f"{by_id[fid]['title']}  →  {new}")
+    return "\n".join(out) + "\n"

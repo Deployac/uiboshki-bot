@@ -650,8 +650,14 @@ async def cmd_tidyfiles(message: Message):
     await message.answer(
         "🧹 <b>Понятные названия файлов</b>\nТип и номер по названию, тема — если есть. Вот что поменяется:"
         + "\n".join(lines) + (f"\n\n…и ещё {more}" if more > 0 else "")
+        + ("\n\nПолный список — в файле ниже." if more > 0 else "")
         + "\n\nВернуть как было — <code>/tidyfiles undo</code>.",
         parse_mode="HTML", reply_markup=kb)
+    if more > 0:
+        from aiogram.types import BufferedInputFile
+        from file_names import full_list
+        await message.answer_document(BufferedInputFile(full_list(files, changes).encode("utf-8"), "tidyfiles.txt"),
+                                      caption=f"Все {len(changes)} переименований: было → стало")
 
 
 @router.callback_query(F.data.startswith("tidy:"))

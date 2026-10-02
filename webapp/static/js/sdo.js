@@ -148,18 +148,33 @@ async function loadLessonScores() {
 }
 
 async function openLessonSdo(title) {
+  // Сразу экран «Текущий контроль» (сначала скелетон), без промежуточного
+  // экрана предмета: данные сводки уже есть, подробности догружаются тихо.
   haptic();
+  const box = document.getElementById("tk-body");
   if (!sdoData) {
+    sdoCourse = null;
+    document.getElementById("tk-back").innerHTML = icon("back") + " Предмет";
+    box.innerHTML = '<div class="skel" style="height:150px"></div><div class="skel" style="height:300px;margin-top:10px"></div>';
+    showSdoView("tk");
     try { sdoData = await api("/api/sdo/grades"); }
     catch (e) {
       if (/подключи/.test(e.message)) { openSdo(); return; }   // покажет «Подключить СДО»
-      showToast("СДО не ответил: " + e.message); return;
+      showSdoView("sdo"); showToast("СДО не ответил: " + e.message); return;
     }
   }
   const c = matchCourse(title, sdoData.courses);
-  if (!c) { showToast("В СДО нет журнала с баллами по этому предмету"); return; }
-  await openSubject(c.id);
-  if (sdoView === "subject" && sdoCourse && sdoCourse.works_total) openTk();
+  if (!c) { if (sdoView === "tk") showSdoView("sdo"); showToast("В СДО нет журнала с баллами по этому предмету"); return; }
+  if (!c.works_total) { openSubject(c.id); return; }
+  sdoCourse = Object.assign({ id: c.id }, c);
+  if (sdoView === "tk") {
+    document.getElementById("tk-back").innerHTML = icon("back") + " " + escapeHtml(c.title);
+    tkFilter = "all"; renderTk();
+  } else openTk();
+  try {
+    const full = await api("/api/sdo/grades/" + c.id);
+    if (sdoCourse && sdoCourse.id === c.id) { sdoCourse = full; if (sdoView === "tk") renderTk(); }
+  } catch (e) {}
 }
 
 // ── Предмет подробно ──────────────────────────────────────────────────────

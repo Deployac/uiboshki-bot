@@ -1,6 +1,7 @@
 """Понятные названия файлов (/tidyfiles): «ЛК3_бизнес» → «Лекция 3. Бизнес»."""
 import pytest
 
+import file_names
 from file_names import tidy_titles, topic_of
 
 
@@ -54,3 +55,26 @@ async def test_rename_and_undo(db):
     assert (await db.get_files())[0]["title"] == "Лекция 3. Другое"
     assert await db.undo_file_renames() == 1
     assert (await db.get_files())[0]["title"] == "ЛК3_бизнес"
+
+
+@pytest.mark.parametrize("title, num", [
+    ("Практика11 12 авто", "11–12"),          # слитно с номером — не «Практика 2»
+    ("Практическа работа 5 6", "5–6"),
+    ("Лабораторная 3-4", "3–4"),
+    ("ЛР 1 и 2. Основы", "1–2"),
+    ("Практика 1 Знакомство 7", "1"),
+    ("Тема 2 3D-моделирование", "2"),        # «3D» — не вторая тема
+    ("ЛК3_бизнес.pdf", "3"),
+])
+def test_number_ranges(title, num):
+    assert file_names.number_of(title) == num
+
+
+def test_range_title_and_full_list():
+    files = [{"id": 1, "title": "Практика11 12 авто", "subject": "Анализ", "category": None, "file_name": "a.pdf"},
+             {"id": 2, "title": "ЛК3_бизнес", "subject": "ОПД", "category": None, "file_name": "b.pdf"}]
+    ch = file_names.tidy_titles(files)
+    assert ch[1] == "Практика 11–12. Авто"
+    text = file_names.full_list(files, ch)
+    assert "== Анализ ==" in text and "Практика11 12 авто  →  Практика 11–12. Авто" in text
+    assert text.index("Анализ") < text.index("ОПД")

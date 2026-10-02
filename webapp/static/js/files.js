@@ -75,7 +75,7 @@ function renderFiles() {
   const list = document.getElementById("file-list");
   head.innerHTML = "";
   if (fileQuery) {
-    list.innerHTML = fileItems.length ? fileItems.map(f => fileCard(f, true)).join("") : '<div class="empty">Ничего не нашлось</div>';
+    list.innerHTML = fileItems.length ? fileItems.map(f => fileCard(f, true)).join("") : capyEmpty("Ничего не нашлось");
     syncFileBack();
     return;
   }
@@ -154,7 +154,7 @@ async function loadFiles(q) {
     fileItems.forEach(f => fileIndex[f.id] = f);
     if (fileSubject !== null && !fileItems.some(f => f.subject === fileSubject)) fileSubject = null;
     if (!fileItems.length) {
-      list.innerHTML = fileQuery ? '<div class="empty">Ничего не нашлось</div>'
+      list.innerHTML = fileQuery ? capyEmpty("Ничего не нашлось")
         : capyEmpty("Файлов пока нет", "Загрузи их в боте: /upload");
       document.getElementById("file-head").innerHTML = "";
       syncFileBack();
