@@ -99,11 +99,10 @@ function renderHero() {
   }
 }
 
-function dueText(days) {
-  if (days < 0) return "просрочен";
-  if (days === 0) return "сегодня";
-  if (days === 1) return "завтра";
-  return "через " + days + " дн.";
+// Ближайший дедлайн на карточке: «чт, 8 окт · через 6 дн.» (дизайн-ревью, п. 15)
+function dueText(item) {
+  if (item.days < 0) return "просрочен";
+  return humanDate(item.due_date, { time: item.due_time });   // «сегодня» — по телефону: сводка может быть из кэша
 }
 
 // Мгновенный старт: последняя сводка «сегодня» и точки недели лежат в памяти
@@ -164,7 +163,7 @@ function renderToday() {
   const dl = todayData.deadlines;
   document.getElementById("today-deadline-count").textContent = dl.active;
   document.getElementById("today-deadline-next").innerHTML = dl.soon.length
-    ? escapeHtml(dl.soon[0].subject.slice(0, 40) + " · " + dueText(dl.soon[0].days)) : "ничего не горит " + icon("party", "mood");
+    ? escapeHtml(dl.soon[0].subject.slice(0, 40) + " · " + dueText(dl.soon[0])) : "ничего не горит " + icon("party", "mood");
   document.getElementById("today-notes").innerHTML = todayData.notes.map(x =>
     '<div class="note-card">' + icon("pin", "inl") + (x.subject ? "<b>" + escapeHtml(x.subject) + ":</b> " : "") + escapeHtml(x.text) + '</div>').join("");
 }
@@ -222,6 +221,55 @@ function plural(n, one, few, many) {
 
 setInterval(refreshStatuses, 30000);
 
+// ── Плитка «Баллы СДО» (дизайн-ревью, п. 12) ──────────────────────────────
+// Вместо плитки «Поиск» (он и так во вкладке внизу): сколько предметов уже
+// закрыто на «3»/зачёт и какой ближе всего — те же цифры, что в hero экрана
+// СДО (sdo.js: sdoSummary). Журнал грузится после главной и не держит её;
+// последнее значение запоминается и показывается сразу при следующем входе.
+const SDO_TILE_KEY = "home.sdoTile";
+
+function tileFromGrades(data) {
+  const s = sdoSummary((data && data.courses) || []);
+  return { state: "ok", closed: s.closed, total: s.total,
+    near: s.near ? shortCourse(s.near.title) : "", need: s.near ? s.near.need : 0 };
+}
+
+function renderSdoTile(t) {
+  const big = document.getElementById("home-sdo-big"), sub = document.getElementById("home-sdo-sub");
+  if (!t) {                                   // ещё ни разу не загрузилось
+    big.innerHTML = '<span class="skel"></span>'; sub.textContent = "…";
+  } else if (t.state === "off") {
+    big.innerHTML = icon("cap", "lg"); sub.textContent = "Подключи СДО — увидишь баллы и сколько до зачёта";
+  } else if (t.state === "error") {
+    big.innerHTML = icon("cap", "lg"); sub.textContent = "нажми, чтобы открыть";
+  } else if (!t.total) {
+    big.textContent = "—"; sub.textContent = "журналов с баллами пока нет";
+  } else {
+    big.textContent = t.closed + " из " + t.total;
+    sub.innerHTML = t.near ? "ближе всего: " + escapeHtml(t.near) + ", ещё&nbsp;" + fmtNum(t.need) : "все закрыты " + icon("party", "mood");
+  }
+}
+
+function updateSdoTile(data) {
+  const t = data && data.state ? data : tileFromGrades(data);
+  renderSdoTile(t);
+  try { localStorage.setItem(SDO_TILE_KEY, JSON.stringify(t)); } catch (e) {}
+}
+
+function readSdoTile() {
+  try { return JSON.parse(localStorage.getItem(SDO_TILE_KEY) || "null"); } catch (e) { return null; }
+}
+
+async function loadSdoTile() {
+  const saved = readSdoTile();
+  try {
+    updateSdoTile(await fetchSdoGrades());
+  } catch (e) {
+    if (/подключи/.test(e.message)) updateSdoTile({ state: "off" });
+    else if (!saved || saved.state === "off") renderSdoTile({ state: "error" });   // сеть — тихо, со старым
+  }
+}
+
 // ── Неделя: выбор дня ─────────────────────────────────────────────────────
 
 const DAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
@@ -235,7 +283,6 @@ function isoDate(d) {
 // нельзя (живой тест с телефона).
 let weekOffset = 0;
 const WEEK_MIN = -1, WEEK_MAX = 8;
-const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 
 function shiftWeek(delta) {
   weekOffset = Math.min(WEEK_MAX, Math.max(WEEK_MIN, weekOffset + delta));

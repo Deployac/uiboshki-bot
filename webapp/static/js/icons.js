@@ -10,6 +10,7 @@ const ICON_PATHS = {
   deadlines: '<rect x="4.5" y="4" width="15" height="17" rx="3.5"/><path d="M9 3h6v3H9zM8.5 11.5l1.6 1.6 3-3M8.5 17h7"/>',
   folder: '<path d="M3.5 7.5A2.5 2.5 0 0 1 6 5h3.6l2 2.2H18a2.5 2.5 0 0 1 2.5 2.5v7.8A2.5 2.5 0 0 1 18 20H6a2.5 2.5 0 0 1-2.5-2.5z"/><path d="M3.5 10.5h17"/>',
   chat: '<path d="M5 18.5 3.8 21l3.4-1.6A9 9 0 1 0 5 18.5z"/><path d="M12 8.2l.9 2 2 .9-2 .9-.9 2-.9-2-2-.9 2-.9z" fill="currentColor"/>',
+  message: '<path d="M5 18.5 3.8 21l3.4-1.6A9 9 0 1 0 5 18.5z"/><path d="M8.5 10.5h7M8.5 14h4.5"/>',
   more: '<rect x="4" y="4" width="6.5" height="6.5" rx="2"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="2"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="2"/><circle cx="16.75" cy="16.75" r="3.3"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/>',
   cap: '<path d="M2.5 9.5 12 5l9.5 4.5L12 14z"/><path d="M6.5 11.5v4.2c0 1.6 2.5 3 5.5 3s5.5-1.4 5.5-3v-4.2M21.5 9.5v5"/>',

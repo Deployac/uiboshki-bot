@@ -127,6 +127,7 @@ python bot.py          # бот; с WEBAPP_URL — и Mini App в том же п
 | `SDO_SESSION_COOKIE` | вход старосты в СДО (дедлайны и файлы курсов) |
 | `SDO_CRYPT_PASSPHRASE` | секретная фраза — ключ шифрования входов студентов |
 | `ICAL_URL`, `GROUP_NAME`, `BOT_USERNAME`, `GROUP_PROGRAM` | своя группа (по умолчанию — УИБО-03-24) |
+| `CHANNEL_URL`, `CONTACT_URL` | ссылки плиток «Канал бота» и «Написать нам» в WebApp (необязательно; пусто — «Скоро») |
 | `DATABASE_PATH` | где лежит SQLite |
 
 ## Тесты

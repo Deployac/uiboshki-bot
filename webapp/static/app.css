@@ -285,8 +285,6 @@
   .hw-card .hw-subj { font-weight: 800; margin-bottom: 4px; }
   .hw-card .hw-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
   .hw-card .dl-meta { margin-top: 8px; }
-  .file-card .badge { font-size: 11px; font-weight: 800; color: var(--accent-2-text); margin-left: 6px; }
-  .file-card .badge.sum { color: var(--accent); }
   .file-card .fbody { min-width: 0; }
   .file-card .fbody.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .file-card .fbody.tap:active { opacity: .6; }
@@ -942,3 +940,98 @@
   details.done-group .done-chev { width: 14px; height: 14px; vertical-align: -2px; transition: transform .2s; }
   details.done-group[open] .done-chev { transform: rotate(90deg); }
 
+
+  /* ── Дизайн-ревью, п. 14 ── */
+  /* Пилюли у файла вместо крошечных значков: «есть текст» — спокойная бирюзовая,
+     «конспект» — заметная, в цвет акцента. Не переносится внутри себя. */
+  .file-card .fpill { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; padding: 2px 7px 2px 6px;
+    border-radius: 999px; font-size: 11px; font-weight: 800; line-height: 1.35; white-space: nowrap; vertical-align: 1px; }
+  .file-card .fpill .ico { width: 12px; height: 12px; vertical-align: 0; stroke-width: 2.2; }
+  .file-card .fpill.txt { color: var(--accent-2-text); background: rgba(67,198,172,.16); }
+  .file-card .fpill.sum { color: #fff; background: linear-gradient(135deg, var(--accent) 0%, #5a5fe0 100%);
+    box-shadow: 0 2px 8px rgba(124,127,245,.35); }
+  .files-hint { margin: 2px 0 10px; }
+  .files-hint .ico { color: var(--accent); }
+
+  /* ── Дизайн-ревью, п. 16 ── */
+  /* Быстрые даты в листе дедлайна: одной строкой, не влезло — прокрутка вбок */
+  .quick-dates { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: -2px 0 10px; }
+  .quick-dates::-webkit-scrollbar { display: none; }
+  .quick-dates button { white-space: nowrap; cursor: pointer; flex: 1 0 auto; padding-left: 8px; padding-right: 8px; }
+
+  /* ── Дизайн-ревью, п. 19 ── */
+  /* Экран СДО без входа: что даёт вход — список с иконками в акцентных квадратиках */
+  .sdo-empty { max-width: 400px; margin: 8vh auto 0; padding: 22px 18px 18px; }
+  .sdo-empty .sheet-hint { margin: 0 0 4px; }
+  .sdo-perks { text-align: left; margin: 10px 0 16px; }
+  .sdo-perk { display: flex; align-items: center; gap: 12px; padding: 9px 0; font-size: 14px; line-height: 1.4; }
+  .sdo-perk + .sdo-perk { border-top: 1px solid var(--border); }
+  .sdo-perk .sec-ic { width: 32px; height: 32px; font-size: 16px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+
+  /* ── Дизайн-ревью, п. 20 ── */
+  /* знакомство: слайды про ИИ-чат и конспекты лекций */
+  .ob-ic.t-ai { background: linear-gradient(145deg, #8b7cf6, #5c60e6); }
+  .ob-ic.t-summary { background: linear-gradient(145deg, #4a8ff7, #3164d9); }
+
+  /* ── Дизайн-ревью, п. 12 ── */
+  /* плитка «Баллы СДО» на главной вместо «Поиска»: скелетон, пока журнал грузится */
+  .sdo-tile .big .skel { display: block; width: 64px; height: 20px; margin: 0; }
+  .sdo-tile .sub { overflow-wrap: anywhere; }
+
+  /* ── Дизайн-ревью, п. 17 ── */
+  /* «Как растут баллы»: шкала до ближайшего порога (sdo.js: histScale), пороги
+     пунктиром с подписью, заливка градиентом, последняя точка со значением */
+  .hist-plot { position: relative; height: 118px; margin: 14px 6px 0 28px; }
+  .hist-plot .hist-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .hist-plot .hist-area { fill: url(#hist-fill); }
+  .hist-g0 { stop-color: var(--accent); stop-opacity: .34; }
+  .hist-g1 { stop-color: var(--accent); stop-opacity: 0; }
+  .hist-grid { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
+  .hist-plot .hist-mark { stroke: var(--hint); stroke-opacity: .55; stroke-dasharray: 4 4; }
+  .hist-plot .hist-lbl { position: absolute; font-size: 10.5px; line-height: 13px; color: var(--hint); white-space: nowrap; pointer-events: none; }
+  .hist-lbl.l { left: 2px; }
+  .hist-lbl.r { right: 2px; }
+  .hist-lbl.up { transform: translateY(calc(-100% - 2px)); }
+  .hist-lbl.dn { transform: translateY(3px); }
+  .hist-lbl.goal { color: var(--text); font-weight: 700; }
+  .hist-y { position: absolute; left: -28px; width: 22px; text-align: right; font-size: 10.5px; line-height: 13px; color: var(--hint);
+            transform: translateY(-50%); font-variant-numeric: tabular-nums; }
+  .hist-y.top { top: 0; }
+  .hist-y.bot { top: 100%; }
+  .hist-plot .hist-dot { position: absolute; width: 11px; height: 11px; margin: -5.5px 0 0 -5.5px; border-radius: 50%;
+                         background: var(--accent); border: 2px solid var(--bg-card);
+                         box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent); }
+  .hist-val { position: absolute; right: -8px; transform: translateY(calc(-100% - 9px)); padding: 1px 7px; border-radius: 999px;
+              background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; line-height: 17px; font-variant-numeric: tabular-nums; }
+  .hist-val.dn { transform: translateY(9px); }
+  .hist-plot + .hist-axis { margin: 8px 6px 0 28px; }
+
+  /* ── Дизайн-ревью, п. 18 ── */
+  /* Меню «Ещё»: 10 плиток по 4 в ряд. Flex, а не grid — неполный последний
+     ряд встаёт по центру при любом числе плиток. */
+  .more-backdrop { padding: 0 10px 10px; }
+  .more-pop { padding: 14px 12px; }
+  .more-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px 8px; }
+  .more-grid button { flex: 0 0 calc((100% - 3 * 8px) / 4); width: calc((100% - 3 * 8px) / 4);
+    display: flex; flex-direction: column; align-items: center; }
+  .more-grid .sq { border-radius: 18px; margin-bottom: 6px; }
+  .more-grid .sq .ico { width: 28px; height: 28px; }
+  /* подпись занимает и по половине зазора с боков: «Безопасность» целиком
+     на 375px; «Написать нам» при нужде — в две строки по центру */
+  .more-grid .lbl { display: block; width: calc(100% + 8px); margin: 0 -4px; font-size: clamp(10.5px, 3.07vw, 11.5px);
+    font-weight: 600; letter-spacing: -.2px; line-height: 1.2; }
+  .more-grid .sq.t-hw { background: linear-gradient(145deg, #f472b6, #db2777); }
+  .more-grid .sq.t-news { background: linear-gradient(145deg, #a78bfa, #ec4899); }
+  .more-grid .sq.t-channel { background: linear-gradient(145deg, #3bb2f0, #2481cc); }
+  .more-grid .sq.t-contact { background: linear-gradient(145deg, #2bb3a3, #12877c); }
+  /* открытие: лист мягко выезжает снизу, плитки — каскадом (--i ставит toggleMore);
+     display: none → flex перезапускает анимацию при каждом открытии */
+  .more-backdrop.open .more-pop { animation: moreSheetIn .28s cubic-bezier(.2, .8, .2, 1) both; }
+  .more-backdrop.open .more-grid button { animation: moreTileIn .26s cubic-bezier(.2, .8, .2, 1) both;
+    animation-delay: calc(40ms + var(--i, 0) * 25ms); }
+  @keyframes moreSheetIn { from { opacity: 0; transform: translateY(28px) scale(.97); } to { opacity: 1; transform: none; } }
+  @keyframes moreTileIn { from { opacity: 0; transform: translateY(10px) scale(.88); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .more-backdrop.open, .more-backdrop.open .more-pop, .more-backdrop.open .more-grid button { animation: none; }
+  }

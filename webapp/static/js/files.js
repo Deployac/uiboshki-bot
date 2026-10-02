@@ -33,11 +33,12 @@ function catLabel(c) {
 }
 
 // Файл с текстом нажимается целиком (кроме кнопок) — открывается конспект.
-// Значок у названия: книжка — ИИ прочитал файл, искры — конспект уже готов.
+// Пилюля у названия: «есть текст» — ИИ прочитал файл и сделает конспект,
+// «конспект» — уже готов (дизайн-ревью, п. 14: крошечный значок не замечали).
 function fileCard(f, withPlace) {
   const sub = withPlace ? (f.subject || "Без предмета") + " · " + catText(f.category_label) : (f.file_name || "");
-  const badge = f.has_summary ? '<span class="badge sum">' + icon("sparkle") + '</span>'
-    : f.has_text ? '<span class="badge">' + icon("bookOpen") + '</span>' : '';
+  const badge = f.has_summary ? '<span class="fpill sum">' + icon("sparkle") + 'конспект</span>'
+    : f.has_text ? '<span class="fpill txt">' + icon("bookOpen") + 'есть текст</span>' : '';
   return '<div class="file-card" id="fc-' + f.id + '">' +
     fileTypeIcon(f.file_name) +
     '<div class="fbody' + (f.has_text ? ' tap" onclick="openSummary(' + f.id + ')' : '') + '">' +

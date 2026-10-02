@@ -11,8 +11,20 @@ def test_index_page_uses_config(monkeypatch):
     html = TestClient(server.app).get("/").text
     assert "УИБО-03-24" not in html.split("<script>window.APP_CONFIG")[0]
     assert "КМБО-01-25&lt;/script&gt;" in html                         # в разметке — экранировано
-    assert 'window.APP_CONFIG = {"group": "КМБО-01-25<\\/script>", "bot": "otherbot"}' in html
+    assert 'window.APP_CONFIG = {"group": "КМБО-01-25<\\/script>", "bot": "otherbot", "channel": "", "contact": ""}' in html
     assert html.index("window.APP_CONFIG") < html.index('src="js/core.js')
+
+
+def test_index_page_passes_channel_and_contact(monkeypatch):
+    # плитки «Канал бота» и «Написать нам» в меню «Ещё» (дизайн-ревью, п. 18)
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    monkeypatch.setattr(config, "CHANNEL_URL", "https://t.me/uiboshki_news")
+    monkeypatch.setattr(config, "CONTACT_URL", "https://t.me/Partykq</script>")
+    html = TestClient(server.app).get("/").text
+    cfg = html.split("window.APP_CONFIG = ", 1)[1].split(";</script>", 1)[0]
+    assert '"channel": "https://t.me/uiboshki_news"' in cfg
+    assert '"contact": "https://t.me/Partykq<\\/script>"' in cfg       # не закрывает <script>
 
 
 def test_prompts_use_group(monkeypatch):
