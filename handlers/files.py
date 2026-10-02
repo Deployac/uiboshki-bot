@@ -601,7 +601,7 @@ async def _sdo_import(bot: Bot, chat_id: int, status: Message, files: list):
         lines.append(f"⚠️ Не скачались: {st['failed']} — можно повторить /sdofiles")
     if st.get("expired"):
         lines.append("⚠️ Кука СДО протухла посередине — обнови SDO_SESSION_COOKIE и повтори /sdofiles.")
-    lines.append("\nСмотреть: /files или вкладка «Файлы» в приложении.")
+    lines.append("\nСмотреть: /files или в приложении: ☰ Ещё → Файлы.")
     await bot.send_message(chat_id, "\n".join(lines), parse_mode="HTML")
 
 
