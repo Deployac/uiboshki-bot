@@ -175,10 +175,15 @@ async def api_today(user: dict = CurrentUser):
     return {
         **_day_label(today), "now": now.isoformat(), "hour": now.hour,
         "lessons": lessons, "tomorrow_first": tomorrow_first, "schedule_ok": schedule_ok,
-        "weather": weather, "campus": campus,
+        "weather": weather, "campus": campus, "stale": _stale_label(),
         "deadlines": {"active": len(items), "soon": soon},
         "notes": [{"subject": n.get("subject") or "", "text": n["text"]} for n in notes],
     }
+
+
+def _stale_label() -> str | None:
+    from schedule_parser import stale_label
+    return stale_label()
 
 
 class OptionalAnswer(BaseModel):

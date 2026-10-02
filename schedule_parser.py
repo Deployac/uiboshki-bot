@@ -25,18 +25,77 @@ _cache_data: bytes | None = None
 _cache_time: float = 0.0
 
 
-async def fetch_schedule_raw(force: bool = False) -> bytes:
-    global _cache_data, _cache_time
-    now = time.monotonic()
-    if not force and _cache_data is not None and (now - _cache_time) < SCHEDULE_CACHE_TTL_SECONDS:
-        return _cache_data
+# Зеркало МИРЭА иногда лежит. Тогда отдаём последний удачный календарь (из
+# памяти или из базы — после перезапуска) и помним, от какого он времени:
+# stale_label() → «14:20», и бот/приложение честно пишут «данные от 14:20».
+_ok_at: datetime | None = None        # когда последний раз календарь скачался
+_stale = False                        # сейчас отдаём сохранённое, а не свежее
+_backup_hash: int | None = None
 
+
+def stale_label() -> str | None:
+    """None — расписание свежее; иначе «14:20» или «1 окт, 14:20»."""
+    if not _stale or not _ok_at:
+        return None
+    t = _ok_at.astimezone(TZ)
+    if t.date() == datetime.now(TZ).date():
+        return f"{t:%H:%M}"
+    months = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"]
+    return f"{t.day} {months[t.month - 1]}, {t:%H:%M}"
+
+
+def stale_note() -> str:
+    lbl = stale_label()
+    return f"\n\n⚠️ <i>Сайт расписания МИРЭА не отвечает — показываю сохранённое от {lbl}.</i>" if lbl else ""
+
+
+async def _download() -> bytes:
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(ICAL_URL)
         resp.raise_for_status()
-        _cache_data = resp.content
-        _cache_time = now
+        if b"BEGIN:VCALENDAR" not in resp.content[:512]:
+            raise ValueError("зеркало ответило не календарём")   # страница ошибки с кодом 200
+        return resp.content
+
+
+async def _save_backup(data: bytes):
+    global _backup_hash
+    h = hash(data)
+    if h == _backup_hash:
+        return
+    try:
+        from database import save_schedule_backup
+        await save_schedule_backup(data, _ok_at.isoformat())
+        _backup_hash = h
+    except Exception as e:
+        logger.info(f"Копия расписания не сохранилась: {e}")
+
+
+async def fetch_schedule_raw(force: bool = False) -> bytes:
+    global _cache_data, _cache_time, _ok_at, _stale
+    now = time.monotonic()
+    if not force and _cache_data is not None and (now - _cache_time) < SCHEDULE_CACHE_TTL_SECONDS:
         return _cache_data
+    try:
+        data = await _download()
+    except Exception as e:
+        if _cache_data is None:
+            try:
+                from database import load_schedule_backup
+                saved = await load_schedule_backup()
+            except Exception:
+                saved = None
+            if not saved:
+                raise
+            _cache_data, _ok_at = saved[0], datetime.fromisoformat(saved[1])
+        logger.warning(f"Расписание: зеркало не отвечает ({type(e).__name__}) — отдаю сохранённое")
+        _stale = True
+        # повторить попытку через минуту, а не ждать весь TTL
+        _cache_time = now - SCHEDULE_CACHE_TTL_SECONDS + 60
+        return _cache_data
+    _cache_data, _cache_time, _ok_at, _stale = data, now, datetime.now(TZ), False
+    await _save_backup(data)
+    return _cache_data
 
 
 TEACHER_RE = re.compile(r"Преподаватель:\s*([^\n\\]+)")
@@ -282,7 +341,7 @@ async def get_today_schedule() -> str:
     try:
         raw   = await fetch_schedule_raw()
         now   = datetime.now(TZ)
-        return format_day(parse_events_for_date(raw, now.date()), now.date(), now=now)
+        return format_day(parse_events_for_date(raw, now.date()), now.date(), now=now) + stale_note()
     except Exception as e:
         logger.error(f"Ошибка расписания: {e}")
         return "⚠️ Не удалось загрузить расписание."
@@ -292,7 +351,7 @@ async def get_tomorrow_schedule() -> str:
     try:
         raw      = await fetch_schedule_raw()
         tomorrow = datetime.now(TZ).date() + timedelta(days=1)
-        return format_day(parse_events_for_date(raw, tomorrow), tomorrow)
+        return format_day(parse_events_for_date(raw, tomorrow), tomorrow) + stale_note()
     except Exception as e:
         logger.error(f"Ошибка расписания: {e}")
         return "⚠️ Не удалось загрузить расписание."

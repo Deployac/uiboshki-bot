@@ -122,6 +122,11 @@ async function loadToday() {
       const w = document.getElementById("weather");
       w.textContent = todayData.weather; w.style.display = "inline-block";
     }
+    if (todayData.stale) {         // зеркало МИРЭА лежит — расписание сохранённое
+      const st = document.getElementById("stale");
+      st.innerHTML = icon("warning") + " сайт МИРЭА не отвечает · данные от " + escapeHtml(todayData.stale);
+      st.style.display = "inline-flex";
+    }
     if (todayData.campus) {        // пары не в своём корпусе — заметно, до первой пары
       const c = document.getElementById("campus");
       c.innerHTML = icon("place") + " " + escapeHtml(todayData.campus); c.style.display = "inline-flex";
