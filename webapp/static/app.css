@@ -827,3 +827,5 @@
   .nt-custom input { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
                      background: var(--bg); color: var(--text); font-size: 16px; }
   .nt-custom button { flex: none; padding: 0 16px; border-radius: 10px; border: none; background: var(--accent); color: #fff; font-weight: 700; }
+  .lesson.tap { cursor: pointer; transition: transform .12s ease; }
+  .lesson.tap:active { transform: scale(.98); }
