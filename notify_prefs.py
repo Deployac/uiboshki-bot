@@ -14,11 +14,22 @@ import re
 from collections import Counter
 
 ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
-REMINDER_CHOICES = (5, 10, 15, 30)
+REMINDER_CHOICES = (5, 10, 15, 30)      # /settings в чате: одно время на все сценарии
+
+# Напоминание перед парой — по сценарию (минут до начала, 0 — не напоминать):
+# первая пара дня, после короткой перемены (10 мин между парами МИРЭА) и
+# после большого перерыва (30 мин и больше). Пресеты — кнопки, «своё» — поле.
+REMIND = {
+    "remind_first": {"title": "Первая пара дня", "presets": [30, 60, 180], "max": 300, "default": 60},
+    "remind_short": {"title": "После короткой перемены", "presets": [5], "max": 30, "default": 5},
+    "remind_long": {"title": "После большого перерыва", "presets": [5, 10, 15], "max": 120, "default": 10},
+}
+SHORT_BREAK_MAX = 20   # минут между парами: до стольки — «короткая перемена»
 
 DEFAULTS = {
     "morning": True, "morning_days": ALL_DAYS, "weather": True, "campus": True, "skip_empty": False,
     "lessons": True, "lesson_days": ALL_DAYS,
+    **{k: v["default"] for k, v in REMIND.items()},
     "deadlines": True, "deadline_days": ALL_DAYS,
 }
 DAYS_KEY = {"morning": "morning_days", "lessons": "lesson_days", "deadlines": "deadline_days"}
@@ -38,6 +49,10 @@ def merge(raw: str | dict | None) -> dict:
     for k in _BOOLS:
         if isinstance(raw.get(k), bool):
             out[k] = raw[k]
+    for k, spec in REMIND.items():
+        v = raw.get(k)
+        if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= spec["max"]:
+            out[k] = v
     for k in _DAYS:
         v = raw.get(k)
         if isinstance(v, list):
@@ -54,6 +69,56 @@ async def get(user_id: int) -> dict:
     from database import get_user
     user = await get_user(user_id) or {}
     return merge(user.get("notify"))
+
+
+def scenario(prev_end, start) -> str:
+    """Какой сценарий у пары: первая за день или после перемены (какой)."""
+    if prev_end is None:
+        return "remind_first"
+    gap = (start - prev_end).total_seconds() / 60
+    return "remind_short" if gap <= SHORT_BREAK_MAX else "remind_long"
+
+
+def plan_reminders(events: list[dict], prefs: dict) -> list[tuple[dict, int, str]]:
+    """(пара, за сколько минут, сценарий) — пары по порядку, без сам. работы
+    и без времени; сценарий со значением 0 — без напоминания."""
+    from schedule_parser import is_self_study
+    timed = sorted((e for e in events if e.get("time_start") and not is_self_study(e.get("summary", ""))),
+                   key=lambda e: e["time_start"])
+    out, prev_end = [], None
+    for e in timed:
+        if prev_end is not None and e["time_start"] < prev_end:
+            continue                      # дубль/наложение — уже напомнили о первой
+        kind = scenario(prev_end, e["time_start"])
+        if prefs.get(kind):
+            out.append((e, prefs[kind], kind))
+        prev_end = e.get("time_end") or e["time_start"]
+    return out
+
+
+async def set_all_reminders(user_id: int, minutes: int):
+    """Из чата (/settings, /setreminder) — одно время на все сценарии
+    (в пределах каждого); тонко — в приложении."""
+    from database import get_user, set_notify, set_reminder_minutes
+    await set_reminder_minutes(user_id, minutes)
+    prefs = merge((await get_user(user_id) or {}).get("notify"))
+    for k, spec in REMIND.items():
+        prefs[k] = min(minutes, spec["max"])
+    await set_notify(user_id, prefs)
+
+
+def summary(prefs: dict) -> str:
+    """«первая — за 1 ч, после перемены — за 5 мин, …» для /settings."""
+    parts = []
+    for k, label in (("remind_first", "первая пара"), ("remind_short", "после короткой перемены"),
+                     ("remind_long", "после большого перерыва")):
+        parts.append(f"{label} — " + (f"за {minutes_text(prefs[k])}" if prefs[k] else "не напоминать"))
+    return "; ".join(parts)
+
+
+def minutes_text(m: int) -> str:
+    h, mm = divmod(m, 60)
+    return " ".join(p for p in ((f"{h} ч" if h else ""), (f"{mm} мин" if mm else "")) if p) or "0 мин"
 
 
 # ── корпус ───────────────────────────────────────────────────────────────────

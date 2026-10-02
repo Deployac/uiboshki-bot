@@ -290,8 +290,11 @@ async def cmd_setreminder(message: Message):
     if mins < 1 or mins > 60:
         await message.answer("❌ Введи число от 1 до 60")
         return
-    await set_reminder_minutes(message.from_user.id, mins)
-    await message.answer(f"✅ Буду напоминать за <b>{mins} минут</b> до пары!", parse_mode="HTML")
+    import notify_prefs
+    await notify_prefs.set_all_reminders(message.from_user.id, mins)
+    await message.answer(f"✅ Буду напоминать за <b>{mins} минут</b> до пары!\n"
+                         "Отдельно для первой пары и после перемены — в приложении: ☰ Ещё → Уведомления.",
+                         parse_mode="HTML")
 
 
 REMINDER_CHOICES = (5, 10, 15, 30)
@@ -299,12 +302,15 @@ REMINDER_CHOICES = (5, 10, 15, 30)
 
 def _settings_view(user: dict | None) -> tuple[str, InlineKeyboardMarkup]:
     """Настройки — кнопками, а не «напиши /setreminder 15»: одно касание."""
+    import notify_prefs
     mins = (user or {}).get("reminder_minutes", 15) or 15
     sub = bool((user or {}).get("subscribed"))
+    prefs = notify_prefs.merge((user or {}).get("notify"))
     text = (
         "⚙️ <b>Настройки</b>\n\n"
         f"🔔 Утренняя рассылка и напоминания: <b>{'включены' if sub else 'выключены'}</b>\n"
-        f"⏰ Напоминать о паре за <b>{mins} мин</b>\n\n"
+        f"⏰ Перед парой: {notify_prefs.summary(prefs)}\n"
+        "Кнопки ниже ставят одно время на все пары.\n\n"
         f"Рассылка приходит каждое утро в {SCHEDULE_HOUR}:{SCHEDULE_MINUTE:02d}: расписание и погода.\n\n"
         "Дни недели, погода, подсказка про другой корпус — в приложении: ☰ Ещё → Уведомления."
     )
@@ -337,7 +343,8 @@ async def settings_change(callback: CallbackQuery):
         user = await get_user(uid)
         await set_subscription(uid, 0 if (user and user.get("subscribed")) else 1)
     elif parts[1] == "rem" and len(parts) == 3 and parts[2].isdigit() and int(parts[2]) in REMINDER_CHOICES:
-        await set_reminder_minutes(uid, int(parts[2]))
+        import notify_prefs
+        await notify_prefs.set_all_reminders(uid, int(parts[2]))
     text, kb = _settings_view(await get_user(uid))
     try:
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)

@@ -185,7 +185,7 @@ async def test_settings_buttons_toggle_and_reminder(db, bot):
 
     try:
         await _feed(dp, bot, "/settings")
-        assert "Напоминать о паре за <b>15 мин</b>" in bot.session.sent[-1][0]
+        assert "первая пара — за 1 ч" in bot.session.sent[-1][0]
         await click("set:rem:30")
         await click("set:sub")
         await click("set:rem:999")  # чужое значение — игнор
@@ -193,8 +193,11 @@ async def test_settings_buttons_toggle_and_reminder(db, bot):
         router._parent_router = None
     user = await db.get_user(USER.id)
     assert user["reminder_minutes"] == 30 and not user["subscribed"]
+    import notify_prefs     # кнопка в чате — одно время на все сценарии (в пределах каждого)
+    prefs = notify_prefs.merge(user["notify"])
+    assert (prefs["remind_first"], prefs["remind_short"], prefs["remind_long"]) == (30, 30, 30)
     edits = [t for _, t in bot.session.sent_texts if "Настройки" in t]
-    assert "Напоминать о паре за <b>30 мин</b>" in edits[-1] and "выключены" in edits[-1]
+    assert "первая пара — за 30 мин" in edits[-1] and "выключены" in edits[-1]
 
 
 @pytest.mark.asyncio
