@@ -433,4 +433,68 @@ function toggleNotifyDay(key, day) {
   saveNotify({ prefs: prefs });
 }
 
+// ── Знакомство при первом входе: 3 карточки, один раз ───────────────────
+// Флаг — в облаке Telegram (CloudStorage: тот же человек на другом телефоне
+// не увидит второй раз), без него — в localStorage устройства.
+
+const ONBOARD_KEY = "onboarded_v1";
+const ONBOARD = [
+  { ic: "cap", cls: "t-sdo", title: "Баллы и сдача работ",
+    text: "Подключи свой вход в СДО — увидишь баллы по каждому предмету, что зачтено и сколько осталось, и сможешь сдавать работы прямо отсюда.",
+    act: "Подключить СДО", go: () => openSdoSheet() },
+  { ic: "bell", cls: "t-bell", title: "Уведомления под тебя",
+    text: "Утром — пары и погода, перед парой — напоминание, к дедлайнам — своё время. Дни недели и «другой корпус» — настраиваются.",
+    act: "Настроить", go: () => openNotify() },
+  { ic: "search", cls: "t-search", title: "Расписание кого угодно",
+    text: "Любой преподаватель, группа или аудитория МИРЭА — найди и закрепи. А с пары в «Эта неделя» — сразу в её баллы.",
+    act: "Попробовать", go: () => switchTab("search") },
+];
+let onboardStep = 0;
+
+function onboardStore(get, done) {
+  const cs = tg && tg.CloudStorage;
+  try {
+    if (cs && tg.isVersionAtLeast && tg.isVersionAtLeast("6.9")) {
+      if (get) cs.getItem(ONBOARD_KEY, (err, v) => done(!err && !!v));
+      else cs.setItem(ONBOARD_KEY, "1");
+      return;
+    }
+  } catch (e) {}
+  try {
+    if (get) done(!!localStorage.getItem(ONBOARD_KEY));
+    else localStorage.setItem(ONBOARD_KEY, "1");
+  } catch (e) { if (get) done(true); }        // хранилища нет — лучше не показывать каждый раз
+}
+
+function maybeOnboard() {
+  onboardStore(true, seen => { if (!seen) showOnboard(0); });
+}
+
+function showOnboard(i) {
+  onboardStep = i;
+  const s = ONBOARD[i];
+  const box = document.getElementById("onboard");
+  box.innerHTML =
+    '<button class="ob-skip" onclick="finishOnboard()">Пропустить</button>' +
+    '<div class="ob-card" key="' + i + '">' +
+      '<div class="ob-logo">' + icon("capy", "capy") + '<span>УИБО-бот</span></div>' +
+      '<div class="ob-ic sq ' + s.cls + '">' + icon(s.ic) + '</div>' +
+      '<h2>' + s.title + '</h2><p>' + s.text + '</p>' +
+      '<button class="ghost ob-act" onclick="finishOnboard(' + i + ')">' + s.act + '</button>' +
+    '</div>' +
+    '<div class="ob-dots">' + ONBOARD.map((_, j) => '<i class="' + (j === i ? "on" : "") + '"></i>').join("") + '</div>' +
+    '<button class="primary ob-next" onclick="' + (i < ONBOARD.length - 1 ? "nextOnboard()" : "finishOnboard()") + '">' +
+      (i < ONBOARD.length - 1 ? "Дальше" : "Начать") + '</button>';
+  box.classList.add("open");
+}
+
+function nextOnboard() { haptic(); showOnboard(onboardStep + 1); }
+
+function finishOnboard(actionIndex) {
+  haptic();
+  document.getElementById("onboard").classList.remove("open");
+  onboardStore(false);
+  if (actionIndex !== undefined) ONBOARD[actionIndex].go();
+}
+
 loadSdoStatus();
