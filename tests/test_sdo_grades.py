@@ -124,6 +124,16 @@ async def test_webapp_grades(db, monkeypatch):
     assert by["Практическое задание 2"]["status"] == "low" and by["Практическое задание 2"]["pass_mark"] == 3
     assert by["Защита проекта"]["status"] == "offline" and not by["Защита проекта"]["can_submit"]
     assert by["Практическое задание 1"]["status"] == "ok"
+    # цель по умолчанию — зачёт: 5 + открытые 15 и 10 = 30 < 40 — «не хватит»;
+    # 75 %: зачтено 1 из 4, нужно 3 — оба открытых (защита и тест) надо зачесть
+    g = d["goal"]
+    assert (g["label"], g["need"], g["open_points"], g["best"], g["status"]) == ("зачёт", 35, 25, 30, "no")
+    assert g["tk"] == {"total": 4, "passed": 1, "need": 3, "left": 2, "open": 2, "ok": False, "reachable": True}
+    assert g["lost_count"] == 1 and not g["own"]
+    assert c.post("/api/sdo/goal/18672", headers=h, json={"label": "5"}).status_code == 400   # у зачёта нет «5»
+    r = c.post("/api/sdo/goal/18672", headers=h, json={"label": "зачёт"})
+    assert r.status_code == 200 and r.json()["own"]
+    assert c.get("/api/sdo/grades", headers=h).json()["goals"] == {"18672": "зачёт"}
     assert c.post("/api/pulsecheck", headers=h).status_code == 403            # не староста
 
 

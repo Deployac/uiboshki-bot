@@ -29,7 +29,19 @@ function gotText(c) {
   return got.length ? "«" + escapeHtml(got[got.length - 1].label) + "» уже есть" : "";
 }
 
+// «зачёт» — без кавычек, оценки — в «ёлочках»
+function markWord(label) {
+  return label === "зачёт" ? "зачёт" : "«" + escapeHtml(label) + "»";
+}
+
 function needText(c) {
+  // своя цель (sdo_goal.py) — «до «4» ещё 12» вместо ближайшей «3»
+  const own = sdoData && sdoData.goals ? sdoData.goals[c.id] : null;
+  const goal = own && c.marks.find(m => m.label === own);
+  if (goal) {
+    return c.score >= goal.at ? icon("check", "inl") + markWord(goal.label) + " уже есть"
+      : (goal.label === "зачёт" ? "до зачёта" : "до «" + escapeHtml(goal.label) + "»") + " ещё <b>" + fmtNum(goal.at - c.score) + "</b>";
+  }
   if (c.closed && !c.need) return icon("check", "inl") + gotText(c);
   if (c.closed) return icon("check", "inl") + gotText(c) + " · до «" + escapeHtml(c.need_label) + "» ещё <b>" + fmtNum(c.need) + "</b>";
   return (c.kind === "credit" ? "до зачёта" : "до «" + escapeHtml(c.need_label) + "»") + " ещё <b>" + fmtNum(c.need) + "</b>";
@@ -276,7 +288,60 @@ function renderSubject() {
     '<div class="card"><div class="sd-head"><span class="n">' + fmtNum(c.score) + '</span><span class="of">из ' + fmtNum(c.max) + '</span>' +
       '<div class="st">' + (c.final ? escapeHtml(c.final) : (c.kind === "credit" ? "зачёт" : "экзамен")) + '<b' + (c.closed ? ' class="ok"' : '') + '>' + needText(c).replace(/<\/?b>/g, "") + '</b></div></div>' +
       '<div class="gbar"><div class="gtrack">' + seg + '</div>' + marks + '</div>' +
-      '<div class="cats">' + rows + '</div>' + (c.works_total ? zachRow(c) : '') + '</div>' + historyCard(c);
+      '<div class="cats">' + rows + '</div>' + (c.works_total ? zachRow(c) : '') + '</div>' + goalCard(c) + historyCard(c);
+}
+
+// ── Цель по предмету (sdo_goal.py) ────────────────────────────────────────
+// Без дат и расписания: что нужно, чтобы дойти до зачёта, «3», «4» или «5»,
+// — сколько баллов не хватает, откуда их взять и хватает ли зачтённых работ
+// (правило БРС: ≥ 75 %, иначе экзамена по БРС не будет).
+
+const GOAL_LOOK = {
+  done: ["ok", g => markWord(g.label) + " есть"], ok: ["ok", () => "дойдёшь"],
+  tight: ["warn", () => "впритык"], no: ["bad", () => "не хватит"],
+};
+
+function goalCard(c) {
+  const g = c.goal;
+  if (!g) return "";
+  const look = GOAL_LOOK[g.status] || GOAL_LOOK.ok;
+  const tk = g.tk;
+  const line = (ic, html, tap) => '<div class="gl' + (tap ? ' go" onclick="' + tap : '') + '">' + icon(ic, "inl") + '<span>' + html + '</span>' + (tap ? '<span class="chev">›</span>' : '') + '</div>';
+  const lines = [];
+  lines.push(g.need ? line("medal", "до " + markWord(g.label) + " не хватает <b>" + fmtNum(g.need) + "</b>")
+    : line("check", markWord(g.label) + " по баллам уже набрано"));
+  if (g.open_count) lines.push(line("upload", "работы: открыто " + g.open_count + " · до <b>+" + fmtNum(g.open_points) + "</b>", "openTk('todo')"));
+  if (g.attendance_left) lines.push(line("users", "посещения лекций: до <b>+" + fmtNum(g.attendance_left) + "</b>", c.attendance ? "openPos()" : ""));
+  if (tk.total) {
+    lines.push(line("checkCircle", "зачтено " + tk.passed + " из " + tk.total + " · нужно " + tk.need +
+      (tk.left ? " → из " + tk.open + " открытых зачесть <b>" + tk.left + "</b>" : " " + icon("check", "inl"))));
+  }
+  if (g.need && g.status !== "done") lines.push(line("sparkle", "если сдать всё и ходить на лекции — до <b>" + fmtNum(g.best) + "</b>"));
+  if (g.lost_count) lines.push(line("warning", "ниже порога или срок прошёл: " + g.lost_count + " " + plural(g.lost_count, "работа", "работы", "работ") +
+    " — не считаю, " + plural(g.lost_count, "пригодится", "пригодятся", "пригодятся") + ", если дадут пересдать"));
+  if (g.skip) {
+    const after = GOAL_LOOK[g.skip.status] || GOAL_LOOK.ok;
+    lines.push(line("clock", "пропущу лекцию " + escapeHtml(humanDate(g.skip.date).split(" · ")[0]) + ": −" + fmtNum(g.skip.value) +
+      " → <b class=\"" + after[0] + "\">" + (g.skip.status === g.status ? "ничего не изменится" : after[1](g)) + "</b>"));
+  }
+  const why = g.status !== "no" ? "" : '<p class="gc-why">' + (!tk.reachable
+    ? "Открытых работ меньше, чем нужно зачесть: без пересдачи экзамена по БРС не будет."
+    : "Даже если сдать всё и ходить на все лекции, будет " + fmtNum(g.best) + " — меньше " + fmtNum(g.at) + ". Можно выбрать цель ниже.") + '</p>';
+  return '<div class="card goal-card"><div class="gc-head"><b>Цель</b><span class="gc-pill ' + look[0] + '">' + look[1](g) + '</span></div>' +
+    '<div class="gc-opts">' + g.marks.map(m => '<button class="' + (m === g.label ? "on" : "") + '" onclick="setGoal(' + escapeHtml(JSON.stringify(m)) + ')">' + markWord(m) + '</button>').join("") + '</div>' +
+    '<div class="gc-lines">' + lines.join("") + '</div>' + why + '</div>';
+}
+
+async function setGoal(label) {
+  const c = sdoCourse;
+  if (!c || !c.goal || c.goal.label === label) return;
+  haptic();
+  try {
+    c.goal = await api("/api/sdo/goal/" + c.id, { method: "POST", body: JSON.stringify({ label: label }) });
+  } catch (e) { showToast(e.message); return; }
+  if (sdoData) { sdoData.goals = sdoData.goals || {}; sdoData.goals[c.id] = label; }
+  haptic("success");
+  if (sdoView === "subject") renderSubject();
 }
 
 // График «как росли баллы» (sdo_history.py: точка в день, когда смотришь баллы).
@@ -371,9 +436,9 @@ const WORK_LOOK = {
   miss: ["warning", "срок прошёл"], none: ["", ""],
 };
 
-function openTk() {
+function openTk(filter) {
   haptic();
-  tkFilter = "all";
+  tkFilter = filter || "all";        // из «Цели» — сразу «Сдать»
   document.getElementById("tk-back").innerHTML = icon("back") + " " + escapeHtml(sdoCourse ? sdoCourse.title : "Предмет");
   showSdoView("tk");
   renderTk();
@@ -394,8 +459,10 @@ function shortDate(t) {
 }
 
 function workMeta(w) {
-  if (w.status === "soon" && w.opens) return "откроется " + shortDate(w.opens);
-  if ((w.status === "todo" || w.status === "miss") && w.due) return "до " + shortDate(w.due) + (w.status === "miss" ? " · срок прошёл" : "");
+  // у теста — «Ограничение по времени» со страницы СДО: сразу видно, сколько он займёт
+  const tl = w.time_limit ? " · " + (w.time_limit % 60 ? w.time_limit + " мин" : w.time_limit / 60 + " ч") + " на тест" : "";
+  if (w.status === "soon" && w.opens) return "откроется " + shortDate(w.opens) + tl;
+  if ((w.status === "todo" || w.status === "miss") && w.due) return "до " + shortDate(w.due) + (w.status === "miss" ? " · срок прошёл" : tl);
   return (WORK_LOOK[w.status] || WORK_LOOK.none)[1] || escapeHtml(w.kind);
 }
 

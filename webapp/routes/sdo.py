@@ -169,7 +169,8 @@ async def api_sdo_grades(fresh: bool = False, user: dict = CurrentUser):
         await sdo_history.record(user["id"], data.get("courses") or [])
     except Exception as e:
         logger.info(f"история баллов: {e}")
-    return data
+    import sdo_goal                 # свои цели по предметам («4» вместо ближайшей «3»)
+    return {**data, "goals": await sdo_goal.get_goals(user["id"])}
 
 
 @router.get("/api/sdo/grades/{course_id}")
@@ -198,7 +199,44 @@ async def api_sdo_course(course_id: int, user: dict = CurrentUser):
         data = {**data, "attendance": await attendance.for_course(user["id"], data)}
     except Exception as e:
         logger.info(f"посещения: {type(e).__name__}: {e}")
-    return data
+    return {**data, "goal": await _goal(user["id"], data)}
+
+
+async def _goal(user_id: int, course: dict) -> dict:
+    """Цель по предмету: сколько не хватает, откуда взять, правило 75 % (sdo_goal.py)."""
+    import sdo_goal
+    goals = await sdo_goal.get_goals(user_id)
+    return sdo_goal.plan(course, course.get("attendance"), goals.get(str(course["id"])))
+
+
+class Goal(BaseModel):
+    label: str | None = None     # «зачёт», «3», «4», «5»; None — снять свою цель
+
+
+@router.post("/api/sdo/goal/{course_id}")
+async def api_sdo_goal(course_id: int, body: Goal, user: dict = CurrentUser):
+    """Своя цель по предмету — только для подсчёта в боте, на СДО не влияет."""
+    import attendance
+    import sdo_goal
+    import sdo_grades
+    from sdo_parser import SdoSessionExpired
+    cookie = await _sdo_cookie(user["id"])
+    try:
+        course = await sdo_grades.course_detail(user["id"], cookie, course_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="курс не найден")
+    except SdoSessionExpired:
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
+    except Exception:
+        raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+    if body.label is not None and body.label not in [m["label"] for m in course.get("marks") or []]:
+        raise HTTPException(status_code=400, detail="такой оценки у предмета нет")
+    await sdo_goal.set_goal(user["id"], course_id, body.label)
+    try:
+        att = await attendance.for_course(user["id"], course)
+    except Exception:
+        att = None
+    return await _goal(user["id"], {**course, "attendance": att})
 
 
 class AttendanceMark(BaseModel):
