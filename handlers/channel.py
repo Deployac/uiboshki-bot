@@ -1,5 +1,7 @@
 """Посты канала бота (/channel у старосты): список, точное превью в личку и
-кнопка «В канал». Сами посты и отправка — channel_posts.py."""
+кнопка «В канал». Сами посты и отправка — channel_posts.py.
+/channel redo — убрать из канала всё, что бот уже опубликовал, и выпустить
+заново (например, когда поменялся вид постов). Закреп бот закрепляет сам."""
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -33,7 +35,7 @@ async def _preview(bot, chat_id, posts, idx, done):
     if problem:
         await bot.send_message(chat_id, f"⚠️ Пост {idx + 1} «{esc(post['title'])}»: {esc(problem)}", parse_mode="HTML")
         return
-    await send_post(bot, chat_id, post)
+    await send_post(bot, chat_id, post, config.WEBAPP_URL)
     await bot.send_message(chat_id, f"👆 Превью · пост {idx + 1} из {len(posts)}", reply_markup=_kb(post["slug"], post["slug"] in done))
 
 
@@ -44,6 +46,17 @@ async def cmd_channel(message: Message):
         return
     from channel_posts import load_posts, published
     posts, done = load_posts(), await published()
+    if (message.text or "").split()[1:2] == ["redo"]:
+        n = len(done)
+        if not n:
+            await message.answer("В канале пока нет постов от бота — нечего перевыпускать.")
+            return
+        await message.answer(
+            f"Убрать из канала {n} пост(ов), которые выпустил бот, и выпустить заново в новом виде?\n"
+            "Комментарии к ним пропадут. Дальше — /channel, как в первый раз.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🗑 Убрать и перевыпустить", callback_data="chan:redo:yes")]]))
+        return
     if not posts:
         await message.answer("Постов пока нет — они лежат в репозитории, channel/posts/.")
         return
@@ -64,10 +77,25 @@ async def channel_button(callback: CallbackQuery):
     if not is_starosta(callback.from_user.id):
         await callback.answer("Только для старосты", show_alert=True)
         return
-    from channel_posts import load_posts, mark_published, post_link, published, send_post
+    from channel_posts import forget_published, load_posts, mark_published, post_link, published, send_post
     _, action, *rest = callback.data.split(":", 2)
     slug = rest[0] if rest else ""
     posts, done = load_posts(), await published()
+    if action == "redo":
+        ids = [i for v in done.values() for i in v.get("ids", [])]
+        try:
+            for k in range(0, len(ids), 100):
+                await callback.bot.delete_messages(config.CHANNEL_ID, ids[k:k + 100])
+        except Exception as e:
+            await callback.answer("Не вышло удалить", show_alert=True)
+            await callback.message.answer(f"⚠️ Не удалил: {esc(str(e))[:300]}\n"
+                                          "Удали посты в канале руками, потом снова /channel redo.", parse_mode="HTML")
+            return
+        await forget_published()
+        await callback.message.edit_reply_markup(reply_markup=None)
+        await callback.message.answer(f"🗑 Убрал из канала {len(done)} пост(ов). Теперь /channel — выпускаем заново.")
+        await callback.answer()
+        return
     idx = next((i for i, p in enumerate(posts) if p["slug"] == slug), None)
     if action == "noop" or idx is None:
         await callback.answer("Уже в канале" if action == "noop" else "Такого поста больше нет")
@@ -87,13 +115,18 @@ async def channel_button(callback: CallbackQuery):
         await callback.answer("Этот пост уже в канале", show_alert=True)
         return
     try:
-        ids = await send_post(callback.bot, config.CHANNEL_ID, posts[idx])
+        ids = await send_post(callback.bot, config.CHANNEL_ID, posts[idx], config.WEBAPP_URL)
     except Exception as e:
         await callback.answer("Не вышло — бот админ канала?", show_alert=True)
         await callback.message.answer(f"⚠️ Не опубликовал: {esc(str(e))[:300]}\n"
                                       "Проверь, что бот — админ канала с правом публиковать.", parse_mode="HTML")
         return
     await mark_published(slug, ids)
+    if "pinned" in slug:              # закреп с оглавлением — сразу закрепить
+        try:
+            await callback.bot.pin_chat_message(config.CHANNEL_ID, ids[0], disable_notification=True)
+        except Exception as e:
+            await callback.message.answer(f"Не закрепил сам ({esc(str(e))[:200]}) — закрепи руками.", parse_mode="HTML")
     await callback.message.edit_reply_markup(reply_markup=_kb(slug, True))
     link = post_link(config.CHANNEL_ID, ids[0])
     await callback.message.answer(f"✅ В канале: «{esc(posts[idx]['title'])}»" + (f"\n{link}" if link else ""),

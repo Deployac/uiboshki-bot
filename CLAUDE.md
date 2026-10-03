@@ -106,7 +106,11 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 (куда бот публикует посты, `/channel`; не задан — @имя из `CHANNEL_URL`).
 Посты канала — `channel/posts/NN-имя/` (post.html в разметке Telegram и
 картинки), публикует бот-админ по кнопке старосты (`channel_posts.py`,
-`handlers/channel.py`).
+`handlers/channel.py`). Пост — всегда одно сообщение: картинки собираются в
+одну обложку (`cover_jpeg`), длинный текст идёт с обложкой над ним как
+превью ссылки `/chimg/<пост>.jpg` (`webapp/routes/channel.py`, нужен
+`WEBAPP_URL`); `/channel redo` — убрать выпущенное и выпустить заново,
+закреп бот закрепляет сам.
 
 ## Как устроено (главное)
 - **Расписание МИРЭА.** Официальный API `schedule-of.mirea.ru` из-за рубежа не

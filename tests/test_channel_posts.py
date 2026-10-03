@@ -18,8 +18,9 @@ def _post(root, name, html, images=()):
     d = root / name
     d.mkdir(parents=True)
     (d / "post.html").write_text(html, encoding="utf-8")
-    for img in images:
-        (d / img).write_bytes(b"\x89PNG fake")
+    for i, img in enumerate(images):
+        from PIL import Image
+        Image.new("RGB", (86, 186 if i % 2 == 0 else 82), (20, 20, 30)).save(d / img)
     return d
 
 
@@ -39,43 +40,65 @@ class FakeBot:
     def __init__(self):
         self.calls = []
 
-    async def send_message(self, chat_id, text, **kw):
-        self.calls.append(("message", chat_id, text))
+    async def send_message(self, chat_id, text, link_preview_options=None, **kw):
+        self.calls.append(("message", chat_id, text, link_preview_options))
         return SimpleNamespace(message_id=len(self.calls))
 
     async def send_photo(self, chat_id, photo, caption=None, **kw):
-        self.calls.append(("photo", chat_id, caption))
+        self.calls.append(("photo", chat_id, caption, photo))
         return SimpleNamespace(message_id=len(self.calls))
-
-    async def send_media_group(self, chat_id, media, **kw):
-        self.calls.append(("album", chat_id, [m.caption for m in media]))
-        return [SimpleNamespace(message_id=len(self.calls) * 10 + i) for i in range(len(media))]
 
 
 @pytest.mark.asyncio
-async def test_send_post_picks_format(tmp_path):
+async def test_send_post_is_one_message(tmp_path):
+    """Пост — одно сообщение (одно «Прокомментировать»): живой случай 04.10 —
+    длинный пост с картинкой выходил двумя сообщениями, фото и текст отдельно."""
     short, long = "<b>Коротко</b>", "<b>Длинно</b>\n" + "слово " * 300
-    one = channel_posts.load_posts(tmp_path) or None
-    assert one is None
     _post(tmp_path, "a", short)
-    _post(tmp_path, "b", short, ["1.png"])
-    _post(tmp_path, "c", short, ["1.png", "2.png"])
-    _post(tmp_path, "d", long, ["1.png", "2.png"])
-    _post(tmp_path, "e", long, ["1.png"])
+    _post(tmp_path, "b", short, ["1.png", "2.png"])
+    _post(tmp_path, "c", long, ["1.png", "2.png", "3.png"])
     posts = {p["slug"]: p for p in channel_posts.load_posts(tmp_path)}
     bot = FakeBot()
-    await channel_posts.send_post(bot, "@ch", posts["a"])
-    await channel_posts.send_post(bot, "@ch", posts["b"])
-    await channel_posts.send_post(bot, "@ch", posts["c"])
-    ids = await channel_posts.send_post(bot, "@ch", posts["d"])
-    await channel_posts.send_post(bot, "@ch", posts["e"])
-    kinds = [(k, extra) for k, _, extra in bot.calls]
-    assert kinds[0] == ("message", short)
-    assert kinds[1] == ("photo", short)                                         # короткий — подписью к фото
-    assert kinds[2] == ("album", [short, None])                                 # подпись — у первой
-    assert kinds[3] == ("album", [None, None]) and kinds[4][0] == "message"     # длинный — альбом, потом текст
-    assert len(ids) == 3
-    assert kinds[5] == ("photo", None) and kinds[6][0] == "message"
+    assert await channel_posts.send_post(bot, "@ch", posts["a"], "https://app.example") == [1]
+    assert bot.calls[0][3].is_disabled                                          # без картинок — без превью
+    assert await channel_posts.send_post(bot, "@ch", posts["b"], "https://app.example") == [2]
+    assert bot.calls[1][:3] == ("photo", "@ch", short)                          # короткий — подписью к обложке
+    assert await channel_posts.send_post(bot, "@ch", posts["c"], "https://app.example/") == [3]
+    kind, _, text, lp = bot.calls[2]
+    assert kind == "message" and text == long.strip()                                 # длинный — тоже одно сообщение,
+    assert lp.url == channel_posts.cover_url("https://app.example", posts["c"])  # обложка — превью над текстом
+    assert lp.url.startswith("https://app.example/chimg/c.jpg?v=") and lp.prefer_large_media and lp.show_above_text
+    # без WEBAPP_URL отдать обложку по ссылке некому — как раньше, двумя сообщениями
+    ids = await channel_posts.send_post(bot, "@ch", posts["c"])
+    assert ids == [4, 5] and [c[0] for c in bot.calls[3:]] == ["photo", "message"]
+
+
+def test_cover_one_image_from_many(tmp_path):
+    from io import BytesIO
+    from PIL import Image
+    _post(tmp_path, "one", "<b>x</b>", ["1.png"])
+    _post(tmp_path, "three", "<b>x</b>", ["1.png", "2.png", "3.png"])
+    one, three = channel_posts.load_posts(tmp_path)
+    w1, h1 = Image.open(BytesIO(channel_posts.cover_jpeg(one))).size
+    w3, h3 = Image.open(BytesIO(channel_posts.cover_jpeg(three))).size
+    assert w1 == h1 == h3 and w3 > h3                                           # один скрин — квадрат, три — шире
+    key = channel_posts.cover_key(one)
+    (tmp_path / "one" / "1.png").write_bytes((tmp_path / "three" / "2.png").read_bytes())
+    assert channel_posts.cover_key(channel_posts.load_posts(tmp_path)[0]) != key  # новая картинка — новая ссылка
+    assert channel_posts.check({"html": "x", "images": [1] * 5})
+
+
+def test_cover_route(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+    from webapp.server import app
+    _post(tmp_path, "01-start", "<b>x</b>", ["1.png"])
+    _post(tmp_path, "02-text", "<b>x</b>")
+    monkeypatch.setattr(channel_posts, "POSTS_DIR", tmp_path)
+    c = TestClient(app)
+    r = c.get("/chimg/01-start.jpg?v=abc")                                      # Telegram — без initData
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content[:2] == b"\xff\xd8"
+    assert c.get("/chimg/02-text.jpg").status_code == 404                       # пост без картинок
+    assert c.get("/chimg/nope.jpg").status_code == 404
 
 
 @pytest.mark.asyncio
@@ -109,6 +132,9 @@ class Session(BaseSession):
             self.sent.append((method.chat_id, method.text, [b.callback_data for row in kb for b in row]))
             cid = method.chat_id if isinstance(method.chat_id, int) else -100
             return Message(message_id=len(self.sent), date=0, chat=Chat(id=cid, type="private"), text=method.text).as_(bot)
+        if name in ("DeleteMessages", "PinChatMessage"):
+            self.sent.append((method.chat_id, name, getattr(method, "message_ids", None) or [method.message_id]))
+            return True
         if name in ("AnswerCallbackQuery", "EditMessageReplyMarkup"):
             return True
         raise NotImplementedError(name)
@@ -120,6 +146,7 @@ class Session(BaseSession):
 @pytest.mark.asyncio
 async def test_channel_command_preview_and_publish(db, tmp_path, monkeypatch):
     from handlers import channel
+    _post(tmp_path, "00-pinned", "<b>Здесь — как делается бот</b>")
     _post(tmp_path, "01-start", "<b>Как всё началось</b>\nтекст")
     _post(tmp_path, "02-practice", "<b>Проект по программированию</b>")
     monkeypatch.setattr(channel_posts, "POSTS_DIR", tmp_path)
@@ -142,6 +169,7 @@ async def test_channel_command_preview_and_publish(db, tmp_path, monkeypatch):
         await feed(other, data="chan:pub:01-start")                              # чужая кнопка — ничего в канал
         assert not any(c == "@uiboshki_dev" for c, _, _ in bot.session.sent)
 
+        await channel_posts.mark_published("00-pinned", [1])
         await feed(star, "/channel")
         texts = [t for _, t, _ in bot.session.sent]
         assert any("Посты канала" in t and "@uiboshki_dev" in t for t in texts)
@@ -157,5 +185,21 @@ async def test_channel_command_preview_and_publish(db, tmp_path, monkeypatch):
 
         await feed(star, "/channel")                                             # следующий — уже второй пост
         assert bot.session.sent[-2][1] == "<b>Проект по программированию</b>"
+
+        # перевыпуск: убрать всё, что бот выпустил, и выпустить заново
+        await feed(other, "/channel redo")
+        await feed(other, data="chan:redo:yes")
+        assert not any(t == "DeleteMessages" for _, t, _ in bot.session.sent)
+        await feed(star, "/channel redo")
+        assert bot.session.sent[-1][2] == ["chan:redo:yes"]
+        before = sorted(i for v in (await channel_posts.published()).values() for i in v["ids"])
+        await feed(star, data="chan:redo:yes")
+        deleted = [(c, sorted(ids)) for c, t, ids in bot.session.sent if t == "DeleteMessages"]
+        assert deleted == [("@uiboshki_dev", before)] and len(before) == 2
+        assert await channel_posts.published() == {}
+        await feed(star, "/channel")                                             # снова с закрепа
+        assert bot.session.sent[-2][1] == "<b>Здесь — как делается бот</b>"
+        await feed(star, data="chan:pub:00-pinned")                              # закреп бот закрепляет сам
+        assert any(c == "@uiboshki_dev" and t == "PinChatMessage" for c, t, _ in bot.session.sent)
     finally:
         channel.router._parent_router = None

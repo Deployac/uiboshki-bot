@@ -6,13 +6,21 @@
   • post.html — текст в разметке Telegram (HTML: <b>, <i>, <u>, <s>,
     <tg-spoiler>, <code>, <pre><code class="language-python">, <blockquote>,
     <blockquote expandable>, <a href>), до 4096 символов;
-  • 1.png, 2.jpg… — картинки по порядку (одна — фото, несколько — альбом).
+  • 1.png, 2.jpg… — картинки по порядку. Бот собирает их в одну обложку
+    (скрины рядом на фоне цвета аватара канала, cover_jpeg).
+
+Пост — всегда одно сообщение (одно «Прокомментировать»): короткий текст —
+подписью к обложке, длинный (подпись у бота — до 1024 символов) — обычным
+сообщением, а обложка встаёт над текстом большим превью ссылки: её отдаёт
+сервер WebApp по /chimg/<пост>.jpg (webapp/routes/channel.py).
 
 Почему через бота, а не руками в Telegram Web: разметка (раскрывающиеся
 цитаты, блоки кода, альбомы) приходит ровно как задумано, а староста видит
 точное превью у себя в личке до публикации.
 """
 
+import hashlib
+import io
 import json
 import logging
 import re
@@ -24,6 +32,7 @@ POSTS_DIR = Path(__file__).parent / "channel" / "posts"
 CAPTION_LIMIT = 1024     # подпись к фото/альбому
 TEXT_LIMIT = 4096        # обычное сообщение
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp")
+COVER_VERSION = "1"      # поменять — Telegram заберёт обложки заново
 
 
 def visible_len(html: str) -> int:
@@ -59,36 +68,87 @@ def check(post: dict) -> str:
     n = visible_len(post["html"])
     if n > TEXT_LIMIT:
         return f"текст {n} символов — больше {TEXT_LIMIT}"
-    if len(post["images"]) > 10:
-        return "в альбоме больше 10 картинок"
+    if len(post["images"]) > 4:
+        return "больше 4 картинок — обложка выйдет слишком узкой по высоте"
     return ""
 
 
-async def send_post(bot, chat_id, post: dict) -> list[int]:
-    """Отправить пост (в канал или старосте — превью). Короткий текст —
-    подписью к фото или альбому; длинный — альбом, а текст отдельным
-    сообщением следом. → id отправленных сообщений."""
-    from aiogram.types import FSInputFile, InputMediaPhoto, LinkPreviewOptions
+def cover_key(post: dict) -> str:
+    """Метка содержимого обложки: другая картинка — другая ссылка, и
+    Telegram не покажет старое превью из своего кэша."""
+    h = hashlib.sha1(COVER_VERSION.encode())
+    for p in post["images"]:
+        h.update(p.name.encode() + p.read_bytes())
+    return h.hexdigest()[:10]
+
+
+def cover_url(base_url: str, post: dict) -> str:
+    return f"{base_url.rstrip('/')}/chimg/{post['slug']}.jpg?v={cover_key(post)}"
+
+
+_covers: dict[str, bytes] = {}
+
+
+def cover_jpeg(post: dict) -> bytes:
+    """Одна обложка из всех картинок поста: скрины в ряд, одного масштаба
+    (самый высокий — во всю высоту, короткие — по центру), со скруглением и
+    тенью, на фиолетовом градиенте как у аватара канала. Один скрин — квадрат,
+    несколько — шире."""
+    key = f"{post['slug']}:{cover_key(post)}"
+    if key in _covers:
+        return _covers[key]
+    from PIL import Image, ImageChops, ImageDraw, ImageFilter
+    H, PAD, GAP, R = 1320, 80, 56, 34
+    shots = [Image.open(p).convert("RGB") for p in post["images"]]
+    scale = (H - 2 * PAD) / max(im.height for im in shots)
+    shots = [im.resize((round(im.width * scale), round(im.height * scale)), Image.LANCZOS) for im in shots]
+    W = max(H, sum(im.width for im in shots) + GAP * (len(shots) - 1) + 2 * PAD)
+    # градиент по диагонали: светлый фиолетовый → глубокий
+    a, b = (142, 140, 242), (79, 70, 200)
+    v = Image.linear_gradient("L")                       # 0 сверху → 255 снизу
+    grad = ImageChops.add(v.resize((W, H)), v.rotate(90).transpose(Image.FLIP_LEFT_RIGHT).resize((W, H)), scale=2)
+    bg = Image.composite(Image.new("RGB", (W, H), b), Image.new("RGB", (W, H), a), grad)
+    x = (W - (sum(im.width for im in shots) + GAP * (len(shots) - 1))) // 2
+    for im in shots:
+        y = (H - im.height) // 2
+        mask = Image.new("L", im.size, 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, im.width - 1, im.height - 1), R, fill=255)
+        shadow = Image.new("L", (W, H), 0)
+        shadow.paste(mask, (x, y + 14))
+        shadow = shadow.filter(ImageFilter.GaussianBlur(22))
+        bg = Image.composite(Image.new("RGB", (W, H), (30, 24, 80)), bg, shadow.point(lambda v: v * 0.55))
+        bg.paste(im, (x, y), mask)
+        x += im.width + GAP
+    buf = io.BytesIO()
+    bg.save(buf, "JPEG", quality=88, optimize=True)
+    _covers[key] = buf.getvalue()
+    return _covers[key]
+
+
+async def send_post(bot, chat_id, post: dict, base_url: str = "") -> list[int]:
+    """Отправить пост (в канал или старосте — превью) одним сообщением:
+    короткий — подписью к обложке, длинный — текстом с обложкой над ним
+    (превью ссылки base_url/chimg/…). Без base_url (нет WEBAPP_URL) длинный
+    пост с картинками уходит как раньше: обложка, следом текст.
+    → id отправленных сообщений."""
+    from aiogram.types import BufferedInputFile, LinkPreviewOptions
     html, images = post["html"], post["images"]
-    no_preview = LinkPreviewOptions(is_disabled=True)
-    fits = visible_len(html) <= CAPTION_LIMIT
-    ids = []
     if not images:
-        m = await bot.send_message(chat_id, html, parse_mode="HTML", link_preview_options=no_preview)
+        m = await bot.send_message(chat_id, html, parse_mode="HTML",
+                                   link_preview_options=LinkPreviewOptions(is_disabled=True))
         return [m.message_id]
-    if len(images) == 1:
-        m = await bot.send_photo(chat_id, FSInputFile(images[0]), caption=html if fits else None,
-                                 parse_mode="HTML" if fits else None)
-        ids.append(m.message_id)
-    else:
-        media = [InputMediaPhoto(media=FSInputFile(p)) for p in images]
-        if fits:
-            media[0] = InputMediaPhoto(media=FSInputFile(images[0]), caption=html, parse_mode="HTML")
-        ids += [m.message_id for m in await bot.send_media_group(chat_id, media)]
-    if not fits:
-        m = await bot.send_message(chat_id, html, parse_mode="HTML", link_preview_options=no_preview)
-        ids.append(m.message_id)
-    return ids
+    if visible_len(html) > CAPTION_LIMIT and base_url:
+        m = await bot.send_message(chat_id, html, parse_mode="HTML", link_preview_options=LinkPreviewOptions(
+            url=cover_url(base_url, post), prefer_large_media=True, show_above_text=True))
+        return [m.message_id]
+    photo = BufferedInputFile(cover_jpeg(post), filename=f"{post['slug']}.jpg")
+    if visible_len(html) <= CAPTION_LIMIT:
+        m = await bot.send_photo(chat_id, photo, caption=html, parse_mode="HTML")
+        return [m.message_id]
+    m1 = await bot.send_photo(chat_id, photo)
+    m2 = await bot.send_message(chat_id, html, parse_mode="HTML",
+                                link_preview_options=LinkPreviewOptions(is_disabled=True))
+    return [m1.message_id, m2.message_id]
 
 
 async def published() -> dict:
@@ -99,6 +159,11 @@ async def published() -> dict:
         return json.loads(raw) if raw else {}
     except ValueError:
         return {}
+
+
+async def forget_published():
+    from database import set_setting
+    await set_setting("channel:published", "{}")
 
 
 async def mark_published(slug: str, ids: list[int]):
