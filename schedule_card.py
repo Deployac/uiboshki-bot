@@ -209,6 +209,11 @@ def card_url(base: str, kind: str, target_type: int = 0, target_id: int = 0) -> 
     return f"{base.rstrip('/')}/card/{key}.jpg?sig={sign(key)}"
 
 
+# Ссылка живёт месяц: иначе ссылку из старого сообщения можно дёргать вечно
+# (каждый раз рендер Pillow и запрос к зеркалу). Метка — десятиминутки.
+CARD_MAX_AGE = 30 * 24 * 6
+
+
 def parse_key(key: str, sig: str) -> tuple[str, int, int] | None:
     if not hmac.compare_digest(sig, sign(key)):
         return None
@@ -216,9 +221,12 @@ def parse_key(key: str, sig: str) -> tuple[str, int, int] | None:
     if len(parts) != 4 or parts[0] not in ("today", "tomorrow", "week", "target"):
         return None
     try:
-        return parts[0], int(parts[1]), int(parts[2])
+        kind, target_type, target_id, stamp = parts[0], int(parts[1]), int(parts[2]), int(parts[3])
     except ValueError:
         return None
+    if not 0 <= int(time.time()) // 600 - stamp <= CARD_MAX_AGE:
+        return None
+    return kind, target_type, target_id
 
 
 def _monday_for(today: date) -> date:

@@ -81,14 +81,37 @@ def scenario(prev_end, start) -> str:
     return "remind_short" if gap <= SHORT_BREAK_MAX else "remind_long"
 
 
+def _join(a: str, b: str) -> str:
+    parts = [p for p in (a or "").split(" / ") if p]
+    return " / ".join(parts + [b]) if b and b not in parts else (a or b or "")
+
+
+def _combine_parallel(timed: list[dict]) -> list[dict]:
+    """Пары в одно время (подгруппы в разных аудиториях) — одной парой со
+    всеми аудиториями: какая подгруппа у человека, бот не знает, а раньше в
+    напоминание попадала аудитория первой из них — часто чужая."""
+    out: list[dict] = []
+    for e in timed:
+        prev = out[-1] if out else None
+        if prev and e["time_start"] == prev["time_start"] and e.get("time_end") == prev.get("time_end"):
+            for k in ("summary", "location", "teacher"):
+                prev[k] = _join(prev.get(k, ""), e.get(k, ""))
+            continue
+        out.append(dict(e))
+    return out
+
+
 def plan_reminders(events: list[dict], prefs: dict) -> list[tuple[dict, int, str]]:
     """(пара, за сколько минут, сценарий) — пары по порядку, без сам. работы
-    и без времени; сценарий со значением 0 — без напоминания."""
+    и без времени; сценарий со значением 0 — без напоминания. Одинаковые
+    пары подряд — одним блоком (как в расписании): одно напоминание перед
+    первой, а не «через 5 мин пара» после каждой перемены внутри блока."""
+    from schedule_format import _merge_runs
     from schedule_parser import is_self_study
     timed = sorted((e for e in events if e.get("time_start") and not is_self_study(e.get("summary", ""))),
                    key=lambda e: e["time_start"])
     out, prev_end = [], None
-    for e in timed:
+    for e in _merge_runs(_combine_parallel(timed)):
         if prev_end is not None and e["time_start"] < prev_end:
             continue                      # дубль/наложение — уже напомнили о первой
         kind = scenario(prev_end, e["time_start"])

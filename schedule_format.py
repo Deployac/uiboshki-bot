@@ -2,7 +2,7 @@
 кнопками-цифрами, типы занятий. Без сети и без разбора ical — на входе уже
 разобранные события (schedule_events)."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from config import TIMEZONE
@@ -69,15 +69,31 @@ def _short_teacher(name: str) -> str:
     return parts[0] + " " + " ".join(p[0] + "." for p in parts[1:3] if p)
 
 
+# Между соседними парами МИРЭА — 10 или 30 минут (после 2-й и 4-й пары).
+# Больше — уже «окно»: такие пары одним блоком не склеиваем.
+MAX_RUN_GAP = timedelta(minutes=30)
+
+
+def _adjacent(prev: dict, e: dict, i: int) -> bool:
+    """Пара e идёт сразу за блоком prev, без окна. Время есть — по нему,
+    нет — по номеру пары."""
+    end, start = prev.get("time_end"), e.get("time_start")
+    if end and start:
+        return timedelta(0) <= start - end <= MAX_RUN_GAP
+    return i == prev["last"] + 1
+
+
 def _merge_runs(events: list[dict]) -> list[dict]:
     """Подряд идущие одинаковые пары (5 пар практики, 4 пары военки) —
-    одним блоком «1️⃣–4️⃣ 09:00–15:50», а не четырьмя копиями подряд."""
+    одним блоком «1️⃣–4️⃣ 09:00–15:50», а не четырьмя копиями подряд.
+    Только соседние: «ПР Матан» на 1-й и 4-й паре — два блока, иначе окно
+    между ними считалось бы парой (статус «сейчас», лишние точки)."""
     runs: list[dict] = []
     for pos, e in enumerate(events, 1):
         i = PAIR_SLOTS.get((e.get("time") or "").split("–")[0], pos)
         prev = runs[-1] if runs else None
         same = ("summary", "location", "teacher", "groups")
-        if prev and all(prev.get(k) == e.get(k) for k in same):
+        if prev and all(prev.get(k) == e.get(k) for k in same) and _adjacent(prev, e, i):
             prev["last"] = i
             prev["time_end"] = e.get("time_end")
             prev["end_str"] = (e.get("time") or "").split("–")[-1]

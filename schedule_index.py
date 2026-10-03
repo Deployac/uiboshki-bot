@@ -151,6 +151,7 @@ async def build_index(client: httpx.AsyncClient | None = None):
             for t in TYPES:
                 await _scan_type(client, t)
             await _set_state("built_at", str(int(time.time())))
+            await _set_state("refreshing", "")
             logger.info(f"schedule_index: справочник собран за {int(time.monotonic() - started)} с, "
                         f"{await count()} записей")
         finally:
@@ -164,9 +165,14 @@ async def ensure_fresh():
     try:
         built_at = await _get_state("built_at")
         if built_at and time.time() - int(built_at) > REFRESH_DAYS * 86400:
-            for t in TYPES:  # новый круг: сначала, старые записи обновятся по месту
-                await _set_state(f"next_id_{t}", "1")
-                await _set_state(f"misses_{t}", "0")
+            # Новый круг: сначала, старые записи обновятся по месту. Только
+            # один раз — отметка «идёт обновление»: раньше прогресс сбрасывался
+            # на id 1 при каждом запуске, и при частых деплоях круг не кончался.
+            if not await _get_state("refreshing"):
+                for t in TYPES:
+                    await _set_state(f"next_id_{t}", "1")
+                    await _set_state(f"misses_{t}", "0")
+                await _set_state("refreshing", str(int(time.time())))
             built_at = None
         if not built_at:
             await build_index()

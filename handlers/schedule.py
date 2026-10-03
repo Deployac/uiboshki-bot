@@ -13,9 +13,9 @@ from schedule_parser import (
 from mirea_schedule_api import (
     search_targets, get_baseinfo, fetch_ical, SearchUnavailable, TARGET_GROUP, TARGET_TEACHER, TARGET_ROOM,
 )
-from database import upsert_user, add_lesson_note, get_lesson_notes, get_or_create_calendar_token
+from database import upsert_user, add_lesson_note, delete_lesson_note, get_lesson_notes, get_or_create_calendar_token
 from keyboards import CANCEL_KB, MAIN_KB
-from config import GROUP_NAME, WEBAPP_URL
+from config import GROUP_NAME, WEBAPP_URL, is_starosta
 from utils import esc, split_by_lines, today_msk
 
 router = Router()
@@ -35,6 +35,16 @@ def _day_kb() -> InlineKeyboardMarkup:
     ]])
 
 
+# Заметка — короткая пометка к паре. Длинная (вставили простыню) ломала
+# /today и /tomorrow у всех: всё уходило одним edit_text больше лимита Telegram.
+NOTE_MAX = 500
+
+
+def _clip(text: str, limit: int = NOTE_MAX) -> str:
+    text = text.strip()
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
 async def _notes_block(date_str: str) -> str:
     notes = await get_lesson_notes(date_str)
     if not notes:
@@ -42,8 +52,17 @@ async def _notes_block(date_str: str) -> str:
     lines = ["\n\n📌 <b>Заметки:</b>"]
     for n in notes:
         subj = f"[{esc(n['subject'])}] " if n.get("subject") else ""
-        lines.append(f"• {subj}{esc(n['text'])}")
+        lines.append(f"• {subj}{esc(_clip(n['text']))}")   # старые длинные — обрезаем при выводе
     return "\n".join(lines)
+
+
+async def _edit_long(wait: Message, message: Message, text: str):
+    """Первый кусок — в «⏳ Загружаю…», остальное — следом (как /week)."""
+    for i, chunk in enumerate(split_by_lines(text)):
+        if i == 0:
+            await wait.edit_text(chunk, parse_mode="HTML")
+        else:
+            await message.answer(chunk, parse_mode="HTML")
 
 
 @router.message(Command("schedule"))
@@ -53,7 +72,7 @@ async def cmd_today(message: Message):
     wait = await message.answer("⏳ Загружаю...")
     text = await get_today_schedule()
     text += await _notes_block(today_msk().isoformat())
-    await wait.edit_text(text, parse_mode="HTML")
+    await _edit_long(wait, message, text)
 
 
 @router.message(Command("tomorrow"))
@@ -62,7 +81,7 @@ async def cmd_tomorrow(message: Message):
     wait = await message.answer("⏳ Загружаю...")
     text = await get_tomorrow_schedule()
     text += await _notes_block((today_msk() + timedelta(days=1)).isoformat())
-    await wait.edit_text(text, parse_mode="HTML")
+    await _edit_long(wait, message, text)
 
 
 @router.message(Command("week"))
@@ -265,6 +284,9 @@ async def cmd_note(message: Message, state: FSMContext):
     quick = _parse_quick_note(message.text or "")
     if quick:
         date_str, subject, note_text = quick
+        if len(note_text) > NOTE_MAX:
+            await message.answer(f"✂️ Заметка длинновата — до {NOTE_MAX} символов, а тут {len(note_text)}.")
+            return
         await add_lesson_note(date_str, subject, note_text, message.from_user.id)
         await message.answer("✅ Заметка добавлена!", reply_markup=MAIN_KB)
         return
@@ -322,6 +344,52 @@ async def note_save_text(message: Message, state: FSMContext):
         if len(maybe_subject) <= 40 and maybe_text.strip():
             subject, note_text = maybe_subject.strip(), maybe_text.strip()
 
+    if len(note_text) > NOTE_MAX:   # состояние не сбрасываем — пусть пришлёт короче
+        await message.answer(f"✂️ Длинновато — до {NOTE_MAX} символов, а тут {len(note_text)}. Пришли короче.")
+        return
     await add_lesson_note(date_str, subject, note_text, message.from_user.id)
     await state.clear()
     await message.answer("✅ Заметка добавлена!", reply_markup=MAIN_KB)
+
+
+# /delnote — староста убирает заметку (лишнюю, ошибочную, простыню):
+# заметки на сегодня и завтра кнопками, нажатие — удалить.
+
+def _delnote_kb(notes: list[dict]) -> InlineKeyboardMarkup | None:
+    rows = []
+    for n in notes:
+        label = (f"[{n['subject']}] " if n.get("subject") else "") + n["text"].replace("\n", " ")
+        rows.append([InlineKeyboardButton(text=f"🗑 {n['date'][8:10]}.{n['date'][5:7]} · {label}"[:60],
+                                          callback_data=f"delnote:{n['id']}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows) if rows else None
+
+
+async def _upcoming_notes() -> list[dict]:
+    today = today_msk()
+    return [n for d in (today, today + timedelta(days=1)) for n in await get_lesson_notes(d.isoformat())]
+
+
+@router.message(Command("delnote"))
+async def cmd_delnote(message: Message):
+    if not is_starosta(message.from_user.id):
+        await message.answer("Удалять заметки может только староста.")
+        return
+    kb = _delnote_kb(await _upcoming_notes())
+    if not kb:
+        await message.answer("Заметок на сегодня и завтра нет.")
+        return
+    await message.answer("🗑 Какую заметку убрать?", reply_markup=kb)
+
+
+@router.callback_query(F.data.regexp(r"^delnote:\d+$"))
+async def delnote_pick(callback: CallbackQuery):
+    if not is_starosta(callback.from_user.id):
+        await callback.answer("Только староста", show_alert=True)
+        return
+    await delete_lesson_note(int(callback.data.split(":", 1)[1]))
+    await callback.answer("Удалено")
+    kb = _delnote_kb(await _upcoming_notes())
+    if kb:
+        await callback.message.edit_reply_markup(reply_markup=kb)
+    else:
+        await callback.message.edit_text("✅ Заметок на сегодня и завтра больше нет.")

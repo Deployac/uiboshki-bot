@@ -2,6 +2,7 @@
 готовые ответы бота (сегодня, завтра, неделя, ближайшая пара), предметы
 группы. Разбор ical — schedule_events.py, оформление — schedule_format.py."""
 
+import asyncio
 import time
 import httpx
 import logging
@@ -56,12 +57,26 @@ def stale_note() -> str:
     return f"\n\n⚠️ <i>Сайт расписания МИРЭА не отвечает — показываю сохранённое от {lbl}.</i>" if lbl else ""
 
 
+def _check_calendar(data: bytes):
+    """Календарь целиком и с парами, а не страница ошибки, обрывок или пустой
+    файл: обрезанный ical затирал запасную копию и потом падал при каждом
+    разборе, пустой — рассылал ложные «❌ Отменена пара»."""
+    from icalendar import Calendar
+    if b"BEGIN:VCALENDAR" not in data[:512]:
+        raise ValueError("зеркало ответило не календарём")   # страница ошибки с кодом 200
+    try:
+        cal = Calendar.from_ical(data)
+    except Exception as e:
+        raise ValueError(f"календарь не разбирается: {e}") from e
+    if not cal.walk("VEVENT"):
+        raise ValueError("в календаре нет ни одного события")
+
+
 async def _download() -> bytes:
     async with httpx.AsyncClient(timeout=30) as client:
         resp = await client.get(ICAL_URL)
         resp.raise_for_status()
-        if b"BEGIN:VCALENDAR" not in resp.content[:512]:
-            raise ValueError("зеркало ответило не календарём")   # страница ошибки с кодом 200
+        await asyncio.to_thread(_check_calendar, resp.content)
         return resp.content
 
 
@@ -78,14 +93,20 @@ async def _save_backup(data: bytes):
         logger.info(f"Копия расписания не сохранилась: {e}")
 
 
-async def fetch_schedule_raw(force: bool = False) -> bytes:
-    global _cache_data, _cache_time, _ok_at, _stale
-    now = time.monotonic()
-    if not force and _cache_data is not None and (now - _cache_time) < SCHEDULE_CACHE_TTL_SECONDS:
-        return _cache_data
+# Одна загрузка на всех (single-flight): при висящем зеркале раньше каждый
+# вызов после истечения кэша ждал свои 30 с, а параллельные качали каждый сам.
+_inflight: asyncio.Task | None = None
+_fail_at: float | None = None          # когда загрузка последний раз не удалась
+_fail_exc: BaseException | None = None
+RETRY_AFTER_FAIL = 60                  # с: следующая попытка — через минуту после сбоя
+
+
+async def _refresh() -> bytes:
+    global _cache_data, _cache_time, _ok_at, _stale, _fail_at, _fail_exc
     try:
         data = await _download()
     except Exception as e:
+        _fail_at, _fail_exc = time.monotonic(), e
         if _cache_data is None:
             try:
                 from database import load_schedule_backup
@@ -98,12 +119,35 @@ async def fetch_schedule_raw(force: bool = False) -> bytes:
             _cache_data, _ok_at = saved[0], datetime.fromisoformat(saved[1])
         logger.warning(f"Расписание: зеркало не отвечает ({type(e).__name__}) — отдаю сохранённое")
         _stale = True
-        # повторить попытку через минуту, а не ждать весь TTL
-        _cache_time = now - SCHEDULE_CACHE_TTL_SECONDS + 60
+        # повторить через минуту от момента сбоя (а не от начала запроса,
+        # который сам висел 30 с), а не ждать весь TTL
+        _cache_time = _fail_at - SCHEDULE_CACHE_TTL_SECONDS + RETRY_AFTER_FAIL
         return _cache_data
-    _cache_data, _cache_time, _ok_at, _stale = data, now, datetime.now(TZ), False
+    _cache_data, _cache_time, _ok_at, _stale = data, time.monotonic(), datetime.now(TZ), False
+    _fail_at = _fail_exc = None
     await _save_backup(data)
     return _cache_data
+
+
+def _start_refresh() -> asyncio.Task:
+    global _inflight
+    loop = asyncio.get_running_loop()
+    if _inflight is None or _inflight.done() or _inflight.get_loop() is not loop:
+        _inflight = loop.create_task(_refresh())
+        # ошибку забирает тот, кто ждёт; у фонового обновления ждущих нет — гасим «never retrieved»
+        _inflight.add_done_callback(lambda t: t.cancelled() or t.exception())
+    return _inflight
+
+
+async def fetch_schedule_raw(force: bool = False) -> bytes:
+    now = time.monotonic()
+    if not force and _cache_data is not None:
+        if now - _cache_time >= SCHEDULE_CACHE_TTL_SECONDS:
+            _start_refresh()          # протухло — отдаём старое сразу, свежее качается в фоне
+        return _cache_data
+    if not force and _fail_exc is not None and _fail_at is not None and now - _fail_at < RETRY_AFTER_FAIL:
+        raise _fail_exc               # ни кэша, ни копии, и только что не вышло — не ждём снова 30 с
+    return await asyncio.shield(_start_refresh())
 
 
 async def get_today_schedule() -> str:
@@ -212,6 +256,12 @@ async def get_next_week_schedule() -> str:
         return "⚠️ Не удалось загрузить расписание."
 
 
+def _pair_num(e: dict, pos: int) -> int:
+    """Номер пары по звонку (PAIR_SLOTS), а не по месту в списке дня: в день
+    с «окном» с утра первая пара — третья. Нестандартное время — по месту."""
+    return PAIR_SLOTS.get((e.get("time") or "").split("–")[0], pos)
+
+
 async def get_next_lesson() -> str:
     try:
         raw  = await fetch_schedule_raw()
@@ -226,7 +276,7 @@ async def get_next_lesson() -> str:
                 hrs   = mins // 60
                 mins  = mins % 60
                 time_left = f"{hrs} ч {mins} мин" if hrs else f"{mins} мин"
-                num = _keycap(events.index(e) + 1)
+                num = _keycap(_pair_num(e, events.index(e) + 1))
                 return (
                     f"⏭ <b>Следующая пара — через {time_left}</b>\n\n"
                     + format_lesson(e, num)
@@ -239,7 +289,7 @@ async def get_next_lesson() -> str:
             return (
                 "✅ На сегодня пары закончились!\n\n"
                 "<b>Завтра первая пара:</b>\n"
-                + format_lesson(e, _keycap(1))
+                + format_lesson(e, _keycap(_pair_num(e, 1)))
             )
         return "✅ Пар больше нет ни сегодня, ни завтра!"
     except Exception as e:
