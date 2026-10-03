@@ -327,7 +327,7 @@ async def sync_deadlines() -> dict:
     expired=True, чтобы вызывающий код (scheduler/хендлер) сам решил,
     как об этом сообщить старосте, вместо падения джобы целиком.
     """
-    from database import add_deadline, get_deadline_by_external_id, update_deadline_due
+    from database import add_deadline, get_deadline_by_external_id, is_deadline_skipped, update_deadline_due
 
     try:
         items = await fetch_deadline_items()
@@ -354,6 +354,9 @@ async def sync_deadlines() -> dict:
         existing = await get_deadline_by_external_id(item["external_id"])
         if existing and existing.get("manual_edit"):
             skipped += 1  # староста поправил вручную — его версия главнее СДО
+            continue
+        if not existing and await is_deadline_skipped(item["external_id"]):
+            skipped += 1  # староста удалил его — не возвращаем
             continue
         if existing:
             fresh = (item["subject"], item["due_date"], item["due_time"])

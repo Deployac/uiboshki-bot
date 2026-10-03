@@ -9,12 +9,15 @@ from database._conn import connect
 
 # ── Deadlines ─────────────────────────────────────────────────────────────────
 
-async def add_deadline(subject, description, due_date, due_time, created_by, external_id=None) -> int:
+async def add_deadline(subject, description, due_date, due_time, created_by, external_id=None,
+                       personal: bool = False) -> int:
+    """personal — только автору, даже если автор — староста (иначе дедлайн
+    старосты общий для группы: «Сходить к врачу» из WebApp видели все)."""
     async with connect() as db:
         cursor = await db.execute("""
-            INSERT INTO deadlines (subject, description, due_date, due_time, created_by, external_id)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (subject, description, due_date, due_time, created_by, external_id))
+            INSERT INTO deadlines (subject, description, due_date, due_time, created_by, external_id, personal)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (subject, description, due_date, due_time, created_by, external_id, 1 if personal else 0))
         await db.commit()
         return cursor.lastrowid
 
@@ -31,12 +34,39 @@ async def edit_deadline(did: int, subject: str, description: str, due_date: str,
 
 
 async def update_deadline_due(did: int, subject: str, due_date: str, due_time: str | None):
+    """Новый срок или название (синк СДО). Свои напоминания, которые ещё не
+    пришли, едут вместе со сроком: «за день» до старого срока после переноса
+    пришло бы мимо."""
+    from datetime import datetime
+    fmt = "%Y-%m-%d %H:%M"
     async with connect() as db:
+        old = await (await db.execute("SELECT due_date, due_time FROM deadlines WHERE id=?", (did,))).fetchone()
         await db.execute(
             "UPDATE deadlines SET subject=?, due_date=?, due_time=? WHERE id=?",
             (subject, due_date, due_time, did)
         )
+        try:
+            shift = (datetime.strptime(f"{due_date} {(due_time or '23:59')[:5]}", fmt)
+                     - datetime.strptime(f"{old[0]} {(old[1] or '23:59')[:5]}", fmt)) if old else None
+        except (TypeError, ValueError):
+            shift = None
+        if shift:
+            rows = await (await db.execute(
+                "SELECT user_id, remind_at FROM deadline_reminders WHERE deadline_id=? AND sent=0", (did,))).fetchall()
+            for uid, at in rows:
+                try:
+                    new_at = (datetime.strptime(at, fmt) + shift).strftime(fmt)
+                except ValueError:
+                    continue
+                await db.execute("UPDATE OR IGNORE deadline_reminders SET remind_at=? "
+                                 "WHERE user_id=? AND deadline_id=? AND remind_at=?", (new_at, uid, did, at))
         await db.commit()
+
+
+async def is_deadline_skipped(external_id: str) -> bool:
+    async with connect() as db:
+        return (await (await db.execute("SELECT 1 FROM deadlines_skipped WHERE external_id=?",
+                                        (external_id,))).fetchone()) is not None
 
 
 async def get_deadline_by_external_id(external_id: str) -> dict | None:
@@ -50,7 +80,7 @@ async def get_deadline_by_external_id(external_id: str) -> dict | None:
 # Дедлайн считается "общим" (видят все), если его добавил/утвердил староста,
 # либо это автосинк из СДО (created_by=0) — всё остальное видит только автор.
 _DEADLINE_COLS = ("d.id, d.subject, d.description, d.due_date, d.due_time, d.created_by, d.created_at, "
-                  "d.external_id, d.manual_edit")
+                  "d.external_id, d.manual_edit, d.personal")
 
 
 def _shared_in() -> tuple[str, tuple]:
@@ -61,7 +91,7 @@ def _shared_in() -> tuple[str, tuple]:
 
 
 def is_shared_deadline(d: dict) -> bool:
-    return d.get("created_by") in (0, *STAROSTA_IDS)
+    return d.get("created_by") in (0, *STAROSTA_IDS) and not d.get("personal")
 
 
 async def get_active_deadlines(viewer_id: int, include_done: bool = False) -> list[dict]:
@@ -76,7 +106,7 @@ async def get_active_deadlines(viewer_id: int, include_done: bool = False) -> li
                        WHERE dd.deadline_id = d.id AND dd.user_id = ?
                    ) AS done
             FROM deadlines d
-            WHERE (d.created_by = ? OR d.created_by IN {_shared_in()[0]})
+            WHERE (d.created_by = ? OR (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0))
         """
         params = [viewer_id, viewer_id, *_shared_in()[1]]
         if not include_done:
@@ -106,7 +136,7 @@ async def get_deadlines_soon(days=3, viewer_id: int | None = None, shared_only: 
         if shared_only:
             query = f"""
                 SELECT {_DEADLINE_COLS} FROM deadlines d
-                WHERE d.created_by IN {_shared_in()[0]}
+                WHERE (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0)
                 AND d.due_date BETWEEN ? AND date(?, ? || ' days')
                 AND NOT EXISTS (SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)
                 ORDER BY d.due_date, d.due_time
@@ -117,7 +147,7 @@ async def get_deadlines_soon(days=3, viewer_id: int | None = None, shared_only: 
                 raise ValueError("viewer_id обязателен при shared_only=False")
             query = f"""
                 SELECT {_DEADLINE_COLS} FROM deadlines d
-                WHERE (d.created_by = ? OR d.created_by IN {_shared_in()[0]})
+                WHERE (d.created_by = ? OR (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0))
                 AND d.due_date BETWEEN ? AND date(?, ? || ' days')
                 AND NOT EXISTS (SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)
                 ORDER BY d.due_date, d.due_time
@@ -133,7 +163,7 @@ async def get_deadline_stats(viewer_id: int) -> dict:
     get_deadlines_soon)."""
     today = today_msk().isoformat()
     async with connect() as db:
-        visible = f"(d.created_by = ? OR d.created_by IN {_shared_in()[0]})"
+        visible = f"(d.created_by = ? OR (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0))"
         vparams = (viewer_id, *_shared_in()[1])
         done_expr = "EXISTS(SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)"
 
@@ -207,8 +237,14 @@ async def get_sdo_deadlines() -> list[dict]:
 
 
 async def delete_deadline(did: int):
+    """Удалить дедлайн с отметками и напоминаниями. Дедлайн из СДО запоминаем
+    в deadlines_skipped — иначе следующий синк вернул бы его заново."""
     async with connect() as db:
+        row = await (await db.execute("SELECT external_id FROM deadlines WHERE id=?", (did,))).fetchone()
+        if row and (row[0] or "").startswith("sdo:"):
+            await db.execute("INSERT OR IGNORE INTO deadlines_skipped (external_id) VALUES (?)", (row[0],))
         await db.execute("DELETE FROM deadline_done WHERE deadline_id=?", (did,))
+        await db.execute("DELETE FROM deadline_reminders WHERE deadline_id=?", (did,))
         await db.execute("DELETE FROM deadlines WHERE id=?", (did,))
         await db.commit()
 
@@ -258,4 +294,6 @@ async def mark_deadline_reminder_sent(user_id: int, deadline_id: int, remind_at:
                          (user_id, deadline_id, remind_at))
         # старше месяца — не нужны
         await db.execute("DELETE FROM deadline_reminders WHERE sent=1 AND remind_at < datetime('now', '-30 days')")
+        # дедлайна уже нет (удалили, /clearsem) — такие никогда не придут
+        await db.execute("DELETE FROM deadline_reminders WHERE deadline_id NOT IN (SELECT id FROM deadlines)")
         await db.commit()

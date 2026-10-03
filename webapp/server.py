@@ -64,6 +64,37 @@ BODY_LIMITS = (("/api/sdo/submit", 90 * 1024 * 1024), ("/api/chat", 16 * 1024 * 
 BODY_LIMIT_DEFAULT = 1024 * 1024
 
 
+class BodyLimit:
+    """Предел тела запроса по факту прочитанных байт. Заголовка Content-Length
+    при Transfer-Encoding: chunked нет — проверка по нему пропускала 50 МБ
+    без initData (FastAPI читает тело до проверки входа). Здесь чтение
+    обрывается на пределе: 413, лишнее не читается."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+        limit = next((n for p, n in BODY_LIMITS if scope["path"].startswith(p)), BODY_LIMIT_DEFAULT)
+        got = 0
+
+        async def limited():
+            nonlocal got
+            msg = await receive()
+            if msg["type"] == "http.request":
+                got += len(msg.get("body") or b"")
+                if got > limit:
+                    raise StarletteHTTPException(413, "слишком большой запрос")
+            return msg
+
+        await self.app(scope, limited, send)
+
+
+app.add_middleware(BodyLimit)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     """Заголовки безопасности и ограничение размера запроса.

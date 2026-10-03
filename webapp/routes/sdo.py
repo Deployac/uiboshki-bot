@@ -156,6 +156,9 @@ async def api_sdo_grades(fresh: bool = False, user: dict = CurrentUser):
     from database import set_sdo_status
     from sdo_parser import SdoSessionExpired
     cookie = await _sdo_cookie(user["id"])
+    import ratelimit
+    if fresh and not ratelimit.allow("sdo_fresh", user["id"]):
+        fresh = False              # «обновить» чаще 3 раз за 5 минут — из кэша, СДО не долбим
     try:
         data = await sdo_grades.overview(user["id"], cookie, fresh=fresh)
     except SdoSessionExpired:
@@ -226,6 +229,8 @@ async def api_sdo_goal(course_id: int, body: Goal, user: dict = CurrentUser):
     except LookupError:
         raise HTTPException(status_code=404, detail="курс не найден")
     except SdoSessionExpired:
+        from database import set_sdo_status
+        await set_sdo_status(user["id"], "expired")   # как в /api/sdo/grades: экран «Подключить заново»
         raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
     except Exception:
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
@@ -259,6 +264,8 @@ async def api_attendance_mark(course_id: int, body: AttendanceMark, user: dict =
     except LookupError:
         raise HTTPException(status_code=404, detail="курс не найден")
     except SdoSessionExpired:
+        from database import set_sdo_status
+        await set_sdo_status(user["id"], "expired")   # как в /api/sdo/grades: экран «Подключить заново»
         raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
     except Exception:
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")

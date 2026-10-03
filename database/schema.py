@@ -47,6 +47,11 @@ async def init_db():
             await db.execute("ALTER TABLE deadlines ADD COLUMN manual_edit INTEGER DEFAULT 0")
         except Exception:
             pass  # колонка уже есть
+        # Личный дедлайн старосты (из WebApp): created_by старосты иначе = общий.
+        try:
+            await db.execute("ALTER TABLE deadlines ADD COLUMN personal INTEGER DEFAULT 0")
+        except Exception:
+            pass  # колонка уже есть
 
         # Персональный токен подписки на ICS-календарь (Фаза 12) — каждому
         # студенту своя приватная ссылка, не одна общая на группу. Генерится
@@ -232,6 +237,14 @@ async def init_db():
                 date        TEXT PRIMARY KEY,
                 events_json TEXT NOT NULL,
                 updated_at  TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # Дедлайны СДО, которые староста удалил: синк их больше не возвращает
+        # (как files_skipped у файлов).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS deadlines_skipped (
+                external_id TEXT PRIMARY KEY,
+                at          TEXT DEFAULT (datetime('now'))
             )
         """)
         # Свои напоминания о дедлайне (deadline_reminders.py): кто, о каком, когда

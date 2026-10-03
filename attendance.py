@@ -21,7 +21,7 @@
 
 from datetime import date, datetime, timedelta
 
-TOL = 0.02            # СДО показывает баллы с двумя знаками: 20/7·3 = 8,57
+TOL = 0.051           # СДО показывает баллы и с одним знаком («3,8» за 3 лекции из 16 = 3,75)
 SETTLE_DAYS = 10      # столько ждём отметку после лекции, потом — «пропуск»
 
 
@@ -95,6 +95,8 @@ def build(score: float | None, max_pts: float, lectures: list[date],
             p0 = past_on(d)
             for x in lectures:
                 if x <= d:
+                    if cur == (0, 0) and p0 and (d - x).days <= SETTLE_DAYS:
+                        continue        # первый замер — ноль: свежие лекции ещё «ждём отметку», не «Н»
                     status[x] = "ok" if cur == (p0, 0) else "before"
         else:
             da, du = cur[0] - prev[0], cur[1] - prev[1]
@@ -139,7 +141,8 @@ def build(score: float | None, max_pts: float, lectures: list[date],
         if x > today:
             st = "future"
         elif st is None:
-            st = "wait" if (today - x).days <= SETTLE_DAYS else "miss"
+            # баллов ещё нет совсем («-» в журнале) — отметок не ставили, пропусков не знаем
+            st = "wait" if (today - x).days <= SETTLE_DAYS or not pts else "miss"
         lect.append({"date": x.isoformat(), "n": i + 1, "status": st, "manual": x in marked})
     unit = max_pts / (total - u) if total > u else 0
     out = dict(base, ok=True, score=round(score or 0, 2), attended=a, excused=u,
@@ -174,7 +177,8 @@ async def for_course(user_id: int, course: dict, manual: dict[str, str] | None =
     history = await get_attendance_points(user_id, course["id"], since)
     if manual is None:
         manual = await get_attendance_marks(user_id, course["id"])
-    return dict(build(cat.get("score"), float(cat["max"]), lectures, history, today, manual), subject=subject)
+    score = cat.get("score") if cat.get("set", True) else None     # «-» у преподавателя ≠ 0 баллов
+    return dict(build(score, float(cat["max"]), lectures, history, today, manual), subject=subject)
 
 
 def check_mark(blank: dict | None, marks: dict[str, str], day: str, mark: str | None) -> str:

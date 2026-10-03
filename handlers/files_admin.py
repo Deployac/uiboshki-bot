@@ -1,5 +1,6 @@
 """Команды старосты по файлам и базе: /delfile, /backup, /tidyfiles, /restore, /syncfiles."""
 
+import asyncio
 import json
 from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
@@ -140,7 +141,8 @@ async def restore_file(message: Message, state: FSMContext):
         return
     buf = await message.bot.download(doc)
     try:
-        tmp, info = inspect_backup(buf.read())
+        # распаковка и integrity_check — секунды; не в event loop, иначе бот и WebApp стоят
+        tmp, info = await asyncio.to_thread(inspect_backup, buf.read())
     except RestoreError as e:
         await message.answer(f"❌ Копия не подходит: {esc(str(e))}", parse_mode="HTML")
         return
@@ -182,18 +184,24 @@ async def restore_confirm(callback: CallbackQuery):
         await callback.answer()
         return
     await callback.answer("Восстанавливаю…")
-    from backup import apply_backup, send_backup
+    from backup import apply_backup, keep_local_copy, send_backup
+    note = "Копия прежней — сообщением выше."
     if not await send_backup(callback.bot, uid, silent=False):      # сначала — копия текущей
-        os.remove(tmp)
-        await callback.message.edit_text("⚠️ Не смог снять копию текущей базы — восстанавливать не стал.")
-        return
+        # в Telegram не ушла (больше 50 МБ или база повреждена — как раз когда
+        # и нужен /restore): страхуемся файлом рядом с базой на томе
+        local = await keep_local_copy()
+        if not local:
+            os.remove(tmp)
+            await callback.message.edit_text("⚠️ Не смог сохранить копию текущей базы ни в чат, ни на том — "
+                                             "восстанавливать не стал.")
+            return
+        note = f"Прежняя база сохранена на томе: <code>{esc(os.path.basename(local))}</code>."
     try:
         await apply_backup(tmp)
     except Exception as e:
-        await callback.message.edit_text(f"❌ Не получилось: {esc(str(e))}. Текущая база — в файле выше.",
-                                         parse_mode="HTML")
+        await callback.message.edit_text(f"❌ Не получилось: {esc(str(e))}. {note}", parse_mode="HTML")
         return
-    await callback.message.edit_text("✅ База восстановлена из копии. Копия прежней — сообщением выше.")
+    await callback.message.edit_text(f"✅ База восстановлена из копии. {note}", parse_mode="HTML")
 
 
 # ── Синхронизация файлов из локальной базы ────────────────────────────────────

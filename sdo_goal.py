@@ -37,12 +37,14 @@ async def get_goals(user_id: int) -> dict[str, str]:
 
 async def set_goal(user_id: int, course_id: int, label: str | None) -> dict[str, str]:
     from database import set_setting
-    goals = await get_goals(user_id)
-    if label:
-        goals[str(course_id)] = label
-    else:
-        goals.pop(str(course_id), None)
-    await set_setting(f"goals:{user_id}", json.dumps(goals, ensure_ascii=False))
+    from locks import lock
+    async with lock("goals", user_id):       # две цели подряд по разным предметам — сохраняются обе
+        goals = await get_goals(user_id)
+        if label:
+            goals[str(course_id)] = label
+        else:
+            goals.pop(str(course_id), None)
+        await set_setting(f"goals:{user_id}", json.dumps(goals, ensure_ascii=False))
     return goals
 
 

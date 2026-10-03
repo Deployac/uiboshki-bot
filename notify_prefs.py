@@ -102,11 +102,13 @@ async def set_all_reminders(user_id: int, minutes: int):
     """Из чата (/settings, /setreminder) — одно время на все сценарии
     (в пределах каждого); тонко — в приложении."""
     from database import get_user, set_notify, set_reminder_minutes
+    from locks import lock
     await set_reminder_minutes(user_id, minutes)
-    prefs = merge((await get_user(user_id) or {}).get("notify"))
-    for k, spec in REMIND.items():
-        prefs[k] = min(minutes, spec["max"])
-    await set_notify(user_id, prefs)
+    async with lock("notify", user_id):
+        prefs = merge((await get_user(user_id) or {}).get("notify"))
+        for k, spec in REMIND.items():
+            prefs[k] = min(minutes, spec["max"])
+        await set_notify(user_id, prefs)
 
 
 def summary(prefs: dict) -> str:

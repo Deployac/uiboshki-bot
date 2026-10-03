@@ -52,7 +52,14 @@ def _keys() -> list[bytes]:
     старые записи перешифровываются при проверке входа (keepalive_all)."""
     keys = []
     if os.getenv("SDO_CRYPT_KEY"):
-        keys.append(os.getenv("SDO_CRYPT_KEY").encode())
+        key = os.getenv("SDO_CRYPT_KEY").strip().encode()
+        try:
+            Fernet(key)
+            keys.append(key)
+        except ValueError:
+            # не ключ Fernet (например, фраза вместо SDO_CRYPT_PASSPHRASE): без
+            # проверки MultiFernet падал целиком и все входы считались протухшими
+            logger.error("SDO_CRYPT_KEY — не ключ Fernet (нужны 32 байта в base64), пропускаю его")
     if os.getenv("SDO_CRYPT_PASSPHRASE"):
         keys.append(_passphrase_key(os.getenv("SDO_CRYPT_PASSPHRASE")))
     keys.append(_bot_token_key())
@@ -63,9 +70,17 @@ def _fernet() -> MultiFernet:
     return MultiFernet([Fernet(k) for k in _keys()])
 
 
+def _key_ok(key: str) -> bool:
+    try:
+        Fernet(key.strip().encode())
+        return True
+    except ValueError:
+        return False
+
+
 def key_source() -> str:
     """Откуда ключ — для экрана «Безопасность» (без самого ключа)."""
-    if os.getenv("SDO_CRYPT_KEY"):
+    if os.getenv("SDO_CRYPT_KEY") and _key_ok(os.getenv("SDO_CRYPT_KEY")):
         return "key"
     if os.getenv("SDO_CRYPT_PASSPHRASE"):
         return "passphrase"
@@ -165,10 +180,17 @@ def first_check_at(now: datetime | None = None) -> str:
 
 async def _check_one(row: dict, bot=None, now: datetime | None = None):
     from database import set_sdo_next_check, set_sdo_status, update_sdo_cookie
-    uid = row["user_id"]
-    cookie = decrypt(row["cookie_enc"])
-    if cookie and needs_rotation(row["cookie_enc"]):
-        await update_sdo_cookie(uid, encrypt(cookie))   # на новый ключ
+    uid, enc = row["user_id"], row["cookie_enc"]
+    cookie = decrypt(enc)
+    if cookie is None:
+        # не расшифровалась — дело в ключе на сервере, а не во входе студента:
+        # не помечаем протухшим и не пишем ему (иначе смена ключа «разлогинит» всех)
+        logger.error(f"СДО keepalive {uid}: кука не расшифровывается — проверь SDO_CRYPT_KEY/PASSPHRASE")
+        return
+    if needs_rotation(enc):
+        new_enc = encrypt(cookie)
+        if await update_sdo_cookie(uid, new_enc, only_if=enc):   # на новый ключ
+            enc = new_enc
     left = row.get("jitter_left")
     left = JITTER_CHECKS if left is None else left
     now = now or _now()
@@ -178,7 +200,9 @@ async def _check_one(row: dict, bot=None, now: datetime | None = None):
         logger.info(f"СДО keepalive {uid}: {type(e).__name__}")
         await set_sdo_next_check(uid, _utc(now + timedelta(minutes=next_interval(left))), left)
         return
-    await set_sdo_status(uid, "ok" if alive else "expired")
+    # пока шла проверка, человек мог подключить новый вход — его статус не трогаем
+    if not await set_sdo_status(uid, "ok" if alive else "expired", only_if=enc):
+        return
     if alive:
         await set_sdo_next_check(uid, _utc(now + timedelta(minutes=next_interval(left))), max(0, left - 1))
     elif bot:

@@ -88,18 +88,28 @@ async def get_sdo_sessions(status: str = "ok") -> list[dict]:
         return [dict(r) for r in await cursor.fetchall()]
 
 
-async def set_sdo_status(user_id: int, status: str):
+async def set_sdo_status(user_id: int, status: str, only_if: str | None = None) -> bool:
+    """only_if — зашифрованная кука, которую проверяли: если за время проверки
+    человек подключил новую, её статус не трогаем. → изменилось ли."""
+    sql, args = "UPDATE sdo_sessions SET status=?, checked_at=datetime('now') WHERE user_id=?", [status, user_id]
+    if only_if is not None:
+        sql, args = sql + " AND cookie_enc=?", args + [only_if]
     async with connect() as db:
-        await db.execute("UPDATE sdo_sessions SET status=?, checked_at=datetime('now') WHERE user_id=?",
-                         (status, user_id))
+        cur = await db.execute(sql, args)
         await db.commit()
+        return cur.rowcount > 0
 
 
-async def update_sdo_cookie(user_id: int, cookie_enc: str):
-    """Перешифровка на новый ключ — без сброса расписания проверок."""
+async def update_sdo_cookie(user_id: int, cookie_enc: str, only_if: str | None = None) -> bool:
+    """Перешифровка на новый ключ — без сброса расписания проверок; only_if —
+    как у set_sdo_status (не затереть только что подключённый новый вход)."""
+    sql, args = "UPDATE sdo_sessions SET cookie_enc=? WHERE user_id=?", [cookie_enc, user_id]
+    if only_if is not None:
+        sql, args = sql + " AND cookie_enc=?", args + [only_if]
     async with connect() as db:
-        await db.execute("UPDATE sdo_sessions SET cookie_enc=? WHERE user_id=?", (cookie_enc, user_id))
+        cur = await db.execute(sql, args)
         await db.commit()
+        return cur.rowcount > 0
 
 
 async def set_sdo_next_check(user_id: int, next_check_at: str, jitter_left: int):
