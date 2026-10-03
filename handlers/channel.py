@@ -1,7 +1,9 @@
 """Посты канала бота (/channel у старосты): список, точное превью в личку и
 кнопка «В канал». Сами посты и отправка — channel_posts.py.
 /channel redo — убрать из канала всё, что бот уже опубликовал, и выпустить
-заново (например, когда поменялся вид постов). Закреп бот закрепляет сам."""
+заново (например, когда поменялся вид постов). Закреп бот закрепляет сам.
+/channel edit 1 4 6 — поправить уже выпущенные посты текстом из репозитория
+(обложка, комментарии и просмотры остаются)."""
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -95,6 +97,9 @@ async def cmd_channel(message: Message):
     if not posts:
         await message.answer("Постов пока нет — они лежат в репозитории, channel/posts/.")
         return
+    if (message.text or "").split()[1:2] == ["edit"]:
+        await _edit(message, posts, done)
+        return
     await message.answer(await _list_text(posts, done), parse_mode="HTML")
     arg = (message.text or "").split()[1:2]
     if arg and arg[0].isdigit() and 1 <= int(arg[0]) <= len(posts):
@@ -105,6 +110,33 @@ async def cmd_channel(message: Message):
             await message.answer("Все посты уже в канале 🎉")
             return
     await _preview(message.bot, message.chat.id, posts, idx, done)
+
+
+async def _edit(message: Message, posts: list, done: dict):
+    """/channel edit 1 4 6 — поправить выпущенные посты (номера как в
+    /channel) текстом из репозитория, с той же обложкой. Комментарии и
+    просмотры остаются, в отличие от /channel redo."""
+    from channel_posts import edit_post
+    nums = [int(x) for x in (message.text or "").split()[2:] if x.isdigit()]
+    if not nums:
+        await message.answer("Какие посты поправить? Номера — как в /channel: <code>/channel edit 1 4 6</code>",
+                             parse_mode="HTML")
+        return
+    lines = []
+    for n in nums:
+        if not 1 <= n <= len(posts):
+            lines.append(f"▫️ {n} — такого поста нет")
+            continue
+        post = posts[n - 1]
+        ids = (done.get(post["slug"]) or {}).get("ids")
+        if not ids:
+            lines.append(f"▫️ {n} «{esc(post['title'])}» — ещё не в канале")
+            continue
+        res = await edit_post(message.bot, config.CHANNEL_ID, post, ids, config.WEBAPP_URL)
+        mark = {"ok": "✅", "same": "➖"}.get(res, "⚠️")
+        note = {"ok": "поправлен", "same": "уже такой"}.get(res, esc(res)[:200])
+        lines.append(f"{mark} {n} «{esc(post['title'])}» — {note}")
+    await message.answer("✏️ <b>Правка постов в канале</b>\n\n" + "\n".join(lines), parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("chan:"))

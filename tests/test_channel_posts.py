@@ -267,3 +267,75 @@ def test_all_posts_have_valid_markup():
     Telegram и экранированными «<» и «&»."""
     bad = {p["slug"]: markup_problems(p["html"]) for p in channel_posts.load_posts()}
     assert {s: b for s, b in bad.items() if b} == {}
+
+
+@pytest.mark.asyncio
+async def test_edit_published_post_keeps_cover(db, tmp_path, monkeypatch):
+    """/channel edit: правка выпущенного поста ботом — живой случай 04.10:
+    с аккаунта в Telegram у постов с обложкой «Изменить» снимает превью, а
+    правки в раскрывающейся цитате редактор не берёт."""
+    from aiogram.exceptions import TelegramBadRequest
+    from handlers import channel
+    long = "<b>Длинно</b>\n<blockquote expandable>" + "слово " * 300 + "</blockquote>"
+    _post(tmp_path, "00-pinned", "<b>Оглавление</b>\n19. Цель по предмету")
+    _post(tmp_path, "05-ai", long, ["1.jpg"])
+    _post(tmp_path, "06-short", "<b>Коротко</b>", ["1.jpg"])
+    _post(tmp_path, "07-new", "<b>Ещё не вышел</b>")
+    monkeypatch.setattr(channel_posts, "POSTS_DIR", tmp_path)
+    monkeypatch.setattr(config, "CHANNEL_ID", "@uiboshki_dev")
+    monkeypatch.setattr(config, "WEBAPP_URL", "https://app.example")
+    posts = {p["slug"]: p for p in channel_posts.load_posts(tmp_path)}
+
+    class EditBot:
+        calls = []
+
+        async def edit_message_text(self, text, chat_id=None, message_id=None, link_preview_options=None, **kw):
+            if message_id == 99:
+                raise TelegramBadRequest(method=None, message="Bad Request: message is not modified")
+            self.calls.append(("text", message_id, text, link_preview_options))
+
+        async def edit_message_caption(self, chat_id=None, message_id=None, caption=None, **kw):
+            self.calls.append(("caption", message_id, caption, None))
+
+    bot = EditBot()
+    assert await channel_posts.edit_post(bot, "@ch", posts["05-ai"], [12], "https://app.example") == "ok"
+    kind, mid, text, lp = bot.calls[-1]
+    assert (kind, mid, text) == ("text", 12, long) and lp.url == channel_posts.cover_url("https://app.example", posts["05-ai"])
+    assert lp.show_above_text and lp.prefer_large_media                       # обложка над текстом — как была
+    assert await channel_posts.edit_post(bot, "@ch", posts["06-short"], [13]) == "ok"
+    assert bot.calls[-1][:3] == ("caption", 13, "<b>Коротко</b>")
+    assert await channel_posts.edit_post(bot, "@ch", posts["05-ai"], [3, 4]) == "ok"   # старый вид — правим текст
+    assert bot.calls[-1][1] == 4 and bot.calls[-1][3].is_disabled
+    assert await channel_posts.edit_post(bot, "@ch", posts["00-pinned"], [99]) == "same"
+    assert "WEBAPP_URL" in await channel_posts.edit_post(bot, "@ch", posts["05-ai"], [12])
+
+    class EditSession(Session):
+        async def make_request(self, bot, method, timeout=None):
+            if type(method).__name__ == "EditMessageText":
+                self.sent.append((method.chat_id, "EditMessageText", [method.message_id]))
+                return True
+            return await super().make_request(bot, method, timeout)
+
+    tg = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=EditSession())
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(channel.router)
+    star, other = User(id=STAROSTA_ID, is_bot=False, first_name="S"), User(id=222, is_bot=False, first_name="A")
+
+    async def feed(user, text):
+        msg = Message(message_id=1, date=0, chat=Chat(id=user.id, type="private"), from_user=user, text=text)
+        await dp.feed_update(tg, Update(update_id=int(time.time() * 1e6) % 10**9, message=msg))
+
+    try:
+        await channel_posts.mark_published("00-pinned", [9])
+        await channel_posts.mark_published("05-ai", [15])
+        await feed(other, "/channel edit 1")
+        assert not any(t == "EditMessageText" for _, t, _ in tg.session.sent)  # не староста — ничего
+        await feed(star, "/channel edit 1 2 4 9")
+        edited = [(c, ids) for c, t, ids in tg.session.sent if t == "EditMessageText"]
+        assert edited == [("@uiboshki_dev", [9]), ("@uiboshki_dev", [15])]
+        report = tg.session.sent[-1][1]
+        assert "✅ 1" in report and "✅ 2" in report and "ещё не в канале" in report and "9 — такого поста нет" in report
+        await feed(star, "/channel edit")
+        assert "Номера — как в /channel" in tg.session.sent[-1][1]
+    finally:
+        channel.router._parent_router = None

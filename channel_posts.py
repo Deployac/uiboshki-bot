@@ -151,6 +151,37 @@ async def send_post(bot, chat_id, post: dict, base_url: str = "") -> list[int]:
     return [m1.message_id, m2.message_id]
 
 
+async def edit_post(bot, chat_id, post: dict, ids: list[int], base_url: str = "") -> str:
+    """Поправить уже выпущенный пост текстом из репозитория — тем же видом,
+    что и send_post: правка с аккаунта в Telegram снимает обложку (превью
+    ссылки, которой нет в тексте) и не берёт раскрывающиеся цитаты, а бот —
+    автор поста — правит без потерь. → "ok", "same" (текст уже такой) или
+    текст ошибки."""
+    from aiogram.exceptions import TelegramBadRequest
+    from aiogram.types import LinkPreviewOptions
+    html, images = post["html"], post["images"]
+    try:
+        if not images:
+            await bot.edit_message_text(html, chat_id=chat_id, message_id=ids[0], parse_mode="HTML",
+                                        link_preview_options=LinkPreviewOptions(is_disabled=True))
+        elif visible_len(html) <= CAPTION_LIMIT:
+            await bot.edit_message_caption(chat_id=chat_id, message_id=ids[0], caption=html, parse_mode="HTML")
+        elif len(ids) == 1 and base_url:
+            await bot.edit_message_text(html, chat_id=chat_id, message_id=ids[0], parse_mode="HTML",
+                                        link_preview_options=LinkPreviewOptions(
+                                            url=cover_url(base_url, post), prefer_large_media=True, show_above_text=True))
+        elif len(ids) == 2:            # старый вид: обложка, следом текст
+            await bot.edit_message_text(html, chat_id=chat_id, message_id=ids[1], parse_mode="HTML",
+                                        link_preview_options=LinkPreviewOptions(is_disabled=True))
+        else:
+            return "нужен WEBAPP_URL — без него обложку над текстом не сохранить"
+    except TelegramBadRequest as e:
+        if "not modified" in str(e).lower():
+            return "same"
+        return str(e)
+    return "ok"
+
+
 async def published() -> dict:
     """{slug: {"ids": [...], "at": "…"}} — что уже в канале."""
     from database import get_setting
