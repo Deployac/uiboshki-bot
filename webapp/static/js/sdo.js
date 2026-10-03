@@ -263,15 +263,12 @@ function renderSubject() {
   const rows = c.categories.map((k, i) => {
     const pos = !k.tk && /посещ/i.test(k.name) && c.attendance;
     const go = (k.tk && c.works_total) || pos;
-    // посещаемость — сначала лекции («2 из 8», полоска — доля семестра), баллы мелко
-    const att = pos && c.attendance.ok ? c.attendance : null;
-    const share = att ? att.attended / att.total : (k.max ? k.score / k.max : 0);
+    // посещаемость — обычная строка с баллами; лекции — по нажатию, на экране «Посещения»
+    const share = k.max ? k.score / k.max : 0;
     return '<div class="cat-row' + (go ? ' go' : '') + '"' + (go ? ' onclick="' + (pos ? 'openPos()' : 'openTk()') + '"' : '') + '>' +
-      '<span class="d" style="background:' + catColor(k.name) + '"></span><span class="nm">' + escapeHtml(k.name) +
-      (att ? '<small>' + fmtNum(k.score) + ' из ' + fmtNum(k.max) + ' баллов</small>' : '') + '</span>' +
+      '<span class="d" style="background:' + catColor(k.name) + '"></span><span class="nm">' + escapeHtml(k.name) + '</span>' +
       '<span class="mb"><i style="width:' + Math.min(100, share * 100).toFixed(1) + '%;background:' + catColor(k.name) + '"></i></span>' +
-      (att ? '<span class="v">' + att.attended + '<small>/' + att.total + ' лк</small></span>'
-           : '<span class="v">' + fmtNum(k.score) + '<small>/' + fmtNum(k.max) + '</small></span>') +
+      '<span class="v">' + fmtNum(k.score) + '<small>/' + fmtNum(k.max) + '</small></span>' +
       '<span class="chev">' + (go ? '›' : '') + '</span></div>';
   }).join("");
   document.getElementById("subject-body").innerHTML =
@@ -506,8 +503,7 @@ function renderPos() {
         '<span class="wi">' + sign + '</span>' +
         '<span class="wn">Лекция ' + x.n + '<small>' + humanDate(x.date) + ' · ' + look[1] + (x.manual ? ' · твоя отметка' : '') + '</small></span>' +
         '<span class="ws">' + (x.status === "ok" ? '<b>+' + fmtNum(a.unit) + '</b>' : '') + '</span></div>';
-    }).join("") + '</div>' +
-    '<p class="sheet-hint">Пульс МИРЭА бота не пускает, поэтому считаем по баллам СДО: баллы за посещаемость делятся поровну на лекции семестра (практики не в счёт), лекция по уважительной причине выбывает из деления. Какие лекции засчитаны — видно по тому, когда прибавились баллы.</p>';
+    }).join("") + '</div>';
 }
 
 // Своя отметка у лекции до начала истории: «?» → «+» (если плюсики ещё
