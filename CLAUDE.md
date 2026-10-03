@@ -279,6 +279,12 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   МИРЭА — одна загрузка на всех, битый не затирает копию; ответы старых
   запросов во фронте сверяются с открытым экраном (номер запроса).
   Дымовой тест WebApp в Chromium — `tests/test_webapp_smoke_browser.py`.
+- **Сайт-презентация** `/about` (`webapp/routes/site.py`, `webapp/static/site/`):
+  статичная страница (свои шрифты в `site/fonts`), живое приложение в рамке
+  телефона — `/about/demo` (index.html + `site/demo.js` вместо SDK Telegram:
+  заглушка, сдвиг времени на запись, ответы `/api/…` из `site/demo.json` —
+  записаны со стенда, ничьих настоящих данных; при изменении API — перезаписать),
+  публичный поиск расписания `/about/api/search|target` (ratelimit по IP).
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

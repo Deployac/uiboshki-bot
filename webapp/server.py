@@ -32,7 +32,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from webapp import deps
-from webapp.routes import account, channel, chat, deadlines, files, schedule, sdo
+from webapp.routes import account, channel, chat, deadlines, files, schedule, sdo, site
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 # httpx на INFO пишет полный адрес каждого запроса — с sesskey СДО в query.
@@ -133,7 +133,7 @@ async def health():
 # ── Обработчики по темам (webapp/routes/*) ──────────────────────────────────
 # Пути у них не пересекаются, так что порядок не важен; важно только, что
 # статика ниже — последней.
-for _module in (schedule, account, deadlines, files, chat, sdo, channel):
+for _module in (schedule, account, deadlines, files, chat, sdo, channel, site):
     app.include_router(_module.router)
 
 

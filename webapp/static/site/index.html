@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>УИБО-бот — расписание, СДО и лекции группы в Telegram</title>
+<meta name="description" content="Бот и мини-приложение группы УИБО-03-24, РТУ МИРЭА: расписание любого в МИРЭА, дедлайны и баллы из СДО, файлы курсов и ИИ, который отвечает по лекциям.">
+<meta property="og:title" content="УИБО-бот">
+<meta property="og:description" content="Расписание, СДО и лекции группы — прямо в Telegram.">
+<meta name="theme-color" content="#F3F0E8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1A1916" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="/site/fonts/serif-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/site/fonts/sans-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/site/site.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="capy" viewBox="55 40 400 430"><path fill="currentColor" d="M321 450l-36 13-39 3-8-3 2-5 13-11 29-3 21-6 6 0 13 7zM164 387l5-2 25 11 23 7 21 33 1 8-16 13-27-7-30-23-12-19-1-9zM382 375l-4 16-19 30-13 11-6 3-25-5-1-5 7-18 4-24 18-12 21-21 6 1 11 5zM233 295l3 26 4 5 16 15 4 13-1 6-6 6-32 26-21-5-27-13-4-11-6-23-1-18 4-7 19-20 19-12zM306 268l18 7 22 12 5 8 6 25 1 20-15 17-25 17-6-1-38-15-5-11 1-6 19-7 14-20 0-9-8-31 0-5 3-2zM194 275l-15 11-23 24-11-2-1-5 2-5 20-29 24-25 6-4 4 1zM295 229l27 16 27 10 10 9 0 5-5 5-6 1-47-20-10-16-1-10zM411 91l2 15 10 16 22 68 5 35 0 17-5 11-18 15-12 5-9 3-16-1-18-11-18-17-40-16-27-19-5 9-2 15 7 49 7 25-10 17-10 0-7 4-9 0-4-6-8-7-5-40-7-19-29-33-7 1-12 9-22 22-15 18-11 17-12 28-3 12 2 14 9 13 14 10 2 3-2 7-8 6-5 8-6 1-10-2-7 5-9-1-12-21-9-31-5-33-1-42-11-33-4-24 1-37 7-26 15-32 19-24 20-18 29-17 19-7 31-6 33 0 28 5 42 12 44 16 4 0 11-9 4 4 5 14 11 4 5-1 5-15 10 5zM403 242l0 8 6 7 6 0 2-5-3-11-8-3zM385 171l8 8 2-3-6-17-4-1z"/></symbol>
+</svg>
+
+<header class="top">
+  <a class="mark" href="/about" aria-label="УИБО-бот">
+    <span class="mark-ic"><svg><use href="#capy"/></svg></span>УИБО-бот
+  </a>
+  <nav>
+    <a class="quiet" href="https://t.me/uiboshki_dev" target="_blank" rel="noopener">Канал</a>
+    <a class="btn small" href="https://t.me/UiboshkiBot" target="_blank" rel="noopener">Открыть в Telegram</a>
+  </nav>
+</header>
+
+<main>
+  <section class="hero">
+    <div class="hero-text reveal">
+      <p class="eyebrow">РТУ МИРЭА · УИБО-03-24</p>
+      <h1>Учёба группы — там, где&nbsp;ты и&nbsp;так сидишь</h1>
+      <p class="lead">Расписание, дедлайны и баллы из СДО, файлы курсов и ИИ, который отвечает по нашим лекциям. Бот и приложение — прямо в Telegram.</p>
+      <div class="actions">
+        <a class="btn" href="https://t.me/UiboshkiBot" target="_blank" rel="noopener">Открыть @UiboshkiBot</a>
+        <a class="link" href="https://t.me/uiboshki_dev" target="_blank" rel="noopener">Как это делалось <span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+    <figure class="phone-wrap reveal">
+      <div class="phone" id="phone">
+        <div class="phone-screen">
+          <iframe id="demo" src="/about/demo" title="Приложение УИБО-бота на демо-данных" loading="eager"></iframe>
+        </div>
+      </div>
+      <figcaption>Настоящее приложение на выдуманных данных — нажимай что угодно</figcaption>
+    </figure>
+  </section>
+
+  <section class="block" id="schedule">
+    <div class="block-head reveal">
+      <p class="eyebrow">Расписание МИРЭА</p>
+      <h2>Любая группа, преподаватель или&nbsp;аудитория</h2>
+      <p class="sub">Работает по-настоящему, прямо здесь. В боте — то же самое, плюс своё расписание с напоминаниями. И с включённым КВН тоже.</p>
+    </div>
+    <div class="finder reveal">
+      <label class="field">
+        <span class="sr">Кого ищем</span>
+        <input id="q" type="search" placeholder="УИБО-03-24, Иванов, А-17…" autocomplete="off" spellcheck="false">
+      </label>
+      <div id="results" class="results" role="listbox" aria-label="Найдено"></div>
+      <div id="week" class="week" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section class="block" id="inside">
+    <div class="split">
+      <div class="block-head reveal">
+        <p class="eyebrow">Что внутри</p>
+        <h2>Четыре вещи, ради которых я его открываю</h2>
+      </div>
+      <ol class="list reveal">
+        <li><span class="n">01</span><div><h3>Сегодня</h3><p>Пары с аудиториями, что идёт сейчас, погода и какие дедлайны уже горят. Утром — сводка в личку.</p></div></li>
+        <li><span class="n">02</span><div><h3>СДО</h3><p>Баллы по каждому предмету, сколько осталось до зачёта или «4», правило 75&nbsp;% и посещения. Работы сдаются прямо из Telegram.</p></div></li>
+        <li><span class="n">03</span><div><h3>Лекции</h3><p>Все файлы курсов по предметам и типам. Конспект любой лекции — одной кнопкой.</p></div></li>
+        <li><span class="n">04</span><div><h3>ИИ по нашим лекциям</h3><p>Спрашиваешь своими словами — он ищет по смыслу и показывает слайд, откуда взял ответ.</p></div></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="note reveal">
+    <blockquote>Делаю это в&nbsp;первую очередь для&nbsp;себя — и&nbsp;для&nbsp;группы. Сломалось или&nbsp;придумал, как лучше, — напиши.</blockquote>
+    <p class="who">Никита, староста УИБО-03-24 · <a href="https://t.me/Partykq" target="_blank" rel="noopener">@Partykq</a></p>
+  </section>
+</main>
+
+<footer class="foot"><div>
+  <span>УИБО-03-24 · РТУ МИРЭА · 2026</span>
+  <span><a href="https://t.me/UiboshkiBot" target="_blank" rel="noopener">Бот</a> · <a href="https://t.me/uiboshki_dev" target="_blank" rel="noopener">Канал</a></span>
+</div></footer>
+
+<script src="/site/site.js"></script>
+</body>
+</html>
