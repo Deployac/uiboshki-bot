@@ -511,6 +511,18 @@
   .chat-head-btns { display: inline-flex; gap: 14px; }
   .msg .msg-src { margin-top: 8px; font-size: 12px; color: var(--hint); line-height: 1.5; }
   .msg .msg-src button { background: none; border: none; padding: 0; color: var(--accent); font-size: 12px; font-weight: 600; }
+  .msg .msg-src.pages { display: flex; flex-wrap: wrap; gap: 6px; }
+  .msg .msg-src.pages button { background: rgba(124,127,245,.14); color: var(--accent); border-radius: 8px; padding: 4px 8px; font-weight: 700; display: inline-flex; align-items: center; gap: 4px; }
+  .msg .msg-src.pages span { align-self: center; }
+  .msg .cite { background: rgba(124,127,245,.18); color: var(--accent); border: none; border-radius: 6px; padding: 0 5px; margin: 0 1px;
+               font-size: 11px; font-weight: 800; line-height: 16px; vertical-align: 2px; }
+  .page-img { display: block; width: 100%; border-radius: 12px; margin: 10px 0; background: #fff; }
+  .page-text { white-space: pre-wrap; font-size: 14px; line-height: 1.45; max-height: 46vh; overflow: auto; margin: 10px 0;
+               background: var(--bg-raised); border-radius: 12px; padding: 12px; }
+  .page-text.small { font-size: 12.5px; max-height: 18vh; color: var(--hint); }
+  .page-nav { display: flex; gap: 8px; align-items: stretch; }
+  .page-nav .ghost { flex: 0 0 52px; font-size: 22px; }
+  .page-nav .primary { flex: 1; margin: 0; }
   .quick-replies { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: -2px 0 4px; padding: 0 2px;
                    animation: fadein .25s ease-out; }
   .quick-replies::-webkit-scrollbar { display: none; }

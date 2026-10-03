@@ -94,6 +94,10 @@ if not GROUP_CHAT_ID:
 # смотри актуальный список в Google AI Studio → ключ API → "Copy cURL quickstart".
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+# Поиск по смыслу (semantic_search.py): модель эмбеддингов и длина вектора
+# (Matryoshka — урезается без переобучения; 768 — баланс точности и размера).
+GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")
+GEMINI_EMBED_DIMS = int(os.getenv("GEMINI_EMBED_DIMS", "768"))
 
 # ─── WebApp (Mini App) ─────────────────────────────────────────────────────────
 # HTTPS-адрес, на котором крутится webapp/server.py (см. webapp/README.md).

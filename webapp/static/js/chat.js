@@ -146,6 +146,16 @@ function appendMsg(role, content, reasoning, html, att, scroll = true, files, so
     const textNode = document.createElement("div");
     // html собирает сервер (utils.md_to_tg_html_chunks): всё, кроме <b>/<i>/<code>/<pre>, экранировано
     if (html) textNode.innerHTML = html; else textNode.textContent = content;
+    // номера фрагментов [1], [2] от поиска по смыслу — нажимаемые: страница лекции
+    if (html && sources && sources.some(f => f.n)) {
+      textNode.innerHTML = textNode.innerHTML.replace(/\[(\d{1,2})\]/g, (m, n) =>
+        sources.some(f => f.n === +n) ? '<button class="cite" data-n="' + n + '">' + n + '</button>' : m);
+      textNode.addEventListener("click", e => {
+        const b = e.target.closest(".cite");
+        const f = b && sources.find(x => x.n === +b.dataset.n);
+        if (f) openPage(f.id, f.page);
+      });
+    }
     div.appendChild(textNode);
   }
   // «скинь лк 5 по …» — найденные файлы с теми же кнопками, что во вкладке «Файлы»
@@ -159,9 +169,18 @@ function appendMsg(role, content, reasoning, html, att, scroll = true, files, so
   if (sources && sources.length) {
     const src = document.createElement("div");
     src.className = "msg-src";
-    src.innerHTML = icon("bookOpen", "inl") + sources.slice(0, 4).map(f =>
-      '<button onclick="openFileFromLink(' + f.id + ')">' + escapeHtml(f.title.slice(0, 40)) + '</button>').join(" · ") +
-      (sources.length > 4 ? " · +" + (sources.length - 4) : "");
+    if (sources[0].label) {
+      // поиск по смыслу: «Лекция 5 · слайд 12» → страница; одинаковые места — один чип
+      const seen = new Set(), uniq = sources.filter(f => !seen.has(f.id + ":" + f.page) && seen.add(f.id + ":" + f.page));
+      src.className = "msg-src pages";
+      src.innerHTML = uniq.slice(0, 6).map(f =>
+        '<button onclick="openPage(' + f.id + ',' + f.page + ')">' + icon("bookOpen", "inl") + escapeHtml(f.label) + '</button>').join("") +
+        (uniq.length > 6 ? '<span>+' + (uniq.length - 6) + '</span>' : "");
+    } else {
+      src.innerHTML = icon("bookOpen", "inl") + sources.slice(0, 4).map(f =>
+        '<button onclick="openFileFromLink(' + f.id + ')">' + escapeHtml(f.title.slice(0, 40)) + '</button>').join(" · ") +
+        (sources.length > 4 ? " · +" + (sources.length - 4) : "");
+    }
     div.appendChild(src);
   }
   if (reasoning) {
@@ -423,3 +442,32 @@ function askSubject(entry, att, data) {
   });
   bubble.appendChild(row);
 }
+
+// ── Страница лекции из ответа ИИ (поиск по смыслу) ─────────────────────────
+// Текст страницы — из индекса, у PDF — ещё и сама страница картинкой. Листать
+// соседние; «Открыть файл» — целиком, как во вкладке «Файлы».
+let pageView = null;
+
+async function openPage(id, page) {
+  haptic();
+  pageView = { id: id, page: page };
+  const box = document.getElementById("page-content");
+  box.innerHTML = '<div class="skel" style="height:22px;width:60%"></div><div class="skel" style="height:260px;margin-top:14px"></div>';
+  document.getElementById("page-sheet").classList.add("open");
+  try {
+    const p = await api("/api/files/" + id + "/page/" + page);
+    if (!pageView || pageView.id !== id) return;
+    pageView = p;
+    const where = (p.kind === "слайд" ? "Слайд " : p.kind === "стр." ? "Страница " : "Часть ") + p.page + " из " + p.pages;
+    box.innerHTML = '<h3 style="margin:0 0 2px">' + escapeHtml(p.title) + '</h3><div class="sheet-hint" style="margin-top:0">' + where + '</div>' +
+      (p.image ? '<img class="page-img" src="' + escapeHtml(p.image) + '" alt="' + escapeHtml(where) + '" onerror="this.remove()">' : '') +
+      (p.text ? '<div class="page-text' + (p.image ? ' small' : '') + '">' + escapeHtml(p.text) + '</div>' : '') +
+      '<div class="page-nav"><button class="ghost" ' + (p.page <= 1 ? "disabled" : "") + ' onclick="openPage(' + id + ',' + (p.page - 1) + ')">‹</button>' +
+      '<button class="primary" onclick="closeSheet(\'page-sheet\'); openFileFromLink(' + id + ')">Открыть файл</button>' +
+      '<button class="ghost" ' + (p.page >= p.pages ? "disabled" : "") + ' onclick="openPage(' + id + ',' + (p.page + 1) + ')">›</button></div>';
+  } catch (e) {
+    box.innerHTML = '<div class="empty">Не открылось: ' + escapeHtml(e.message) + '</div>' +
+      '<button class="primary" onclick="closeSheet(\'page-sheet\'); openFileFromLink(' + id + ')">Открыть файл целиком</button>';
+  }
+}
+
