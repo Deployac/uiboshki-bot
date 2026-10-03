@@ -37,6 +37,27 @@
     downloadFile: noop, addToHomeScreen: noop, checkHomeScreenStatus: (cb) => cb && cb("unsupported"),
   } };
 
+  // Телефон на сайте — iframe. iOS по-своему считает высоту iframe и место
+  // для position: fixed: на коротком дне нижняя панель уезжала вверх, под ней
+  // была чёрная пустота, а кнопки переставали нажиматься (живой тест 04.10).
+  // Поэтому в демо прокручивается не окно, а body внутри экрана фиксированной
+  // высоты; прокрутку приложения (window.scrollTo / scrollY) ведём туда же.
+  const style = document.createElement("style");
+  style.textContent = "html{height:100%;overflow:hidden}" +
+    "body{height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}";
+  document.head.appendChild(style);
+  const scroller = () => document.body || document.documentElement;
+  window.scrollTo = function (x, y) {
+    const b = scroller();
+    if (typeof x === "object" && x) b.scrollTo(x);
+    else b.scrollTo(x || 0, y || 0);
+  };
+  window.scrollBy = function (x, y) { scroller().scrollBy(x, y); };
+  try {
+    Object.defineProperty(window, "scrollY", { configurable: true, get: () => scroller().scrollTop });
+    Object.defineProperty(window, "pageYOffset", { configurable: true, get: () => scroller().scrollTop });
+  } catch (e) {}
+
   const realFetch = window.fetch.bind(window);
   const fixtures = realFetch("site/demo.json").then(r => r.json()).then(d => d.fx);
   const reply = (body, status) => new Response(JSON.stringify(body), {
