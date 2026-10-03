@@ -45,6 +45,8 @@ async def test_check_all(db, monkeypatch):
     assert [u for u, _ in sent] == [1]                       # 2 — первый раз, 3 — выключено
     assert "34 → <b>39</b> (+5)" in sent[0][1]
     assert await db.get_last_scores(2) == {7: 50.0}           # запомнили для следующего раза
+    assert await db.get_last_scores(3) == {7: 1.0}            # тумблер выключен — сообщения нет, а точка
+                                                              # истории есть: по ней считаются посещения
     sent.clear()
     await grade_alerts.check_all(Bot(), pause=0)
     assert sent == []                                         # не изменилось — тишина

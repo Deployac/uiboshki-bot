@@ -17,6 +17,16 @@ async def record(user_id: int, courses: list[dict]):
     scores = {c["id"]: float(c["score"]) for c in courses if c.get("id") is not None and c.get("score") is not None}
     if scores:
         await save_score_points(user_id, today_msk().isoformat(), scores)
+    # баллы за посещаемость отдельно — по их приросту attendance.py видит,
+    # какие лекции засчитаны
+    from database import save_attendance_points
+    att = {}
+    for c in courses:
+        cat = next((k for k in c.get("categories") or [] if "посещ" in (k.get("name") or "").lower()), None)
+        if c.get("id") is not None and cat and cat.get("max") and cat.get("score") is not None:
+            att[c["id"]] = (float(cat["score"]), float(cat["max"]))
+    if att:
+        await save_attendance_points(user_id, today_msk().isoformat(), att)
 
 
 async def series(user_id: int, course_id: int, current: float | None = None) -> dict:

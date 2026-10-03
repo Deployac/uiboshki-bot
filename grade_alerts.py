@@ -43,8 +43,9 @@ def message(diff: list[tuple[dict, float, float]]) -> str:
     return "\n".join(lines)
 
 
-async def check_user(bot, user_id: int, cookie: str) -> bool:
-    """Сверить баллы одного человека; True — сообщение отправлено."""
+async def check_user(bot, user_id: int, cookie: str, notify: bool = True) -> bool:
+    """Сверить баллы одного человека; True — сообщение отправлено. notify=False —
+    только записать точку истории (для посещений, attendance.py)."""
     import sdo_grades
     import sdo_history
     from database import get_last_scores
@@ -53,7 +54,7 @@ async def check_user(bot, user_id: int, cookie: str) -> bool:
     courses = data.get("courses") or []
     diff = changes(await get_last_scores(user_id), courses)
     await sdo_history.record(user_id, courses)
-    if not diff:
+    if not diff or not notify:
         return False
     await bot.send_message(user_id, message(diff), parse_mode="HTML",
                            reply_markup=app_button("🎓 Открыть баллы", "sdo"))
@@ -61,20 +62,23 @@ async def check_user(bot, user_id: int, cookie: str) -> bool:
 
 
 async def check_all(bot, pause: float = PAUSE_SEC):
-    """По расписанию (scheduler.py): все с рабочим входом и включённым тумблером."""
+    """По расписанию (scheduler.py): все с рабочим входом. Сообщение — тем, у
+    кого включён тумблер; остальным только точка истории: по ней видно, какие
+    лекции засчитаны (attendance.py), — а она нужна каждому."""
     import notify_prefs
     from database import get_sdo_sessions, get_user
     from sdo_accounts import decrypt
     for row in await get_sdo_sessions("ok"):
         uid = row["user_id"]
         user = await get_user(uid)
-        if not user or not user.get("subscribed") or not notify_prefs.merge(user.get("notify")).get("grades"):
+        if not user:
             continue
+        notify = bool(user.get("subscribed")) and bool(notify_prefs.merge(user.get("notify")).get("grades"))
         cookie = decrypt(row["cookie_enc"])
         if not cookie:
             continue
         try:
-            await check_user(bot, uid, cookie)
+            await check_user(bot, uid, cookie, notify=notify)
         except Exception as e:          # вход устарел, СДО лежит — молча до следующего раза
             logger.info(f"новые баллы {uid}: {type(e).__name__}")
         if pause:
