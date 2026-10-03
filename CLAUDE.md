@@ -134,6 +134,9 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   `keepalive_due`: 50–59 мин случайно первые 3 раза, потом 55). «📤 Сдать» у
   дедлайна-задания (`mod/assign`) — `sdo_submit.py`: форма editsubmission →
   `repository_ajax.php` → savesubmission → при черновиках confirmsubmit.
+  Что принимает задание (типы «только .zip», число файлов, размер) — с той же
+  формы (`accepted_types`, `/api/sdo/submit-rules`), лист «Сдать» показывает
+  это до выбора файлов и отсекает чужой тип.
 - **Баллы БРС** (`sdo_grades.py`, `js/sdo.js`): журнал курса
   `/grade/report/user/index.php?id=<курс>` своим входом студента → категории,
   сумма, работы текущего контроля (зачтена — балл не ниже проходного, нужно

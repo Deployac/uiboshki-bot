@@ -538,3 +538,17 @@ def test_more_menu_opens_with_cascade_and_respects_reduced_motion():
     # номер плитки для задержки ставится при каждом открытии
     toggle = JS["js/more.js"].split("function toggleMore(show)")[1].split("\n}\n")[0]
     assert 'b.style.setProperty("--i", i)' in toggle
+
+
+# ── Сдача: что принимает задание (живой случай 02.10 — только ZIP) ──
+
+def test_submit_sheet_shows_accepted_types():
+    more = JS["js/more.js"]
+    open_ = more.split("async function openSubmit(")[1].split("\n}\n")[0]
+    assert "loadSubmitRules(submitting)" in open_
+    assert '"/api/sdo/submit-rules?cmid="' in more and "input.accept = rules.accepted.join" in more
+    render = more.split("function renderSubmit(")[1].split("\n}\n")[0]
+    assert render.count("submitRulesHtml()") == 2                      # и до выбора файлов, и после
+    change = more.split('getElementById("submit-file").addEventListener("change"')[1].split("\n});\n")[0]
+    assert "submitExtOk(" in change and "submitMaxMb()" in change      # чужой тип отсекаем до загрузки
+    assert re.search(r"\.sub-rules \{[^}]*border-radius", CSS) and ".sub-rules .exts span.ext" in CSS

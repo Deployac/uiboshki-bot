@@ -251,3 +251,53 @@ async def test_keepalive_not_due_not_checked(db, moodle):
     assert (await db.get_sdo_session(222))["status"] == "ok"
     await sdo_accounts.keepalive_due(None, datetime.fromisoformat(nxt))
     assert (await db.get_sdo_session(222))["status"] == "expired"
+
+
+# ── Какие файлы принимает задание (живой случай 02.10: только ZIP) ───────────
+# Так Moodle 4 пишет под полем файлов: настройки менеджера (accepted_types) и
+# подпись «Допустимые типы файлов».
+ZIP_EDIT_PAGE = EDIT_PAGE.replace('"maxbytes":10485760,', '"maxbytes":10485760,"maxfiles":"1","accepted_types":[".zip"],').replace(
+    "</form>", '<div class="form-filetypes-descriptions w-100"><ul class="list-unstyled unstyled">'
+               '<li>Архив (ZIP) <small class="text-muted muted">.zip</small></li></ul></div></form>')
+
+
+def test_parse_accepted_types():
+    page = sdo_submit.parse_edit_page(ZIP_EDIT_PAGE)
+    assert page["accepted"] == [".zip"] and page["labels"] == ["Архив (ZIP)"] and page["maxfiles"] == 1
+    assert sdo_submit.parse_edit_page(EDIT_PAGE)["accepted"] == []                  # ограничений нет — любые
+    star = EDIT_PAGE.replace('"maxbytes":10485760,', '"maxbytes":10485760,"accepted_types":"*",')
+    assert sdo_submit.parse_edit_page(star)["accepted"] == []
+    # нет настроек менеджера — расширения из подписи
+    only_desc = ZIP_EDIT_PAGE.replace('"accepted_types":[".zip"],', "")
+    assert sdo_submit.parse_edit_page(only_desc)["accepted"] == [".zip"]
+    assert sdo_submit.ext_ok("Работа.ZIP", [".zip"]) and not sdo_submit.ext_ok("work.pdf", [".zip"])
+
+
+@pytest.mark.asyncio
+async def test_wrong_type_refused_before_upload(moodle):
+    moodle.edit = ZIP_EDIT_PAGE
+    with pytest.raises(sdo_submit.SubmitError, match=r"«work\.pdf» не подойдёт: СДО примет здесь только \.zip — упакуй"):
+        await sdo_submit.submit_file(COOKIE, 4242, "work.pdf", b"%PDF-work")
+    assert not any("repository_ajax" in u for _, u, _ in moodle.calls)              # в СДО ничего не грузили
+
+
+@pytest.mark.asyncio
+async def test_submission_rules_and_route(db, moodle, monkeypatch):
+    moodle.edit = ZIP_EDIT_PAGE
+    rules = await sdo_submit.submission_rules(COOKIE, 4242)
+    assert rules == {"accepted": [".zip"], "labels": ["Архив (ZIP)"], "maxfiles": 1, "maxbytes": 10485760}
+
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    did = await db.add_deadline("Практическая работа №3", ASSIGN, "2026-10-05", None, 0, external_id="sdo:1")
+    c, h = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+    assert c.get("/api/sdo/submit-rules", params={"deadline_id": did}, headers=h).status_code == 403   # не подключён
+    await db.save_sdo_session(222, sdo_accounts.encrypt(COOKIE))
+    assert c.get("/api/sdo/submit-rules", params={"deadline_id": did}, headers=h).json()["accepted"] == [".zip"]
+    assert c.get("/api/sdo/submit-rules", params={"cmid": 4242}, headers=h).json()["labels"] == ["Архив (ZIP)"]
+    assert c.get("/api/sdo/submit-rules", params={"deadline_id": 99999}, headers=h).status_code == 404
+
+    moodle.edit = '<div class="alert alert-danger">Срок сдачи истёк</div>'          # сдача закрыта — говорим сразу
+    assert "Срок сдачи истёк" in c.get("/api/sdo/submit-rules", params={"cmid": 4242}, headers=h).json()["closed"]

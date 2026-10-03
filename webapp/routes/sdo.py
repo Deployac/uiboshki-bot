@@ -74,6 +74,31 @@ async def api_sdo_disconnect(user: dict = CurrentUser):
     return await status_for(user["id"])
 
 
+@router.get("/api/sdo/submit-rules")
+async def api_sdo_submit_rules(cmid: int = 0, deadline_id: int = 0, user: dict = CurrentUser):
+    """Что принимает задание — показать в листе «Сдать» до выбора файлов:
+    типы («только .zip»), сколько файлов и какой размер."""
+    import sdo_accounts
+    import sdo_submit
+    from database import get_deadline, set_sdo_status
+    from sdo_parser import SdoSessionExpired
+    if not cmid:
+        d = await get_deadline(deadline_id)
+        if not d or not sdo_submit.can_submit(d):
+            raise HTTPException(status_code=404, detail="это не задание из СДО")
+        cmid = sdo_submit.cmid_of(d["description"])
+    cookie = await sdo_accounts.cookie_for(user["id"])
+    if not cookie:
+        raise HTTPException(status_code=403, detail="сначала подключи СДО: вкладка СДО → Вход")
+    try:
+        return await sdo_submit.submission_rules(cookie, cmid)
+    except SdoSessionExpired:
+        await set_sdo_status(user["id"], "expired")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
+    except sdo_submit.SubmitError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 @router.post("/api/sdo/submit")
 async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     import base64

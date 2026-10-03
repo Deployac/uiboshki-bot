@@ -1035,3 +1035,21 @@
   @media (prefers-reduced-motion: reduce) {
     .more-backdrop.open, .more-backdrop.open .more-pop, .more-backdrop.open .more-grid button { animation: none; }
   }
+
+  /* ── Сдача: что принимает задание («только .zip») — как пишет СДО ── */
+  .sub-rules { display: flex; gap: 12px; align-items: flex-start; background: rgba(124,127,245,.09);
+    border: 1px solid rgba(124,127,245,.25); border-radius: var(--radius-sm); padding: 12px 14px; margin: 0 0 12px; }
+  .sub-rules .ic { flex: none; width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center;
+    justify-content: center; background: rgba(124,127,245,.16); color: var(--accent); }
+  .sub-rules > div { flex: 1; min-width: 0; }
+  .sub-rules b { display: block; font-size: 14px; line-height: 1.35; }
+  .sub-rules .s { color: var(--hint); font-size: 12.5px; line-height: 1.4; margin-top: 4px; }
+  .sub-rules .exts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .sub-rules .exts span { font-size: 12px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+    background: var(--bg-card); border: 1px solid var(--border); color: var(--text); }
+  .sub-rules .exts span.ext { color: var(--accent-2-text); border-color: rgba(67,198,172,.35); }
+  .sub-rules.loading { align-items: center; background: var(--bg-card); border-color: var(--border); }
+  .sub-rules.loading .ic { background: none; color: var(--hint); }
+  .sub-rules.loading .s { margin: 0; }
+  .sub-rules.closed { background: rgba(255,99,99,.08); border-color: rgba(255,99,99,.3); }
+  .sub-rules.closed .ic { background: rgba(255,99,99,.14); color: var(--danger-text); }

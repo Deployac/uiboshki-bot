@@ -175,10 +175,59 @@ async function openSubmit(id, work) {
   haptic();
   if (sdoState.state === "off" || sdoState.state === "expired") await loadSdoStatus();
   if (sdoState.state !== "ok") { openSdoSheet(); return; }
-  submitting = { item: item, files: [], limit: Math.max(1, Math.min(SUBMIT_MAX_FILES, item.limit || SUBMIT_MAX_FILES)) };
-  document.getElementById("submit-file").multiple = submitting.limit > 1;
+  submitting = { item: item, files: [], limit: Math.max(1, Math.min(SUBMIT_MAX_FILES, item.limit || SUBMIT_MAX_FILES)), rules: null };
+  const input = document.getElementById("submit-file");
+  input.multiple = submitting.limit > 1;
+  input.removeAttribute("accept");
   document.getElementById("submit-sheet").classList.add("open");
   renderSubmit();
+  loadSubmitRules(submitting);
+}
+
+// Что принимает задание — СДО честно пишет это под полем файлов («только
+// .zip»); раньше бот этого не показывал, и PDF с Word молча отклонялись.
+async function loadSubmitRules(s) {
+  const it = s.item;
+  let rules;
+  try {
+    rules = await api("/api/sdo/submit-rules?cmid=" + (it.cmid || 0) + "&deadline_id=" + (it.id || 0));
+  } catch (e) {
+    rules = { error: e.message };
+  }
+  if (submitting !== s) return;                     // лист уже закрыли или открыли другое задание
+  s.rules = rules;
+  if (rules.maxfiles > 0) s.limit = Math.max(1, Math.min(s.limit, rules.maxfiles));
+  const input = document.getElementById("submit-file");
+  input.multiple = s.limit > 1;
+  if (rules.accepted && rules.accepted.length) input.accept = rules.accepted.join(",");   // выбор файла сразу по типу
+  renderSubmit();
+}
+
+function submitMaxMb() {
+  const r = submitting.rules;
+  const mb = r && r.maxbytes > 0 ? Math.max(1, Math.floor(r.maxbytes / 1024 / 1024)) : SUBMIT_MAX_MB;
+  return Math.min(mb, SUBMIT_MAX_MB);
+}
+
+function submitExtOk(name) {
+  const acc = (submitting.rules && submitting.rules.accepted) || [];
+  return !acc.length || acc.some(e => name.toLowerCase().endsWith(e));
+}
+
+function submitRulesHtml() {
+  const r = submitting.rules;
+  if (!r) return '<div class="sub-rules loading"><span class="ic">' + icon("clock") + '</span><div class="s">Смотрю в СДО, какие файлы принимает задание…</div></div>';
+  if (r.error) return '';                           // не узнали — не мешаем, СДО скажет при загрузке
+  if (r.closed) return '<div class="sub-rules closed"><span class="ic">' + icon("lock") + '</span><div><b>Сдать не выйдет</b><div class="s">' + escapeHtml(r.closed) + '</div></div></div>';
+  const acc = r.accepted || [];
+  const what = acc.length ? (r.labels && r.labels.length ? r.labels.join(", ") : acc.join(", ")) : "Любые файлы";
+  const lim = submitting.limit;
+  const meta = ["до " + lim + " " + plural(lim, "файла", "файлов", "файлов"), "до " + submitMaxMb() + " МБ"];
+  return '<div class="sub-rules"><span class="ic">' + icon("doc") + '</span><div><b>' + (acc.length ? "Принимает: " : "") + escapeHtml(what) + '</b>' +
+    '<div class="exts">' + (acc.length ? '<span class="ext">' + escapeHtml(acc.join(" ")) + '</span>' : '') +
+      meta.map(m => '<span>' + escapeHtml(m) + '</span>').join("") + '</div>' +
+    (acc.length === 1 && acc[0] === ".zip" ? '<div class="s">Упакуй работу в архив: в «Файлах» iPhone — удержи файл → «Сжать».</div>' : '') +
+    '</div></div>';
 }
 
 function submitHead() {
@@ -214,16 +263,17 @@ function renderSubmit(state, info) {
       '<button class="ghost" onclick="closeSheet(\'submit-sheet\')">Готово</button></div>';
     return;
   }
+  const closed = !!(submitting.rules && submitting.rules.closed);
   if (!n) {
-    box.innerHTML = submitHead() +
-      '<div class="fpick" onclick="pickSubmitFiles()"><span class="ic">' + icon("clip") + '</span>' +
+    box.innerHTML = submitHead() + submitRulesHtml() +
+      (closed ? '' : '<div class="fpick" onclick="pickSubmitFiles()"><span class="ic">' + icon("clip") + '</span>' +
       '<div><b>' + (lim > 1 ? "Выбрать файлы" : "Выбрать файл") + '</b><div class="s">' +
-      (lim > 1 ? "можно сразу до " + lim + " · " : "") + 'до ' + SUBMIT_MAX_MB + ' МБ каждый</div></div><span class="go">Обзор</span></div>' +
+      (lim > 1 ? "можно сразу до " + lim + " · " : "") + 'до ' + submitMaxMb() + ' МБ' + (lim > 1 ? ' каждый' : '') + '</div></div><span class="go">Обзор</span></div>') +
       '<button class="primary" disabled>Загрузить в СДО</button>';
     return;
   }
   const busy = state === "sending";
-  box.innerHTML = submitHead() +
+  box.innerHTML = submitHead() + submitRulesHtml() +
     (lim > 1 ? '<div class="fcount">' + Array.from({ length: lim }, (_, i) => '<i class="' + (i < n ? "on" : "") + '"></i>').join("") + '</div>' : '') +
     files.map((f, i) => '<div class="fpick chosen"><span class="ic">' + fileIconFor(f.name) + '</span><div><b>' + escapeHtml(f.name) + '</b>' +
       '<div class="s">' + fileSize(f.size) + '</div></div>' +
@@ -253,7 +303,12 @@ document.getElementById("submit-file").addEventListener("change", async e => {
   const room = submitting.limit - submitting.files.length;
   if (picked.length > room) showToast("Можно ещё " + room + " — остальные не взял");
   for (const file of picked.slice(0, room)) {
-    if (file.size > SUBMIT_MAX_MB * 1024 * 1024) { showToast("«" + file.name + "» больше " + SUBMIT_MAX_MB + " МБ"); continue; }
+    if (!submitExtOk(file.name || "")) {
+      const acc = submitting.rules.accepted;
+      showToast("«" + file.name + "» не подойдёт: СДО примет только " + acc.join(", ") + (acc.join() === ".zip" ? " — упакуй в архив" : ""));
+      continue;
+    }
+    if (file.size > submitMaxMb() * 1024 * 1024) { showToast("«" + file.name + "» больше " + submitMaxMb() + " МБ"); continue; }
     submitting.files.push({ name: file.name || "работа", size: file.size, data: await readAsBase64(file) });
   }
   haptic();
