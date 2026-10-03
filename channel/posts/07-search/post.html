@@ -48,7 +48,7 @@ END:VEVENT</code></pre>
 
 <b>🧵 Швы</b>
 Перебор — вежливый, по 4 запроса одновременно. Упрощённо:
-<pre><code class="language-python">while misses < 300:
+<pre><code class="language-python">while misses &lt; 300:
   ids = range(next_id, next_id + 20)
   for i, title in await scan(ids):
     if title:

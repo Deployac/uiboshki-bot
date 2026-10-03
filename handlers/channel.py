@@ -35,7 +35,12 @@ async def _preview(bot, chat_id, posts, idx, done):
     if problem:
         await bot.send_message(chat_id, f"⚠️ Пост {idx + 1} «{esc(post['title'])}»: {esc(problem)}", parse_mode="HTML")
         return
-    await send_post(bot, chat_id, post, config.WEBAPP_URL)
+    try:
+        await send_post(bot, chat_id, post, config.WEBAPP_URL)
+    except Exception as e:          # битая разметка поста — понятным текстом, а не общим алертом
+        await bot.send_message(chat_id, f"⚠️ Пост {idx + 1} «{esc(post['title'])}» не отправился: "
+                               f"{esc(str(e))[:300]}", parse_mode="HTML")
+        return
     await bot.send_message(chat_id, f"👆 Превью · пост {idx + 1} из {len(posts)}", reply_markup=_kb(post["slug"], post["slug"] in done))
 
 
