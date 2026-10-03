@@ -93,7 +93,7 @@ function showSdoView(name) {
 function sdoBack() {
   haptic();
   if (sdoView === "task") showSdoView("tk");
-  else if (sdoView === "tk") showSdoView("subject");
+  else if (sdoView === "tk" || sdoView === "pos") showSdoView("subject");
   else showSdoView("sdo");
 }
 
@@ -248,7 +248,7 @@ async function openSubject(id) {
   else document.getElementById("subject-body").innerHTML = '<div class="skel" style="height:300px"></div>';
   try {
     sdoCourse = await api("/api/sdo/grades/" + id);
-    if (sdoView !== "sdo") { renderSubject(); if (sdoView === "tk") renderTk(); }
+    if (sdoView !== "sdo") { renderSubject(); if (sdoView === "tk") renderTk(); if (sdoView === "pos") renderPos(); }
   } catch (e) {
     if (!base) document.getElementById("subject-body").innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
   }
@@ -261,11 +261,15 @@ function renderSubject() {
   const seg = c.categories.filter(k => k.score > 0)
     .map(k => '<i style="width:' + Math.min(100, k.score / c.max * 100).toFixed(1) + '%;background:' + catColor(k.name) + '"></i>').join("");
   const rows = c.categories.map((k, i) => {
-    const go = k.tk && c.works_total;
-    return '<div class="cat-row' + (go ? ' go' : '') + '"' + (go ? ' onclick="openTk()"' : '') + '>' +
+    const pos = !k.tk && /посещ/i.test(k.name) && c.attendance;
+    const go = (k.tk && c.works_total) || pos;
+    // посещаемость — обычная строка с баллами; лекции — по нажатию, на экране «Посещения»
+    const share = k.max ? k.score / k.max : 0;
+    return '<div class="cat-row' + (go ? ' go' : '') + '"' + (go ? ' onclick="' + (pos ? 'openPos()' : 'openTk()') + '"' : '') + '>' +
       '<span class="d" style="background:' + catColor(k.name) + '"></span><span class="nm">' + escapeHtml(k.name) + '</span>' +
-      '<span class="mb"><i style="width:' + (k.max ? Math.min(100, k.score / k.max * 100) : 0) + '%;background:' + catColor(k.name) + '"></i></span>' +
-      '<span class="v">' + fmtNum(k.score) + '<small>/' + fmtNum(k.max) + '</small></span><span class="chev">' + (go ? '›' : '') + '</span></div>';
+      '<span class="mb"><i style="width:' + Math.min(100, share * 100).toFixed(1) + '%;background:' + catColor(k.name) + '"></i></span>' +
+      '<span class="v">' + fmtNum(k.score) + '<small>/' + fmtNum(k.max) + '</small></span>' +
+      '<span class="chev">' + (go ? '›' : '') + '</span></div>';
   }).join("");
   document.getElementById("subject-body").innerHTML =
     '<h2 class="section" style="margin-top:6px"><span>' + escapeHtml(c.title) + '</span><span class="stat">' + (c.kind === "credit" ? "ЗАЧ" : "ЭКЗ") + '</span></h2>' +
@@ -426,6 +430,101 @@ function renderTk() {
         '<span class="ws"><b>' + (w.grade != null ? fmtNum(w.grade) : "—") + '</b>/' + fmtNum(w.max || 0) +
         (w.pass_mark != null ? '<small>зачёт ' + fmtNum(w.pass_mark) + '</small>' : '') + '</span><span class="chev">›</span></div>';
     }).join("") : '<div class="empty">Тут пусто</div>') + '</div>';
+}
+
+// ── Посещения (attendance.py) ─────────────────────────────────────────────
+// Пульс МИРЭА сервер бота не пускает, поэтому посещения лекций — из баллов
+// за посещаемость в СДО: они делятся поровну на лекции семестра (практики не
+// в счёт), уважительный пропуск выбывает из деления. Какие лекции засчитаны —
+// по приросту баллов в истории.
+
+// [значок, подпись, цвет в полоске]; значки — как в журнале: «+», «Н», «У»
+const POS_LOOK = {
+  ok: ["+", "был", "g"], excused: ["У", "уважительная причина", "y"], miss: ["Н", "не был", "r"],
+  wait: ["", "ждём отметку", "b"], before: ["?", "отметь сам", "q"], future: ["", "впереди", ""],
+};
+
+function openPos() {
+  haptic();
+  document.getElementById("pos-back").innerHTML = icon("back") + " " + escapeHtml(sdoCourse ? sdoCourse.title : "Предмет");
+  showSdoView("pos");
+  renderPos();
+}
+
+function lectureWord(n) {             // «2 лекции», «5 лекций»
+  const d = n % 10, h = n % 100;
+  return d === 1 && h !== 11 ? "лекция" : d >= 2 && d <= 4 && (h < 12 || h > 14) ? "лекции" : "лекций";
+}
+
+function lectureGen(n) {              // «из 1 лекции», «из 2 лекций»
+  return n % 10 === 1 && n % 100 !== 11 ? "лекции" : "лекций";
+}
+
+function renderPos() {
+  const a = sdoCourse && sdoCourse.attendance;
+  const box = document.getElementById("pos-body");
+  if (!a) { box.innerHTML = capyEmpty("Посещения не посчитать", "У предмета нет строки «Посещаемость» или его нет в расписании"); return; }
+  const head = '<h2 class="section" style="margin-top:6px"><span>Посещения</span><span class="stat">лекции</span></h2>';
+  if (!a.ok) {
+    box.innerHTML = head + '<div class="card"><div class="sd-head"><span class="n">' + fmtNum(a.score) + '</span><span class="of">из ' + fmtNum(a.max) + '</span>' +
+      '<div class="st">лекций<b>' + a.past + ' из ' + a.total + ' прошло</b></div></div>' +
+      '<p class="sheet-hint">' + icon("warning", "inl") + ' ' + escapeHtml(a.why[0].toUpperCase() + a.why.slice(1)) + '. Посчитать, какие лекции засчитаны, не выйдет.</p></div>';
+    return;
+  }
+  const L = a.lectures;
+  const has = st => L.some(x => x.status === st);
+  const legend = ["ok", "excused", "miss", "wait", "before", "future"].filter(has)
+    .map(st => '<span><i class="' + POS_LOOK[st][2] + '"></i>' + POS_LOOK[st][1] + '</span>').join("");
+  const fmtDay = iso => { const p = iso.split("-"); return +p[2] + " " + MONTHS_SHORT[+p[1] - 1]; };
+  const lines = [];
+  lines.push(icon("checkCircle", "inl") + ' Посещено <b>' + a.attended + ' из ' + a.past + '</b> ' + (a.past % 10 === 1 && a.past % 100 !== 11 ? "прошедшей" : "прошедших") + ' ' + lectureGen(a.past) +
+    (a.excused ? ' · по уважительной причине <b>' + a.excused + '</b>' : ''));
+  if (a.waiting) lines.push(icon("clock", "inl") + ' ' + a.waiting + ' ' + lectureWord(a.waiting) + ' — ждём, пока преподаватель поставит отметку');
+  if (a.left) lines.push(icon("calendar", "inl") + ' Впереди ' + a.left + ' ' + lectureWord(a.left) + ' — ещё до <b>' + fmtNum(a.can_get) + '</b> ' + (a.can_get === 1 ? "балла" : "баллов"));
+  if (a.before) {
+    const b = a.before, open = b.left_ok || b.left_excused;
+    lines.push(icon("edit", "inl") + ' До ' + fmtDay(b.day) + ' бот баллы не записывал: из ' + b.past + ' ' + lectureGen(b.past) +
+      ' по баллам посещено ' + b.attended + (b.excused ? ', по уважительной ' + b.excused : '') + '. ' +
+      (open ? 'Отметь сам, на каких был: осталось <b>+' + b.left_ok + '</b>' + (b.left_excused ? ' и <b>У ' + b.left_excused + '</b>' : '') +
+       ' — нажми на лекцию со знаком «?».' : 'Отмечено — на остальных «Н». Нажми на свою отметку, чтобы снять.'));
+  }
+  box.innerHTML = head +
+    '<div class="card"><div class="sd-head"><span class="n">' + a.attended + '</span><span class="of">из ' + a.total + ' ' + lectureGen(a.total) + '</span>' +
+      '<div class="st">баллы<b>' + fmtNum(a.score) + ' из ' + fmtNum(a.max) + ' · ' + fmtNum(a.unit) + ' за лекцию</b></div></div>' +
+      '<div class="tkbar">' + L.map(x => '<i class="' + POS_LOOK[x.status][2] + '"></i>').join("") + '</div>' +
+      '<div class="tklegend">' + legend + '</div>' +
+      '<div class="pos-lines">' + lines.map(t => '<div>' + t + '</div>').join("") + '</div></div>' +
+    '<div class="card pad">' + L.map(x => {
+      const look = POS_LOOK[x.status];
+      // свои отметки — только у лекций до начала истории (знак «?» или уже свой)
+      const editable = x.status === "before" || x.manual || (x.status === "miss" && a.before && L.some(y => y.manual) && x.date <= a.before.day);
+      const sign = x.status === "wait" ? icon("clock") : look[0];
+      return '<div class="wrow ' + x.status + (editable ? ' edit' : '') + '"' + (editable ? ' onclick="markLecture(\'' + x.date + '\')"' : '') + '>' +
+        '<span class="wi">' + sign + '</span>' +
+        '<span class="wn">Лекция ' + x.n + '<small>' + humanDate(x.date) + ' · ' + look[1] + (x.manual ? ' · твоя отметка' : '') + '</small></span>' +
+        '<span class="ws">' + (x.status === "ok" ? '<b>+' + fmtNum(a.unit) + '</b>' : '') + '</span></div>';
+    }).join("") + '</div>';
+}
+
+// Своя отметка у лекции до начала истории: «?» → «+» (если плюсики ещё
+// остались по баллам) → «У» (если есть ушки) → снять. Сервер проверяет то же.
+async function markLecture(day) {
+  const a = sdoCourse.attendance, x = a.lectures.find(l => l.date === day);
+  if (!x) return;
+  haptic();
+  const b = a.before || { left_ok: 0, left_excused: 0, excused: 0 };
+  let next = null;
+  if (x.manual && x.status === "ok") next = b.excused && b.left_excused ? "excused" : null;
+  else if (x.manual) next = null;
+  else if (b.left_ok) next = "ok";
+  else if (b.left_excused) next = "excused";
+  else { showToast("По баллам посещено " + b.attended + " — сначала сними плюсик с другой лекции"); return; }
+  try {
+    sdoCourse.attendance = await api("/api/sdo/attendance/" + sdoCourse.id, { method: "POST", body: JSON.stringify({ day: day, mark: next }) });
+    renderPos();
+  } catch (e) {
+    showToast(e.message);
+  }
 }
 
 function tapWork(i) {

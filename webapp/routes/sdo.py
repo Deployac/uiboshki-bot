@@ -193,7 +193,44 @@ async def api_sdo_course(course_id: int, user: dict = CurrentUser):
         data = {**data, "history": await sdo_history.series(user["id"], course_id, data.get("score"))}
     except Exception as e:
         logger.info(f"история баллов: {e}")
+    try:
+        import attendance           # посещения лекций из баллов за посещаемость
+        data = {**data, "attendance": await attendance.for_course(user["id"], data)}
+    except Exception as e:
+        logger.info(f"посещения: {type(e).__name__}: {e}")
     return data
+
+
+class AttendanceMark(BaseModel):
+    day: str
+    mark: str | None = None      # "ok" — был, "excused" — уважительная, None — снять
+
+
+@router.post("/api/sdo/attendance/{course_id}")
+async def api_attendance_mark(course_id: int, body: AttendanceMark, user: dict = CurrentUser):
+    """Своя отметка для лекции до начала истории посещаемости: какие именно
+    лекции засчитаны, по баллам не видно — человек отмечает сам, но не больше,
+    чем показывают баллы. Только для показа в боте, на СДО не влияет."""
+    import attendance
+    import sdo_grades
+    from database import get_attendance_marks, set_attendance_mark
+    from sdo_parser import SdoSessionExpired
+    cookie = await _sdo_cookie(user["id"])
+    try:
+        course = await sdo_grades.course_detail(user["id"], cookie, course_id)
+    except LookupError:
+        raise HTTPException(status_code=404, detail="курс не найден")
+    except SdoSessionExpired:
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
+    except Exception:
+        raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
+    blank = await attendance.for_course(user["id"], course, manual={})
+    marks = await get_attendance_marks(user["id"], course_id)
+    why = attendance.check_mark(blank, marks, body.day, body.mark)
+    if why:
+        raise HTTPException(status_code=400, detail=why)
+    await set_attendance_mark(user["id"], course_id, body.day, body.mark)
+    return await attendance.for_course(user["id"], course)
 
 
 # ── Задание СДО: описание, файлы преподавателя, сдача ────────────────────────

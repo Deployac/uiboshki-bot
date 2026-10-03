@@ -689,6 +689,16 @@
   .tkbar i.g, .tklegend i.g { background: var(--ok); }
   .tkbar i.r, .tklegend i.r { background: var(--danger); }
   .tkbar i.b, .tklegend i.b { background: var(--accent); }
+  .tkbar i.y, .tklegend i.y { background: var(--warn); }
+  .tkbar i.q, .tklegend i.q { background: repeating-linear-gradient(45deg, var(--hint) 0 2px, transparent 2px 4px); opacity: .55; }
+  .pos-lines { display: grid; gap: 6px; margin-top: 12px; font-size: 13px; line-height: 1.35; }
+  .pos-lines .ico { color: var(--hint); }
+  .wrow.excused .wi { background: rgba(255,178,56,.16); color: var(--warn-text); }
+  .wrow.future { opacity: .5; }
+  .wrow.before .wi { border: 1.5px dashed var(--hint); background: none; }
+  .wrow.ok .wi, .wrow.miss .wi, .wrow.excused .wi, .wrow.before .wi { font-size: 15px; }
+  .wrow:not(.edit):active { opacity: 1; }
+  .wrow.edit { cursor: pointer; }
   .tklegend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--hint); }
   .tklegend i { display: inline-block; width: 7px; height: 7px; border-radius: 2px; margin-right: 4px; }
   .tk-chips { margin-top: 12px; }

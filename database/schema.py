@@ -256,6 +256,30 @@ async def init_db():
                 PRIMARY KEY (user_id, course_id, day)
             )
         """)
+        # Баллы за посещаемость по дням (attendance.py): по приросту видно,
+        # какие лекции засчитаны. Только баллы, без отметок по датам.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sdo_attendance_history (
+                user_id   INTEGER NOT NULL,
+                course_id INTEGER NOT NULL,
+                day       TEXT NOT NULL,
+                score     REAL NOT NULL,
+                max       REAL NOT NULL,
+                PRIMARY KEY (user_id, course_id, day)
+            )
+        """)
+        # Свои отметки «был / по уважительной» для лекций до начала истории
+        # посещаемости (attendance.py) — только для показа в боте, на СДО не
+        # влияют.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS attendance_marks (
+                user_id   INTEGER NOT NULL,
+                course_id INTEGER NOT NULL,
+                day       TEXT NOT NULL,
+                mark      TEXT NOT NULL,
+                PRIMARY KEY (user_id, course_id, day)
+            )
+        """)
         # Последний удачный календарь группы (schedule_parser.fetch_schedule_raw):
         # если зеркало МИРЭА не отвечает, а бот только что перезапустился —
         # показываем его, а не ошибку.
