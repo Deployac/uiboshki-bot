@@ -316,17 +316,21 @@ document.getElementById("submit-file").addEventListener("change", async e => {
 });
 
 async function sendSubmission() {
+  // Пока файл грузится, лист могли закрыть и открыть «Сдать» у другого
+  // задания — тогда итог этой сдачи только тостом, чужой лист не трогаем.
+  const s = submitting;
   renderSubmit("sending");
   try {
     const res = await api("/api/sdo/submit", { method: "POST", body: JSON.stringify({
-      deadline_id: submitting.item.id || 0, cmid: submitting.item.cmid || 0,
-      files: submitting.files.map(f => ({ name: f.name, data: f.data })) }) });
+      deadline_id: s.item.id || 0, cmid: s.item.cmid || 0,
+      files: s.files.map(f => ({ name: f.name, data: f.data })) }) });
     haptic("success");
-    renderSubmit("done", res);
-    if (submitting.item.cmid && typeof refreshTk === "function") refreshTk();
+    if (submitting === s) renderSubmit("done", res);
+    else showToast("✓ «" + s.item.subject + "» сдано");
+    if (s.item.cmid && typeof refreshTk === "function") refreshTk();
   } catch (e) {
-    renderSubmit();
-    showToast("⚠️ " + e.message);
+    if (submitting === s) { renderSubmit(); showToast("⚠️ " + e.message); }
+    else showToast("⚠️ «" + s.item.subject + "» не сдано: " + e.message);
     if (/подключи/.test(e.message)) { loadSdoStatus(); }
   }
 }
@@ -487,11 +491,28 @@ function renderNotify() {
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';
 }
 
-async function saveNotify(body) {
+// Быстрые нажатия (Пн, Вт, Ср подряд) терялись: каждый запрос нёс список
+// дней из ещё не обновлённого notifyState. Теперь меняем у себя сразу, а
+// запросы уходят по очереди; ответ сервера берём от последнего.
+let notifyQueue = Promise.resolve();
+let notifyPending = 0;
+
+function saveNotify(body) {
   haptic();
-  try { notifyState = await api("/api/notify", { method: "POST", body: JSON.stringify(body) }); }
-  catch (e) { showToast("Не сохранилось: " + e.message); }
+  if (body.subscribed !== undefined) notifyState.subscribed = body.subscribed;
+  if (body.prefs) Object.assign(notifyState.prefs, body.prefs);
   renderNotify();
+  notifyPending++;
+  notifyQueue = notifyQueue.then(async () => {
+    let fresh = null;
+    try { fresh = await api("/api/notify", { method: "POST", body: JSON.stringify(body) }); }
+    catch (e) {
+      showToast("Не сохранилось: " + e.message);
+      try { fresh = await api("/api/notify"); } catch (e2) {}     // что на самом деле сохранено
+    }
+    if (--notifyPending === 0 && fresh) { notifyState = fresh; renderNotify(); }
+  });
+  return notifyQueue;
 }
 
 function toggleNotifyMaster() { saveNotify({ subscribed: !notifyState.subscribed }); }

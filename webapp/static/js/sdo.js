@@ -5,6 +5,9 @@ let sdoData = null;            // /api/sdo/grades
 let sdoCourse = null;          // /api/sdo/grades/{id}
 let sdoView = "sdo";           // sdo → subject → tk
 let tkFilter = "all";
+// Номер последнего открытия предмета: ответ старого запроса не затирает
+// предмет, открытый после него (иначе «Сдать» и отметка лекции уходили в чужой курс).
+let sdoCourseReq = 0;
 
 // Цвет категории БРС — по названию (названия берутся из журнала курса)
 function catColor(name) {
@@ -105,8 +108,11 @@ function showSdoView(name) {
 function sdoBack() {
   haptic();
   if (sdoView === "task") showSdoView("tk");
-  else if (sdoView === "tk" || sdoView === "pos") showSdoView("subject");
-  else showSdoView("sdo");
+  else if (sdoView === "tk" || sdoView === "pos") {
+    showSdoView("subject");
+    // ТК мог открыться с пары на главной, минуя экран предмета, — там старый или пустой предмет
+    if (sdoCourse) renderSubject();
+  } else showSdoView("sdo");
 }
 
 // ── Список предметов ──────────────────────────────────────────────────────
@@ -223,6 +229,7 @@ async function openLessonSdo(title) {
   // Сразу экран «Текущий контроль» (сначала скелетон), без промежуточного
   // экрана предмета: данные сводки уже есть, подробности догружаются тихо.
   haptic();
+  const req = ++sdoCourseReq;
   const box = document.getElementById("tk-body");
   if (!sdoData) {
     sdoCourse = null;
@@ -231,9 +238,11 @@ async function openLessonSdo(title) {
     showSdoView("tk");
     try { sdoData = await api("/api/sdo/grades"); }
     catch (e) {
+      if (req !== sdoCourseReq) return;                         // уже открыли другое
       if (/подключи/.test(e.message)) { openSdo(); return; }   // покажет «Подключить СДО»
       showSdoView("sdo"); showToast("СДО не ответил: " + e.message); return;
     }
+    if (req !== sdoCourseReq) return;
   }
   const c = matchCourse(title, sdoData.courses);
   if (!c) { if (sdoView === "tk") showSdoView("sdo"); showToast("В СДО нет журнала с баллами по этому предмету"); return; }
@@ -245,7 +254,10 @@ async function openLessonSdo(title) {
   } else openTk();
   try {
     const full = await api("/api/sdo/grades/" + c.id);
-    if (sdoCourse && sdoCourse.id === c.id) { sdoCourse = full; if (sdoView === "tk") renderTk(); }
+    if (req !== sdoCourseReq) return;
+    sdoCourse = full;
+    if (sdoView === "tk") renderTk();
+    else if (sdoView === "subject") renderSubject();
   } catch (e) {}
 }
 
@@ -253,15 +265,19 @@ async function openLessonSdo(title) {
 
 async function openSubject(id) {
   haptic();
+  const req = ++sdoCourseReq;
   const base = sdoData && sdoData.courses.find(c => c.id === id);
   sdoCourse = base ? Object.assign({ id: id }, base) : null;
   showSdoView("subject");
   if (sdoCourse) renderSubject();
   else document.getElementById("subject-body").innerHTML = '<div class="skel" style="height:300px"></div>';
   try {
-    sdoCourse = await api("/api/sdo/grades/" + id);
+    const full = await api("/api/sdo/grades/" + id);
+    if (req !== sdoCourseReq) return;                    // пока ждали, открыли другой предмет
+    sdoCourse = full;
     if (sdoView !== "sdo") { renderSubject(); if (sdoView === "tk") renderTk(); if (sdoView === "pos") renderPos(); }
   } catch (e) {
+    if (req !== sdoCourseReq) return;
     if (!base) document.getElementById("subject-body").innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
   }
 }
@@ -446,8 +462,11 @@ function openTk(filter) {
 
 async function refreshTk() {
   if (!sdoCourse) return;
+  const req = sdoCourseReq;
   try {
-    sdoCourse = await api("/api/sdo/grades/" + sdoCourse.id);
+    const full = await api("/api/sdo/grades/" + sdoCourse.id);
+    if (req !== sdoCourseReq) return;
+    sdoCourse = full;
     if (sdoView === "tk") renderTk();
     if (sdoView === "subject") renderSubject();
   } catch (e) {}
@@ -586,9 +605,10 @@ async function markLecture(day) {
   else if (b.left_ok) next = "ok";
   else if (b.left_excused) next = "excused";
   else { showToast("По баллам посещено " + b.attended + " — сначала сними плюсик с другой лекции"); return; }
+  const c = sdoCourse;
   try {
-    sdoCourse.attendance = await api("/api/sdo/attendance/" + sdoCourse.id, { method: "POST", body: JSON.stringify({ day: day, mark: next }) });
-    renderPos();
+    c.attendance = await api("/api/sdo/attendance/" + c.id, { method: "POST", body: JSON.stringify({ day: day, mark: next }) });
+    if (sdoCourse === c) renderPos();
   } catch (e) {
     showToast(e.message);
   }
@@ -604,18 +624,23 @@ function tapWork(i) {
 // ── Задание: описание, файлы преподавателя, сдача ─────────────────────────
 
 let sdoTask = null;
+let sdoTaskReq = 0;          // как sdoCourseReq: ответ по старому заданию не рисуется на новом
 
 async function openTask(w) {
   haptic();
+  const req = ++sdoTaskReq;
   sdoTask = null;
   showSdoView("task");
   const box = document.getElementById("task-body");
   box.innerHTML = '<h2 class="section" style="margin-top:6px"><span>' + escapeHtml(w.name) + '</span></h2>' +
     '<div class="skel" style="height:120px"></div><div class="skel" style="height:160px"></div>';
   try {
-    sdoTask = Object.assign(await api("/api/sdo/task/" + w.cmid), { work: w, loaded: Date.now() });
+    const t = await api("/api/sdo/task/" + w.cmid);
+    if (req !== sdoTaskReq) return;                      // уже открыли другое задание — «Сдать» не в чужой cmid
+    sdoTask = Object.assign(t, { work: w, loaded: Date.now() });
     if (sdoView === "task") renderTask();
   } catch (e) {
+    if (req !== sdoTaskReq) return;
     box.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '<br><br>' +
       '<button class="link-btn" onclick="openLink(' + escapeHtml(JSON.stringify(w.url)) + ')">Открыть в СДО</button></div>';
   }
@@ -677,7 +702,11 @@ function sdoDownload(f) {
 // ссылки на файлы живут 10 минут — экран открыт дольше, берём свежие
 async function freshTask() {
   if (Date.now() - sdoTask.loaded < 9 * 60000) return;
-  try { sdoTask = Object.assign(await api("/api/sdo/task/" + sdoTask.cmid), { work: sdoTask.work, loaded: Date.now() }); } catch (e) {}
+  const old = sdoTask;
+  try {
+    const t = await api("/api/sdo/task/" + old.cmid);
+    if (sdoTask === old) sdoTask = Object.assign(t, { work: old.work, loaded: Date.now() });
+  } catch (e) {}
 }
 
 async function downloadSdoFile(i, mine, btn) {

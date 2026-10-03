@@ -54,6 +54,7 @@ function lessonRow(l, withStatus, tap) {
 // «живая», даже если WebApp долго открыт.
 function refreshStatuses() {
   if (!todayData) return;
+  if (checkTodayFresh()) return;          // наступил новый день — свежая сводка перерисует всё
   const now = Date.now();
   todayData.lessons.forEach(l => {
     if (!l.start_iso) return;
@@ -61,9 +62,9 @@ function refreshStatuses() {
     l.status = now >= e ? "past" : (now >= s ? "now" : "later");
   });
   renderHero();
-  // Пар нет — об этом уже крупно говорит карточка сверху, пустой блок
-  // «Сегодня · пар нет» под ней только оставлял дыру (живой тест).
-  const noPairs = !todayData.lessons.length && todayData.schedule_ok;
+  // Пар нет (или расписание не загрузилось) — об этом уже крупно говорит
+  // карточка сверху, пустой блок под ней только оставлял дыру (живой тест).
+  const noPairs = !todayData.lessons.length;
   document.getElementById("today-head").style.display = noPairs ? "none" : "";
   document.getElementById("today-lessons").style.display = noPairs ? "none" : "";
   document.getElementById("today-lessons").innerHTML = todayData.lessons.length
@@ -71,9 +72,42 @@ function refreshStatuses() {
     : '<div class="empty">Расписание сейчас не загрузилось</div>';
 }
 
+// «Сегодня» по Москве (сервер считает пары по МСК) — ISO-дата.
+function mskToday() {
+  return new Date(Date.now() + 3 * 3600000).toISOString().slice(0, 10);
+}
+
+// Главную держат открытой (или сворачивают) через полночь: сводка за вчера
+// писала «На сегодня всё · завтра в 9:00» о сегодняшней паре. Дата
+// разошлась с МСК — грузим заново (не чаще раза в минуту, если сеть лежит).
+let todayCheckedAt = 0;
+
+function checkTodayFresh() {
+  if (!todayData || todayData.date === mskToday() || Date.now() - todayCheckedAt < 60000) return false;
+  todayCheckedAt = Date.now();
+  weekOffset = 0;                         // полоска дней — снова на текущую неделю
+  loadToday();
+  return true;
+}
+
+// Вернулись в приложение из свёрнутого — статусы и дата сразу, не через 30 с
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshStatuses(); });
+if (tg && tg.onEvent) { try { tg.onEvent("activated", refreshStatuses); } catch (e) {} }
+
+// Расписание не загрузилось — так и пишем, с «Повторить» (раньше при
+// schedule_ok=false крупно стояло «Сегодня пар нет — отдыхай»).
+function heroFailed(why) {
+  const hero = document.getElementById("hero");
+  hero.className = "hero err";
+  hero.innerHTML = '<div class="h-eyebrow">Расписание</div><div class="h-big">не загрузилось</div>' +
+    '<div class="h-meta">' + escapeHtml(why) + '</div>' +
+    '<button class="h-retry" onclick="loadToday()">' + icon("refresh", "inl") + ' Повторить</button>';
+}
+
 function renderHero() {
   const hero = document.getElementById("hero");
   const d = todayData, now = Date.now();
+  if (!d.schedule_ok && !d.lessons.length) { heroFailed("Сайт МИРЭА не отвечает — пары сегодня не узнать"); return; }
   const cur = d.lessons.find(l => l.status === "now");
   const next = d.lessons.find(l => l.status === "later");
   hero.className = "hero";
@@ -196,12 +230,11 @@ async function loadToday() {
       return;
     }
     if (shown) { showToast("Нет связи — показываю сохранённое"); return; }
-    const hero = document.getElementById("hero");
-    hero.className = "hero calm";
-    hero.innerHTML = '<div class="h-eyebrow">Расписание</div><div class="h-title">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
+    heroFailed(e.message);
     document.getElementById("today-lessons").innerHTML = "";
   }
-  if (chipsDate !== (todayData && todayData.date)) renderDayChips();
+  // холодный старт без снимка и без сети: todayData нет, но полоска дней нужна
+  if (chipsDate !== (todayData && todayData.date) || !document.querySelector("#daychips button")) renderDayChips();
   else rerenderToday();
 }
 
@@ -414,9 +447,10 @@ async function selectDay(btn, silent) {
     try {
       const data = await api("/api/day?date=" + date);
       if (!today) dayCache[date] = data;
-      if (btn.classList.contains("active")) renderDay(list, data);
+      // полоску могли пересоздать (листнули неделю) — старая кнопка отцеплена, но всё ещё «active»
+      if (btn.isConnected && btn.classList.contains("active")) renderDay(list, data);
     } catch (e) {
-      list.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
+      if (btn.isConnected && btn.classList.contains("active")) list.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
     }
     list.style.minHeight = "";
   }

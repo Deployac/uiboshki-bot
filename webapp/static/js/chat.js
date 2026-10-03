@@ -11,7 +11,7 @@ const CHATS_KEY = "chats.v1", OLD_CHAT_KEY = "chatLog.v1";
 // тогда при следующем заходе открывается этот новый, а не старый (просьба владельца).
 const CHAT_CUR_KEY = "chats.current";
 let chats = loadChats();              // [{id, title, updated, log}]
-let chatId = null, chatLog = [];      // [{role, content, html, att, files, sources}]
+let chatId = null, chatLog = [];      // [{role, content, html, att, files, sources, file_text}]
 (function () {
   let cur = null;
   try { cur = localStorage.getItem(CHAT_CUR_KEY); } catch (e) {}
@@ -36,15 +36,31 @@ function chatTitle(log) {
   const first = log.find(m => m.role === "user" && m.content);
   return first ? first.content.slice(0, 60) : "Новый чат";
 }
-function saveChatLog() {
-  if (!chatLog.length) return;
-  if (!chatId) chatId = "c" + Date.now();
-  let cur = chats.find(c => c.id === chatId);
-  if (!cur) { cur = { id: chatId }; chats.unshift(cur); }
-  cur.log = chatLog.slice(-40); cur.title = chatTitle(chatLog); cur.updated = Date.now();
+// Без аргументов — открытый чат; с id и log — другой (ответ ИИ пришёл в чат,
+// из которого уже ушли).
+function saveChatLog(id, log) {
+  const own = !id || id === chatId;
+  if (own) {
+    if (!chatLog.length) return;
+    if (!chatId) chatId = "c" + Date.now();
+    id = chatId; log = chatLog;
+  }
+  let cur = chats.find(c => c.id === id);
+  if (!cur) {
+    if (!own) return;                 // тот чат удалили, пока ждали ответ
+    cur = { id: id }; chats.unshift(cur);
+  }
+  cur.log = log.slice(-40); cur.title = chatTitle(log); cur.updated = Date.now();
   chats = [cur, ...chats.filter(c => c !== cur)].slice(0, 20);
   try { localStorage.setItem(CHATS_KEY, JSON.stringify(chats)); } catch (e) {}
-  rememberChat();
+  if (own) rememberChat();
+}
+
+// Лог чата по id: открытый — chatLog, остальные — из списка (null — удалён).
+function chatLogOf(id) {
+  if (id === chatId) return chatLog;
+  const c = chats.find(x => x.id === id);
+  return c ? c.log : null;
 }
 
 const SUGGESTIONS = [
@@ -285,13 +301,14 @@ async function loadChatSubjects() {
 
 async function sendChat() {
   const input = document.getElementById("chat-input");
+  const btn = document.getElementById("chat-send");
+  if (btn.disabled) return;            // Enter, пока первый вопрос без ответа, — не второй запрос
   const text = input.value.trim();
   const att = pendingAttachment;
   if (!text && !att) return;
   input.value = "";
   input.style.height = "auto";
   clearAttachment();
-  const btn = document.getElementById("chat-send");
   btn.disabled = true;
 
   dropQuickReplies();
@@ -312,38 +329,63 @@ async function sendChat() {
 // Вопрос без ответа (ошибка ИИ) помечается failed и следующим сообщениям
 // в историю не идёт. Живой тест: после «ИИ недоступен» на «Привет» модель
 // отвечала на прошлый, неотвеченный вопрос. Повторить — кнопкой под ошибкой.
+//
+// Пока ИИ думает, можно открыть другой чат или «＋ Новый»: ответ пишется в
+// тот чат, где задан вопрос, а рисуется, только если он сейчас открыт.
+// Текст вложенного документа (file_text с сервера) хранится в записи вопроса
+// и уходит в историю следующих вопросов — иначе ИИ забывал файл со второго.
 async function requestAnswer(entry, att) {
   const pending = typingBubble();
-  const history = chatLog.filter(m => m.content && !m.failed).map(m => ({ role: m.role, content: m.content }));
+  const myId = chatId;
+  const history = chatLog.filter(m => m.content && !m.failed)
+    .map(m => ({ role: m.role, content: m.content + (m.file_text ? "\n\n" + m.file_text : "") }));
   const body = { history: history, subject: document.getElementById("chat-subject").value };
   if (att) body.attachment = { name: att.name, mime: att.mime, data: att.data };
   try {
     const data = await api("/api/chat", { method: "POST", body: JSON.stringify(body) });
     pending.remove();
-    if (data.choose && data.choose.length) { askSubject(entry, att, data); return; }
+    const here = chatId === myId, log = chatLogOf(myId);
+    if (data.choose && data.choose.length) {
+      if (here) askSubject(entry, att, data);
+      else if (log) { entry.failed = true; saveChatLog(myId, log); }
+      return;
+    }
     delete entry.failed;
+    if (data.file_text) entry.file_text = data.file_text;
+    if (!log) return;                                 // чат удалили, пока ждали
+    log.push({ role: "assistant", content: data.content, html: data.html, files: data.files, sources: data.sources });
+    if (!here) { saveChatLog(myId, log); return; }
     appendMsg("assistant", data.content, data.reasoning, data.html, null, true, data.files, data.sources);
-    chatLog.push({ role: "assistant", content: data.content, html: data.html, files: data.files, sources: data.sources });
     saveChatLog();
     addQuickReplies();
     haptic("success");
   } catch (e) {
     pending.remove();
     entry.failed = true;
+    if (chatId !== myId) { const log = chatLogOf(myId); if (log) saveChatLog(myId, log); return; }
     saveChatLog();
     const bubble = appendMsg("assistant", "⚠️ " + e.message);
     const retry = document.createElement("button");
     retry.className = "chat-retry";
     retry.innerHTML = icon("refresh", "inl") + "Повторить";
     retry.onclick = () => {
+      if (document.getElementById("chat-send").disabled) return;   // другой вопрос ещё ждёт ответа
       bubble.remove();
       chatLog.splice(chatLog.indexOf(entry), 1);   // повтор — последним, чтобы ответ был на него
       delete entry.failed;
       chatLog.push(entry);
-      requestAnswer(entry, att);
+      askAgain(entry, att);
     };
     bubble.appendChild(retry);
   }
+}
+
+// Повтор вопроса (кнопкой под ошибкой или выбором предмета): пока ждём —
+// «Отправить» выключена, как при обычной отправке.
+function askAgain(entry, att) {
+  const btn = document.getElementById("chat-send");
+  btn.disabled = true;
+  return requestAnswer(entry, att).finally(() => { btn.disabled = false; });
 }
 
 // Высота панели вкладок (с учётом «безопасной зоны» внизу iPhone) — для
@@ -426,6 +468,7 @@ function askSubject(entry, att, data) {
     const b = document.createElement("button");
     b.textContent = name;
     b.onclick = () => {
+      if (document.getElementById("chat-send").disabled) return;
       haptic();
       const sel = document.getElementById("chat-subject");
       if (![...sel.options].some(o => o.value === name)) {
@@ -436,7 +479,7 @@ function askSubject(entry, att, data) {
       chatLog.splice(chatLog.indexOf(entry), 1);
       delete entry.failed;
       chatLog.push(entry);
-      requestAnswer(entry, att);
+      askAgain(entry, att);
     };
     row.appendChild(b);
   });

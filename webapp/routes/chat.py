@@ -60,6 +60,10 @@ class ChatBody(BaseModel):
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 DOC_TEXT_LIMIT = 60_000
+# Сколько текста вложенного документа фронт помнит в истории чата (file_text):
+# файл уходит ИИ один раз, а следующие вопросы («а что во втором разделе?»)
+# без него оставались без файла.
+FILE_MEMORY_LIMIT = 10_000
 
 
 @router.get("/api/subjects")
@@ -231,6 +235,8 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
                     + f"\n\n=== Файл «{name}» ===\n{text[:DOC_TEXT_LIMIT]}{note}"
                 )
                 result = await _chat_with_fallback(history, subject, context, lectures)
+                result["file_text"] = (f"=== Файл «{name}» ===\n{text[:FILE_MEMORY_LIMIT]}"
+                                       + ("\n(дальше файл обрезан)" if len(text) > FILE_MEMORY_LIMIT else ""))
         else:
             result = await _chat_with_fallback(history, subject, context, lectures)
     except HTTPException:

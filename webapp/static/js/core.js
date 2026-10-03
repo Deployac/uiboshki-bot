@@ -133,10 +133,12 @@ function switchTab(name) {
   if (name === "search") { renderRecent(); loadPins().then(renderRecent); }
   if (name === "chat") requestAnimationFrame(() => { syncNavHeight(); scrollChatToEnd(); });
   if (tg && tg.BackButton) {
-    tg.BackButton.offClick(closeFolder);
-    tg.BackButton.offClick(sdoBack);
+    // снимаем все «Назад» экранов (как NESTED в main.js): оставленный closeTarget
+    // закрывал скрытый экран расписания из поиска, уйди хоть в чат
+    [closeFolder, sdoBack, closeTarget].forEach(fn => tg.BackButton.offClick(fn));
     const targetOpen = document.getElementById("target-view").style.display === "block";
-    if (!(name === "search" && targetOpen)) tg.BackButton.hide();
+    if (name === "search" && targetOpen) { tg.BackButton.onClick(closeTarget); tg.BackButton.show(); }
+    else tg.BackButton.hide();
   }
 }
 

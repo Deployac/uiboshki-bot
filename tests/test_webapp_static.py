@@ -562,3 +562,406 @@ def test_sheets_close_by_swipe_down():
     assert "d.sheet.scrollTop > 0" in core                         # прокрутка листа — не свайп
     assert 'closeSheet(d.sheet.closest(".sheet-backdrop").id)' in core
     assert "{ passive: false }" in core and "e.preventDefault()" in core   # фон под листом не листается
+
+
+# ── Ревью фронта: гонки и состояние ────────────────────────────────────────
+# Функции из js/*.js гоняются в node с заглушками DOM; api() — управляемый:
+# каждый вызов — промис, который тест сам разрешает (calls[i].res / .rej) в
+# нужном порядке — так воспроизводится «старый ответ пришёл после нового».
+
+FRONT_PRELUDE = r"""
+const els = {};
+function mkEl(id) {
+  const cls = new Set();
+  return { id: id, innerHTML: "", textContent: "", value: "", disabled: false, style: {}, dataset: {}, isConnected: true,
+    classList: { add: c => cls.add(c), remove: (...c) => c.forEach(x => cls.delete(x)), contains: c => cls.has(c),
+      toggle: (c, on) => { if (on === undefined) on = !cls.has(c); if (on) cls.add(c); else cls.delete(c); return on; } },
+    remove() {}, focus() {}, blur() {}, scrollIntoView() {} };
+}
+const document = { getElementById: id => els[id] || (els[id] = mkEl(id)), querySelector: () => null, querySelectorAll: () => [],
+  addEventListener() {}, body: mkEl("body"), documentElement: mkEl("html"), activeElement: null };
+const window = { scrollTo() {} };
+let tg = null;
+const haptic = () => {};
+const icon = n => "[" + n + "]";
+const escapeHtml = s => String(s == null ? "" : s);
+const toasts = [];
+const showToast = t => { toasts.push(t); };
+const calls = [];
+function api(path, opts) {
+  return new Promise((res, rej) => calls.push({ path: path, body: opts && opts.body ? JSON.parse(opts.body) : null, res: res, rej: rej }));
+}
+const tick = () => new Promise(r => setTimeout(r, 0));
+const requestAnimationFrame = f => f();
+function backLog() {
+  const log = [];
+  tg = { BackButton: { onClick: f => log.push("on:" + f.name), offClick: f => log.push("off:" + f.name),
+                       show: () => log.push("show"), hide: () => log.push("hide") } };
+  return log;
+}
+"""
+
+
+def _front(js_file, names, stubs, code):
+    """Функции names из js_file + заглушки → node; code — тело async-функции,
+    печатает результат console.log(JSON.stringify(...))."""
+    src = "".join(_js_fn(JS[js_file], n) for n in names)
+    script = FRONT_PRELUDE + stubs + "\n" + src + "\n(async () => {\n" + code + \
+        "\n})().catch(e => { console.error(e && e.stack || e); process.exit(1); });"
+    res = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=30)
+    assert res.returncode == 0, res.stderr
+    return json.loads(res.stdout.strip().splitlines()[-1])
+
+
+SDO_STUBS = """
+let sdoData = null, sdoCourse = null, sdoView = "sdo", sdoCourseReq = 0, sdoTask = null, sdoTaskReq = 0, tkFilter = "all";
+const shown = [];
+function showSdoView(n) { sdoView = n; }
+function renderSubject() { shown.push("subject:" + sdoCourse.id); }
+function renderTk() { shown.push("tk:" + sdoCourse.id); }
+function renderPos() {}
+function renderTask() { shown.push("task:" + sdoTask.cmid); }
+"""
+
+node = pytest.mark.skipif(not shutil.which("node"), reason="нужен node")
+
+
+@node
+def test_sdo_old_answer_does_not_replace_newer_subject_or_task():
+    # находка 1: ответ по предмету A пришёл после B — «Сдать» и отметка лекции уходили в A
+    course, subj_body, task, task_body, shown = _front("js/sdo.js", ["openSubject", "openTask"], SDO_STUBS, """
+      openSubject(1); openSubject(2);
+      calls[1].res({ id: 2 }); await tick();
+      calls[0].res({ id: 1 }); await tick();
+      const course = sdoCourse.id;
+      openSubject(3); openSubject(4);
+      calls[3].res({ id: 4 }); await tick();
+      calls[2].rej(new Error("сеть")); await tick();            // ошибка старого — тоже мимо
+      const subjBody = document.getElementById("subject-body").innerHTML;
+      openTask({ cmid: 10, name: "A" }); openTask({ cmid: 20, name: "B" });
+      calls[5].res({ cmid: 20 }); await tick();
+      calls[4].res({ cmid: 10 }); await tick();
+      const task = sdoTask.cmid;
+      openTask({ cmid: 30, name: "C" }); openTask({ cmid: 40, name: "D" });
+      calls[7].res({ cmid: 40 }); await tick();
+      calls[6].rej(new Error("сеть")); await tick();
+      console.log(JSON.stringify([course, subjBody, task, document.getElementById("task-body").innerHTML, shown]));
+    """)
+    assert course == 2 and "Не загрузилось" not in subj_body
+    assert task == 20 and "Не загрузилось" not in task_body
+    assert "subject:1" not in shown and "task:10" not in shown
+
+
+@node
+def test_sdo_back_from_tk_draws_subject():
+    # находка 8: ТК открыт с пары на главной (мимо экрана предмета) — «Назад» показывал старый предмет
+    view, shown = _front("js/sdo.js", ["sdoBack"], SDO_STUBS, """
+      sdoView = "tk"; sdoCourse = { id: 7 }; sdoBack();
+      const view = sdoView;
+      sdoView = "pos"; sdoCourse = null; sdoBack();             // предмета нет — без падения
+      console.log(JSON.stringify([view, shown]));
+    """)
+    assert view == "subject" and shown == ["subject:7"]
+
+
+@node
+def test_submit_result_of_old_task_only_toasts():
+    # находка 2: результат сдачи A рисовался на листе задания B
+    renders, toasts, cmid = _front("js/more.js", ["sendSubmission"], """
+      let submitting;
+      const renders = [];
+      function renderSubmit(state) { renders.push((state || "form") + ":" + submitting.item.subject); }
+      function refreshTk() {}
+      function loadSdoStatus() {}
+    """, """
+      submitting = { item: { subject: "A", cmid: 1 }, files: [{ name: "a.pdf", data: "x" }] };
+      const p = sendSubmission();
+      submitting = { item: { subject: "B", cmid: 2 }, files: [] };    // открыли «Сдать» у другого
+      calls[0].res({ status: "ok" }); await p;
+      submitting = { item: { subject: "C", cmid: 3 }, files: [] };
+      const p2 = sendSubmission();
+      submitting = { item: { subject: "D", cmid: 4 }, files: [] };
+      calls[1].rej(new Error("СДО упал")); await p2;
+      const p3 = sendSubmission(); calls[2].res({}); await p3;      // своё задание — лист как раньше
+      console.log(JSON.stringify([renders, toasts, calls[0].body.cmid]));
+    """)
+    assert renders == ["sending:A", "sending:C", "sending:D", "done:D"]
+    assert toasts == ["✓ «A» сдано", "⚠️ «C» не сдано: СДО упал"] and cmid == 1
+
+
+CHAT_STUBS = """
+const CHATS_KEY = "chats.v1", CHAT_CUR_KEY = "chats.current";
+let chats = [], chatId = null, chatLog = [], pendingAttachment = null;
+const store = {};
+const localStorage = { getItem: k => (k in store ? store[k] : null), setItem: (k, v) => { store[k] = v; } };
+const shownMsgs = [];
+function appendMsg(role, content) { shownMsgs.push(role + ":" + content); return mkEl("bubble"); }
+function typingBubble() { return { remove() {} }; }
+function addQuickReplies() {}
+function dropQuickReplies() {}
+function askSubject() {}
+function clearAttachment() {}
+function renderChat() {}
+function scrollChatToEnd() {}
+"""
+CHAT_FNS = ["rememberChat", "chatTitle", "saveChatLog", "chatLogOf", "newChat", "switchChat", "requestAnswer", "sendChat"]
+
+
+@node
+def test_chat_answer_goes_to_its_own_chat():
+    # находка 3: «＋ Новый» во время ожидания — ответ ИИ попадал в новый чат
+    in_new, shown, log, same = _front("js/chat.js", CHAT_FNS, CHAT_STUBS, """
+      const q = { role: "user", content: "что такое NPV?" };
+      chatLog.push(q); saveChatLog();
+      const first = chatId;
+      const p = requestAnswer(q, null);
+      newChat();
+      calls[0].res({ content: "ответ про NPV", html: "ответ про NPV" }); await p;
+      const inNew = chatLog.length, shownNow = shownMsgs.slice();
+      switchChat(chats.findIndex(c => c.id === first));
+      console.log(JSON.stringify([inNew, shownNow, chatLog.map(m => m.content), chatId === first]));
+    """)
+    assert in_new == 0 and shown == []
+    assert log == ["что такое NPV?", "ответ про NPV"] and same
+
+
+@node
+def test_chat_enter_does_not_send_second_question_while_waiting():
+    # находка 12: Enter отправлял второй вопрос, пока первый без ответа
+    n, left, n2 = _front("js/chat.js", CHAT_FNS, CHAT_STUBS, """
+      const input = document.getElementById("chat-input");
+      input.value = "первый"; const p = sendChat();
+      input.value = "второй"; sendChat();
+      const n = calls.length, left = input.value;
+      calls[0].res({ content: "ок", html: "ок" }); await p;
+      const p2 = sendChat(); const n2 = calls.length;
+      calls[1].res({ content: "ок2", html: "ок2" }); await p2;
+      console.log(JSON.stringify([n, left, n2]));
+    """)
+    assert (n, left, n2) == (1, "второй", 2)          # текст не пропал — уйдёт следующим
+
+
+@node
+def test_chat_remembers_attached_document_text():
+    # находка 13: со следующего сообщения ИИ забывал вложенный файл
+    first, second, saved = _front("js/chat.js", CHAT_FNS, CHAT_STUBS, """
+      const e1 = { role: "user", content: "Разбери этот файл.", att: { name: "a.txt" } };
+      chatLog.push(e1); saveChatLog();
+      const p1 = requestAnswer(e1, { name: "a.txt", mime: "text/plain", data: "eA==" });
+      calls[0].res({ content: "Разобрал", html: "Разобрал", file_text: "=== Файл «a.txt» ===\\nNPV — это" }); await p1;
+      const e2 = { role: "user", content: "а что в конце?" };
+      chatLog.push(e2);
+      requestAnswer(e2, null);
+      console.log(JSON.stringify([calls[0].body.history, calls[1].body, JSON.parse(store["chats.v1"])[0].log[0].file_text]));
+    """)
+    assert first == [{"role": "user", "content": "Разбери этот файл."}]         # сам файл — вложением
+    assert second["history"][0]["content"] == "Разбери этот файл.\n\n=== Файл «a.txt» ===\nNPV — это"
+    assert "attachment" not in second and second["history"][-1]["content"] == "а что в конце?"
+    assert saved.endswith("NPV — это")                                           # и после перезапуска
+
+
+@node
+def test_home_reloads_today_after_midnight():
+    # находка 4: главная за вчера — «На сегодня всё · завтра в 9:00» о сегодняшней паре
+    res = _front("js/home.js", ["mskToday", "checkTodayFresh"], """
+      let todayData = { date: "2026-10-02" }, weekOffset = 3, todayCheckedAt = 0, loads = 0;
+      function loadToday() { loads++; }
+    """, """
+      const at = iso => { Date.now = () => Date.parse(iso); };
+      const out = [];
+      at("2026-10-02T20:59:00Z"); out.push(checkTodayFresh(), loads);          // 23:59 МСК — ещё сегодня
+      at("2026-10-02T21:01:00Z"); out.push(checkTodayFresh(), loads, weekOffset);  // 00:01 МСК — новый день
+      out.push(checkTodayFresh());                                              // сразу ещё раз — не спамим
+      at("2026-10-02T21:02:30Z"); out.push(checkTodayFresh(), loads);           // через минуту — снова
+      todayData.date = "2026-10-03"; out.push(checkTodayFresh());
+      console.log(JSON.stringify(out));
+    """)
+    assert res == [False, 0, True, 1, 0, False, True, 2, False]
+    home = JS["js/home.js"]
+    assert "checkTodayFresh()" in _js_fn(home, "refreshStatuses")
+    assert 'document.addEventListener("visibilitychange"' in home and 'tg.onEvent("activated", refreshStatuses)' in home
+
+
+@node
+def test_home_hero_says_schedule_failed():
+    # находка 5: schedule_ok=false — было крупно «Сегодня пар нет — отдыхай»
+    failed, calm = _front("js/home.js", ["renderHero", "heroFailed"], "let todayData;", """
+      const hero = document.getElementById("hero");
+      todayData = { schedule_ok: false, lessons: [], tomorrow_first: null }; renderHero();
+      const failed = [hero.className, hero.innerHTML];
+      todayData = { schedule_ok: true, lessons: [], tomorrow_first: null }; renderHero();
+      console.log(JSON.stringify([failed, [hero.className, hero.innerHTML]]));
+    """)
+    assert failed[0] == "hero err" and "не загрузилось" in failed[1] and 'onclick="loadToday()"' in failed[1]
+    assert "отдыхай" not in failed[1] and "пар нет" not in failed[1]
+    assert calm[0] == "hero calm" and "отдыхай" in calm[1]
+    assert ".hero.err {" in CSS and ".hero .h-retry {" in CSS
+
+
+@node
+def test_home_cold_start_error_still_draws_day_chips():
+    # находка 14: /api/today упал на холодном старте без снимка — полоски дней не было
+    chips, cls, html = _front("js/home.js", ["loadToday", "heroFailed"], """
+      let todayData = null, chipsDate = null, chips = 0;
+      const weekCache = {};
+      function setGreeting() {}
+      function readHomeSnap() { return null; }
+      function renderToday() {}
+      function saveHomeSnap() {}
+      function rerenderToday() {}
+      function renderDayChips() { chips++; chipsDate = todayData ? todayData.date : null; }
+    """, """
+      const p = loadToday(); await tick();
+      calls.find(c => c.path === "/api/me").res({ first_name: "Никита" });
+      calls.find(c => c.path === "/api/today").rej(new Error("сеть")); await p;
+      const hero = document.getElementById("hero");
+      console.log(JSON.stringify([chips, hero.className, hero.innerHTML]));
+    """)
+    assert chips == 1 and cls == "hero err" and "Повторить" in html and "сеть" in html
+
+
+@node
+def test_selecting_day_ignores_buttons_of_old_strip():
+    # находка 10: после пересоздания полоски пары старой кнопки вставали в другую неделю
+    rendered, html = _front("js/home.js", ["selectDay"], """
+      let todayData = null;
+      const dayCache = {}, rendered = [];
+      function renderDay(list, d) { rendered.push(d.date); }
+      function loadLessonScores() {}
+      function scrollToWeek() {}
+      const btn = d => { const b = mkEl(d); b.dataset.date = d; return b; };
+    """, """
+      let strip = [btn("2026-10-05"), btn("2026-10-06")];
+      document.querySelectorAll = () => strip;
+      const old = strip[1];
+      selectDay(old, true);                                  // пары вт грузятся…
+      strip = [btn("2026-10-12")]; old.isConnected = false;  // …а неделю уже листнули
+      selectDay(strip[0], true);
+      calls[1].res({ date: "2026-10-12", lessons: [] }); await tick();
+      calls[0].res({ date: "2026-10-06", lessons: [] }); await tick();
+      const b3 = btn("2026-10-13"); strip = [b3]; selectDay(b3, true);
+      b3.isConnected = false; strip = [btn("2026-10-20")]; selectDay(strip[0], true);
+      calls[3].res({ date: "2026-10-20", lessons: [] }); await tick();
+      calls[2].rej(new Error("сеть")); await tick();         // ошибка старого — тоже мимо
+      console.log(JSON.stringify([rendered, document.getElementById("day-lessons").innerHTML]));
+    """)
+    assert rendered == ["2026-10-12", "2026-10-20"] and "Не загрузилось" not in html
+
+
+@node
+def test_notify_fast_taps_keep_every_day():
+    # находка 6: Пн-Вт-Ср подряд — часть нажатий терялась (POST нёс устаревший список)
+    res = _front("js/more.js", ["saveNotify", "toggleNotifyDay"], """
+      let notifyState = { subscribed: true, prefs: { morning_days: [0, 1, 2] } };
+      let notifyQueue = Promise.resolve(), notifyPending = 0, renders = 0;
+      function renderNotify() { renders++; }
+    """, """
+      toggleNotifyDay("morning_days", 3);
+      toggleNotifyDay("morning_days", 4);                      // второе — до ответа на первое
+      const now = notifyState.prefs.morning_days.slice(), drawn = renders;
+      await tick();
+      const inFlight = calls.length;
+      calls[0].res({ subscribed: true, prefs: { morning_days: [0, 1, 2, 3] } }); await tick();
+      const second = calls[1].body.prefs.morning_days, mid = notifyState.prefs.morning_days.slice();
+      calls[1].res({ subscribed: true, prefs: { morning_days: [0, 1, 2, 3, 4] } }); await tick();
+      console.log(JSON.stringify([now, drawn, inFlight, second, mid, notifyState.prefs.morning_days]));
+    """)
+    full = [0, 1, 2, 3, 4]
+    assert res == [full, 2, 1, full, full, full]        # сразу у себя, запросы — по одному
+
+
+@node
+def test_file_from_link_resets_file_search():
+    # находка 7: источник из ответа ИИ при открытом поиске по файлам — «Файл не найден»
+    toasts, query, subject, box = _front("js/files.js", ["openFileFromLink"], """
+      let fileQuery = "лекция", fileSubject = null, fileCat = "", fileIndex = {}, fileSearchTimer = null;
+      function switchTab() {}
+      async function loadFiles(q) { if (q !== undefined) fileQuery = q; fileIndex = fileQuery ? {} : { 5: { id: 5, subject: "Анализ данных" } }; }
+      function renderFiles() {}
+    """, """
+      document.getElementById("file-search").value = "лекция";
+      await openFileFromLink(5);
+      console.log(JSON.stringify([toasts, fileQuery, fileSubject, document.getElementById("file-search").value]));
+    """)
+    assert (toasts, query, subject, box) == ([], "", "Анализ данных", "")
+
+
+@node
+def test_old_target_error_does_not_cover_newer_one():
+    # находка 11: ошибка запроса по Иванову перерисовывала открытого после него Петрова
+    cur, html = _front("js/search.js", ["openTarget"], """
+      const TARGET_KIND = { 1: ["users", "Группа"], 2: ["user", "Преподаватель"], 3: ["door", "Аудитория"] };
+      let targetCurrent = null, targetData = null, targetWeekIdx = 0, pinnedTargets = [];
+      function rememberTarget() {}
+      function isPinned() { return false; }
+      function setPinButton() {}
+      function openNextLessonDay() {}
+      function renderTargetWeek() { document.getElementById("target-lessons").innerHTML = "неделя " + targetCurrent.title; }
+      const capyEmpty = t => t;
+    """, """
+      openTarget(2, 1, "Иванов"); openTarget(2, 2, "Петров");
+      calls[1].res({ pinned: false, weeks: [] }); await tick();
+      calls[0].rej(new Error("сеть")); await tick();
+      console.log(JSON.stringify([targetCurrent.title, document.getElementById("target-lessons").innerHTML]));
+    """)
+    assert (cur, html) == ("Петров", "неделя Петров")
+
+
+@node
+def test_switch_tab_takes_target_back_handler_off():
+    # находка 15: closeTarget оставался на «Назад» и закрывал скрытый экран поиска из чата
+    away, back = _front("js/core.js", ["switchTab"], """
+      function loadDeadlines() {} function loadFiles() {} function renderRecent() {}
+      function loadPins() { return Promise.resolve(); } function syncNavHeight() {} function scrollChatToEnd() {}
+      function closeFolder() {} function sdoBack() {} function closeTarget() {}
+    """, """
+      const log = backLog();
+      document.getElementById("target-view").style.display = "block";
+      switchTab("chat"); const away = log.splice(0);
+      switchTab("search"); const back = log.splice(0);
+      console.log(JSON.stringify([away, back]));
+    """)
+    assert "off:closeTarget" in away and "on:closeTarget" not in away and away[-1] == "hide"
+    assert back[-2:] == ["on:closeTarget", "show"] and back.index("off:closeTarget") < back.index("on:closeTarget")
+
+
+@node
+def test_back_button_restored_on_attendance_screen():
+    # находка 9: после меню «Ещё» на экране «Посещения» пропадала «Назад» Telegram
+    main = JS["js/main.js"]
+    fn = re.search(r"  function restoreBack\(\) \{.*?\n  \}\n", main, re.S).group(0)
+    script = FRONT_PRELUDE + "function sdoBack() {} function closeTarget() {} function syncFileBack() {}\n" + fn + """
+      const log = backLog();
+      document.querySelector = s => s === ".view.active" ? { id: "view-pos" } : null;
+      restoreBack();
+      console.log(JSON.stringify(log));
+    """
+    res = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=30)
+    assert res.returncode == 0, res.stderr
+    assert json.loads(res.stdout) == ["off:sdoBack", "on:sdoBack", "show"]
+    # те же экраны СДО, что подсвечивают вкладку в switchTab
+    tabs = re.search(r'\["sdo", ((?:"\w+", )*"\w+")\]\.includes\(name\)', JS["js/core.js"]).group(1)
+    for v in re.findall(r'"(\w+)"', tabs):
+        assert '"view-' + v + '"' in fn, v
+
+
+def test_own_remind_time_is_moscow():
+    # находка 16: поле своего времени напоминания — время сервера (МСК), а не телефона
+    remind = _js_fn(JS["js/deadlines.js"], "renderRemind")
+    assert 'type="datetime-local"' in remind and "по Москве" in remind
+
+
+def test_onclick_built_in_js_call_defined_functions():
+    # находка 17: onclick-строки, собранные в JS (markLecture, openTk('todo'), tapWork, setGoal…),
+    # не проверялись — опечатка в имени ломала кнопку молча
+    defined = set(re.findall(r'^(?:async\s+)?function\s+(\w+)\s*\(', ALL_JS, re.M))
+    builtins = {"String", "Number", "JSON", "event", "this"}
+    called = set()
+    # onclick="…" внутри строк JS: всё до закрывающей кавычки атрибута, со всеми вызовами в нём
+    for chunk in re.findall(r'onclick=\\?"(.*?)\\?"', ALL_JS):
+        called |= set(re.findall(r'(?<![\w.])([A-Za-z_]\w*)\s*\(', chunk))
+    # готовые обработчики строкой, которые подставляются в onclick: "openTk('todo')", 'openPos()'
+    called |= set(re.findall(r'''["'](\w+)\((?:\\?'\w*\\?')?\)["']''', ALL_JS))
+    assert {"markLecture", "tapWork", "setGoal", "openTk", "openPos", "openSubject"} <= called
+    missing = called - defined - builtins
+    assert not missing, f"нет функций: {sorted(missing)}"
