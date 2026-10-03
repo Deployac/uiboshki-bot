@@ -1,4 +1,5 @@
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -78,8 +79,15 @@ async def handle_vote(callback: CallbackQuery):
         lines.append(f"{ans}: [{bar}] {cnt} ({pct}%)")
     lines.append(f"\nВсего: {total}")
 
-    await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=vote_keyboard(vote_id))
+    # Ответ — до правки: повторный голос тем же вариантом не меняет текст,
+    # Telegram отвечает «message is not modified», и раньше кнопка «висела»,
+    # а старосте уходил алерт об ошибке.
     await callback.answer(f"Твой голос: {answer} ✅")
+    try:
+        await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=vote_keyboard(vote_id))
+    except TelegramBadRequest as e:
+        if "not modified" not in str(e):
+            raise
 
 
 @router.message(Command("closevote"))
@@ -118,11 +126,8 @@ async def cmd_anon(message: Message, state: FSMContext):
 
 @router.message(AnonQuestion.waiting, F.text)
 async def send_anon(message: Message, state: FSMContext):
-    if message.text == "/cancel":
-        await state.clear()
-        await message.answer("Отменено.")
-        return
-
+    # /cancel и любые другие команды сюда не доходят — их ловит
+    # MenuInterruptMiddleware и общий /cancel (handlers/__init__.py).
     await state.clear()
 
     try:

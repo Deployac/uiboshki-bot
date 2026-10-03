@@ -20,7 +20,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from config import GROUP_CHAT_ID, TIMEZONE
-from database import get_schedule_snapshot, save_schedule_snapshot, get_all_subscribed_users
+from database import get_schedule_snapshot, save_schedule_snapshot
 from schedule_parser import fetch_schedule_raw, parse_events_for_date
 from utils import esc
 
@@ -95,7 +95,23 @@ def _to_serializable(events: list[dict]) -> list[dict]:
     ]
 
 
+# Дни, где новое расписание вдруг пустое, а в старом были пары. С первого
+# раза не верим (обрывок календаря, сбой зеркала): ждём повторной проверки,
+# иначе всем летели ложные «❌ Отменена пара» по всему дню.
+_empty_once: set[str] = set()
+
+
+def _visible(events: list[dict], hide: frozenset) -> list[dict]:
+    """Без предметов по выбору, на которые человек не ходит."""
+    from schedule_format import _split_kind
+    return [e for e in events if _split_kind(e["summary"])[0] not in hide] if hide else events
+
+
 async def check_schedule_changes(bot):
+    import notify_prefs
+    from config import OPTIONAL_SUBJECTS
+    from database import get_all_optional_answers, get_reminder_users
+    from optional_subjects import no_filter
     try:
         raw = await fetch_schedule_raw()
     except Exception as e:
@@ -107,34 +123,56 @@ async def check_schedule_changes(bot):
     # date.today() — ещё вчерашний день, и "сегодня/завтра" в уведомлении
     # в общий чат относились бы не к тем дням.
     today = datetime.now(ZoneInfo(TIMEZONE)).date()
-    all_changes_by_day = {}
+    changed_days = []   # (день, сдвиг, старые пары, новые пары)
 
     for offset in (0, 1):  # сегодня и завтра — самое чувствительное к изменениям
         d = today + timedelta(days=offset)
         d_str = d.isoformat()
 
-        new_events = _to_serializable(parse_events_for_date(raw, d))
+        # снимок — всё расписание группы, без фильтра текущего контекста:
+        # что скрыть, решается ниже по каждому человеку
+        with no_filter():
+            new_events = _to_serializable(parse_events_for_date(raw, d))
         old_events = await get_schedule_snapshot(d_str)
+
+        if old_events and not new_events and d_str not in _empty_once:
+            _empty_once.add(d_str)
+            logger.warning(f"check_schedule_changes: {d_str} вдруг без пар — проверю ещё раз")
+            continue
+        _empty_once.discard(d_str)
         await save_schedule_snapshot(d_str, new_events)
 
         if old_events is None:
             continue  # первый раз видим этот день — не с чем сравнивать
+        if diff_events(old_events, new_events):
+            changed_days.append((d, offset, old_events, new_events))
 
-        changes = diff_events(old_events, new_events)
-        if changes:
-            all_changes_by_day[(d, offset)] = changes
-
-    if not all_changes_by_day:
+    if not changed_days:
         return
 
-    users = await get_all_subscribed_users()
-    for (d, offset), changes in all_changes_by_day.items():
+    # Каждому — только про то, что он видит: без предметов по выбору, на
+    # которые не ходит, и если уведомления о парах в этот день включены.
+    answers = await get_all_optional_answers()
+    users = await get_reminder_users()
+    for d, offset, old_events, new_events in changed_days:
         weekday_label = "сегодня" if offset == 0 else "завтра"
-        text = (
-            f"📢 <b>Изменения в расписании на {weekday_label} ({d.strftime('%d.%m')}):</b>\n\n"
-            + "\n".join(changes)
-        )
-        for uid in users:
+        head = f"📢 <b>Изменения в расписании на {weekday_label} ({d.strftime('%d.%m')}):</b>\n\n"
+        texts: dict[frozenset, str] = {}
+
+        def text_for(hide: frozenset) -> str:
+            if hide not in texts:
+                changes = diff_events(_visible(old_events, hide), _visible(new_events, hide))
+                texts[hide] = head + "\n".join(changes) if changes else ""
+            return texts[hide]
+
+        for user in users:
+            uid = user["user_id"]
+            if not notify_prefs.allowed(notify_prefs.merge(user.get("notify")), "lessons", d.weekday()):
+                continue
+            mine = answers.get(uid, {})
+            text = text_for(frozenset(s for s in OPTIONAL_SUBJECTS if not mine.get(s)))
+            if not text:
+                continue
             try:
                 await bot.send_message(uid, text, parse_mode="HTML")
             except Exception as e:
@@ -142,8 +180,10 @@ async def check_schedule_changes(bot):
 
         # Смена/отмена пары — это то, что реально должно долетать до общего
         # чата, не только до лично подписавшихся: как правило, шлём это
-        # надёжнее, чем личка (не у всех она включена).
-        if GROUP_CHAT_ID:
+        # надёжнее, чем личка (не у всех она включена). В общем чате — без
+        # предметов по выбору, как и утренний дайджест.
+        text = text_for(frozenset(OPTIONAL_SUBJECTS))
+        if GROUP_CHAT_ID and text:
             try:
                 await bot.send_message(GROUP_CHAT_ID, text, parse_mode="HTML")
             except Exception as e:

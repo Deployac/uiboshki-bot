@@ -178,17 +178,21 @@ async def channel_button(callback: CallbackQuery):
     if not config.CHANNEL_ID:
         await callback.answer("Канал не задан: переменная CHANNEL_URL или CHANNEL_ID", show_alert=True)
         return
-    if slug in done:
-        await callback.answer("Этот пост уже в канале", show_alert=True)
-        return
-    try:
-        ids = await send_post(callback.bot, config.CHANNEL_ID, posts[idx], config.WEBAPP_URL)
-    except Exception as e:
-        await callback.answer("Не вышло — бот админ канала?", show_alert=True)
-        await callback.message.answer(f"⚠️ Не опубликовал: {esc(str(e))[:300]}\n"
-                                      "Проверь, что бот — админ канала с правом публиковать.", parse_mode="HTML")
-        return
-    await mark_published(slug, ids)
+    from locks import lock
+    # двойное нажатие: оба колбэка видели «ещё не в канале» и, пока шла
+    # отправка, выпускали пост дважды — проверка и отправка под одним замком
+    async with lock("channel:pub"):
+        if slug in await published():
+            await callback.answer("Этот пост уже в канале", show_alert=True)
+            return
+        try:
+            ids = await send_post(callback.bot, config.CHANNEL_ID, posts[idx], config.WEBAPP_URL)
+        except Exception as e:
+            await callback.answer("Не вышло — бот админ канала?", show_alert=True)
+            await callback.message.answer(f"⚠️ Не опубликовал: {esc(str(e))[:300]}\n"
+                                          "Проверь, что бот — админ канала с правом публиковать.", parse_mode="HTML")
+            return
+        await mark_published(slug, ids)
     if "pinned" in slug:              # закреп с оглавлением — сразу закрепить
         try:
             await callback.bot.pin_chat_message(config.CHANNEL_ID, ids[0], disable_notification=True)

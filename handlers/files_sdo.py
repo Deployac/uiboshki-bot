@@ -153,6 +153,10 @@ async def sdo_files_go(callback: CallbackQuery):
     if STAROSTA_ID and not is_starosta(callback.from_user.id):
         await callback.answer("Только для старосты", show_alert=True)
         return
+    if any(not t.done() for t in _sdo_tasks):
+        # вторая выгрузка тех же файлов параллельно — дубли в «Файлах»
+        await callback.answer("Выгрузка уже идёт — дождись сообщения о ней", show_alert=True)
+        return
     courses = _sdo_scans.pop(callback.from_user.id, None)
     if not courses:
         await callback.answer("Список устарел — запусти /sdofiles ещё раз", show_alert=True)

@@ -278,6 +278,10 @@ async function downloadFile(id, btn) {
 // Ссылка из бота «Открыть в WebApp» (?file=<id>): сразу папка предмета и
 // подсвеченный файл.
 async function openFileFromLink(id) {
+  // поиск по файлам сбрасываем: иначе ищем среди найденного и «Файл не найден»
+  clearTimeout(fileSearchTimer);
+  fileQuery = "";
+  document.getElementById("file-search").value = "";
   switchTab("files");
   await loadFiles();
   const f = fileIndex[id];

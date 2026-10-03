@@ -76,7 +76,7 @@ async def api_deadline_add(body: NewDeadline, user: dict = CurrentUser):
     if not ratelimit.allow("deadline", user["id"]):
         raise HTTPException(429, "Слишком много дедлайнов подряд — подожди пару минут")
     subject, due, due_time, desc = _validate_deadline(body)
-    did = await add_deadline(subject, desc, due, due_time, user["id"])
+    did = await add_deadline(subject, desc, due, due_time, user["id"], personal=True)
     return {"ok": True, "id": did}
 
 

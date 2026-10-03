@@ -128,8 +128,9 @@ function renderRemind() {
       '<button onclick="addRemind({preset:\'1d\'})">за день</button>' +
       '<button onclick="addRemind({preset:\'3h\'})">за 3 часа</button>' +
       '<button onclick="addRemind({preset:\'1h\'})">за час</button></div>' +
-    '<div class="nt-custom"><input type="datetime-local" id="remind-at">' +
+    '<div class="nt-custom"><input type="datetime-local" id="remind-at" aria-label="Своё время, по Москве">' +
       '<button onclick="addRemind({at: document.getElementById(\'remind-at\').value})">OK</button></div>' +
+    '<p class="sheet-hint rm-tz">Своё время — по Москве</p>' +           // сервер считает его московским
     '<button class="ghost" onclick="closeSheet(\'remind-sheet\')">Готово</button>';
 }
 

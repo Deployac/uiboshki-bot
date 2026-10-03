@@ -103,13 +103,19 @@ def parse_report(html: str) -> dict:
         rng = _RANGE.search(range_td.get_text(" ") if range_td else "")
         classes = " ".join(grade_td.get("class") or []) if grade_td else ""
         passed = True if "gradepass" in classes else (False if "gradefail" in classes else None)
+        blank = not text or text in ("-", "–")
+        grade = None if blank else _num(text)
+        if not blank and grade is None and passed is None:
+            # оценка шкалой: «Зачтено» / «Не зачтено» — числа нет, но работа оценена
+            low = text.lower()
+            passed = False if low.startswith("не ") else (True if "зачт" in low else None)
         m = _MOD.search(link["href"]) if link else None
         items.append({
             "name": name, "kind": kind.capitalize(),
             "module": m.group(1) if m else "", "cmid": int(m.group(2)) if m else None,
             "url": link["href"] if link else "",
-            "grade": _num(text) if text and text not in ("-", "–") else None,
-            "text": text if text not in ("-", "–") else "",
+            "grade": grade, "graded": not blank,
+            "text": "" if blank else text,
             "max": float(rng.group(2).replace(",", ".")) if rng else None,
             "passed": passed, "level": level,
             "category": stack[-1][1] if stack else "",
@@ -130,6 +136,7 @@ def summarize(report: dict, course_name: str = "") -> dict:
     for w in works:
         if w["passed"] is None and w["grade"] is not None:
             w["passed"] = True     # порога нет — зачтена любая выставленная оценка
+        w["graded"] = w.get("graded", w["grade"] is not None)
     tk_cat = next((c for c in cats if is_tk(c["name"])), None)
     if tk_cat and tk_cat["grade"] is None and works:
         # «Текущий контроль» ещё не посчитан («-») — сумма выставленных работ
@@ -140,10 +147,11 @@ def summarize(report: dict, course_name: str = "") -> dict:
         score = sum(c["grade"] or 0 for c in cats)
     final_text = (final or {}).get("text", "")
     lower = (course_name + " " + ((final or {}).get("text") or "")).lower()
-    credit = "зач" in lower and "экзам" not in course_name.lower()
+    # «Дифференцированный зачёт» — по нему ставят 3/4/5, это не простой зачёт
+    credit = "зач" in lower and "экзам" not in course_name.lower() and "диф" not in lower
     marks = CREDIT_MARKS if credit else EXAM_MARKS
     passed = sum(1 for w in works if w["passed"])
-    graded = sum(1 for w in works if w["grade"] is not None)
+    graded = sum(1 for w in works if w["graded"])
     goal = next((p for p, _ in marks if score < p), None)
     return {
         "kind": "credit" if credit else "exam",
@@ -152,10 +160,11 @@ def summarize(report: dict, course_name: str = "") -> dict:
         "closed": score >= marks[0][0],
         "need": round(goal - score, 2) if goal is not None else 0,
         "need_label": next((l for p, l in marks if score < p), ""),
-        "categories": [{"name": c["name"], "score": c["grade"] or 0, "max": c["max"], "tk": is_tk(c["name"])}
-                       for c in cats],
+        # set — выставлено ли вообще («-» у преподавателя, который ещё ничего не внёс, ≠ 0)
+        "categories": [{"name": c["name"], "score": c["grade"] or 0, "max": c["max"], "tk": is_tk(c["name"]),
+                        "set": c["grade"] is not None} for c in cats],
         "works": [{"name": w["name"], "kind": w["kind"], "module": w["module"], "cmid": w["cmid"],
-                   "grade": w["grade"], "max": w["max"], "passed": w["passed"]} for w in works],
+                   "grade": w["grade"], "graded": w["graded"], "max": w["max"], "passed": w["passed"]} for w in works],
         "works_total": len(works), "works_passed": passed, "works_graded": graded,
         "pass_share": PASS_SHARE,
     }
@@ -193,10 +202,15 @@ def parse_assign_page(html: str) -> dict:
         n = float(tl.group(1).replace(",", "."))
         time_limit = int(round(n * (60 if tl.group(2).lower().startswith("ч") else 1)))
     low = status.lower()
+    draft = "черновик" in low or "draft" in low
     return {
         "pass": float(pass_m.group(1).replace(",", ".")) if pass_m else None,
         "status": status,
-        "submitted": any(k in low for k in ("отправлен", "submitted")) and "не " not in low[:4],
+        # «Черновик (не отправлено)» — тоже со словом «отправлен», но не сдано
+        "submitted": not draft and ("для оценивания" in low or "for grading" in low or (
+            any(k in low for k in ("отправлен", "submitted")) and not any(k in low for k in ("не отправ", "not submitted"))
+            and "не " not in low[:4])),
+        "draft": draft,
         "offline": "вне сайта" in low,
         "remaining": next((v for k, v in rows.items() if k.startswith("оставшееся время")), ""),
         "due": due, "opens": opens, "time_limit": time_limit,
@@ -209,7 +223,7 @@ def work_status(w: dict, page: dict | None) -> str:
     """ok — зачтено; low — оценка ниже порога; wait — сдано, ждёт оценки;
     todo — можно сдавать; offline — сдаётся на занятии; soon — ещё закрыто;
     miss — срок прошёл, ответа нет."""
-    if w["grade"] is not None:
+    if w["grade"] is not None or w.get("graded"):
         return "ok" if w["passed"] else "low"
     page = page or {}
     if page.get("submitted"):
@@ -265,6 +279,9 @@ async def overview(user_id: int, cookie: str, fresh: bool = False) -> dict:
     key = ("all", user_id)
     if not fresh and (hit := _cached(key)):
         return hit
+    if fresh:                  # «обновить» — и экраны предметов тоже, иначе там до 10 минут старое
+        for k in [k for k in _cache if k[0] == "detail" and k[1] == user_id]:
+            _cache.pop(k, None)
     from sdo_files import make_client
     async with make_client(cookie) as client:
         courses = await this_semester_courses(client)

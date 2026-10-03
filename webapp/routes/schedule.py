@@ -110,12 +110,16 @@ async def api_today(user: dict = CurrentUser):
     """Всё для главной одним запросом: пары сегодня со статусами, ближайшая
     пара (или завтрашняя первая), погода строкой, дедлайны (сколько и
     ближайшие три), заметки к парам."""
+    import asyncio
     from datetime import datetime, timedelta, date as date_cls
     from database import get_active_deadlines, get_lesson_notes
+    from handlers.schedule import _clip
     from handlers.weather import get_weather_for_morning
     from schedule_parser import fetch_schedule_raw, lessons_for_date
     from utils import TZ
 
+    # погода (кэш 20 мин, а без него — внешний запрос) — параллельно с расписанием
+    weather_task = asyncio.create_task(get_weather_for_morning())
     now = datetime.now(TZ)
     today = now.date()
     lessons, tomorrow_first, schedule_ok, campus = [], None, True, ""
@@ -133,7 +137,7 @@ async def api_today(user: dict = CurrentUser):
         schedule_ok = False
 
     try:
-        weather = await get_weather_for_morning()
+        weather = await weather_task
     except Exception:
         weather = ""
 
@@ -149,7 +153,7 @@ async def api_today(user: dict = CurrentUser):
         "lessons": lessons, "tomorrow_first": tomorrow_first, "schedule_ok": schedule_ok,
         "weather": weather, "campus": campus, "stale": _stale_label(),
         "deadlines": {"active": len(items), "soon": soon},
-        "notes": [{"subject": n.get("subject") or "", "text": n["text"]} for n in notes],
+        "notes": [{"subject": n.get("subject") or "", "text": _clip(n["text"])} for n in notes],
     }
 
 
@@ -279,13 +283,18 @@ async def api_target(target_type: int, target_id: int, user: dict = CurrentUser)
     now = datetime.now(TZ)
     today = now.date()
     monday = today - timedelta(days=today.weekday()) + timedelta(days=7 if today.weekday() == 6 else 0)
+    try:
+        weeks = target_weeks(ical, monday, TARGET_WEEKS, now=now)
+    except Exception as e:      # обрывок календаря — не 500, а «недоступно»
+        logger.warning(f"api_target: календарь {target_type}/{target_id} не разобрался: {e!r}")
+        raise HTTPException(status_code=502, detail="расписание МИРЭА сейчас недоступно")
     pinned = any(p["type"] == target_type and p["id"] == target_id for p in await get_pins(user["id"]))
     return {
         "type": target_type, "id": target_id,
         "title": info["fullTitle"] if info else str(target_id),
         "pinned": pinned,
         "today": today.isoformat(),
-        "weeks": target_weeks(ical, monday, TARGET_WEEKS, now=now),
+        "weeks": weeks,
         "stale": stale,
     }
 

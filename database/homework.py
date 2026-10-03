@@ -98,9 +98,18 @@ async def get_hw_by_subject(subject: str) -> list[dict]:
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("""
-            SELECT * FROM homework WHERE subject=? ORDER BY created_at DESC
+            SELECT * FROM homework WHERE subject=? ORDER BY created_at DESC, id DESC
         """, (subject,))
         return [dict(r) for r in await cur.fetchall()]
+
+
+async def get_hw(hw_id: int) -> dict | None:
+    await init_hw_table()
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("SELECT * FROM homework WHERE id=?", (hw_id,))
+        row = await cur.fetchone()
+        return dict(row) if row else None
 
 
 async def delete_hw(hw_id: int):

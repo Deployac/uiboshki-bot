@@ -1,5 +1,6 @@
 import httpx
 import logging
+import time
 from zoneinfo import ZoneInfo
 
 from aiogram import Router, F
@@ -16,8 +17,26 @@ LON = 37.6156
 CITY = "Москва"
 
 
+# Погода нужна на каждом заходе на главную WebApp (/api/today): раньше это
+# был внешний запрос до 10 с каждый раз. Теперь — кэш на 20 минут, короткий
+# таймаут, а сбой запоминается на пару минут, чтобы не ждать его снова.
+WEATHER_TTL = 20 * 60
+WEATHER_FAIL_TTL = 2 * 60
+WEATHER_TIMEOUT = 4
+_weather_cache: tuple[float, dict | None] | None = None   # (до какого времени верить, данные)
+
+
 async def fetch_weather() -> dict | None:
     """Получаем погоду через Open-Meteo (бесплатно, без ключа)."""
+    global _weather_cache
+    if _weather_cache and _weather_cache[0] > time.monotonic():
+        return _weather_cache[1]
+    data = await _fetch_weather()
+    _weather_cache = (time.monotonic() + (WEATHER_TTL if data else WEATHER_FAIL_TTL), data)
+    return data
+
+
+async def _fetch_weather() -> dict | None:
     try:
         url = (
             f"https://api.open-meteo.com/v1/forecast"
@@ -25,7 +44,7 @@ async def fetch_weather() -> dict | None:
             f"&current=temperature_2m,apparent_temperature,precipitation,weathercode,windspeed_10m"
             f"&timezone=Europe/Moscow"
         )
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=WEATHER_TIMEOUT) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             return resp.json()

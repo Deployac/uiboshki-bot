@@ -308,6 +308,15 @@ class TooBig(Exception):
 
 
 async def download(client: httpx.AsyncClient, f: SdoFile) -> tuple[bytes, str]:
+    try:
+        return await _download(client, f)
+    except httpx.TooManyRedirects:
+        # протухшая кука — круг редиректов «вход → единый вход → обратно»
+        # (как в sdo_parser.get_checked): остановить выгрузку, а не гонять каждый файл
+        raise SdoSessionExpired("СДО гоняет по кругу редиректов на вход — кука протухла")
+
+
+async def _download(client: httpx.AsyncClient, f: SdoFile) -> tuple[bytes, str]:
     async with client.stream("GET", f.url) as resp:
         if _logged_out(resp):
             raise SdoSessionExpired("СДО попросил войти заново")

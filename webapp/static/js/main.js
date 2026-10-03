@@ -43,11 +43,14 @@ loadChatSubjects();
     if (open.length) open[open.length - 1].classList.remove("open");
   }
 
+  // те же экраны с «Назад», что в switchTab/showSdoView (посещения — тоже экран СДО);
+  // offClick перед onClick — чтобы один обработчик не встал дважды
   function restoreBack() {
     const active = (document.querySelector(".view.active") || {}).id || "";
-    if (["view-subject", "view-tk", "view-task"].includes(active)) { tg.BackButton.onClick(sdoBack); tg.BackButton.show(); }
-    else if (active === "view-search" && document.getElementById("target-view").style.display === "block") {
-      tg.BackButton.onClick(closeTarget); tg.BackButton.show();
+    if (["view-subject", "view-tk", "view-pos", "view-task"].includes(active)) {
+      tg.BackButton.offClick(sdoBack); tg.BackButton.onClick(sdoBack); tg.BackButton.show();
+    } else if (active === "view-search" && document.getElementById("target-view").style.display === "block") {
+      tg.BackButton.offClick(closeTarget); tg.BackButton.onClick(closeTarget); tg.BackButton.show();
     } else if (active === "view-files") syncFileBack();
     else tg.BackButton.hide();
   }

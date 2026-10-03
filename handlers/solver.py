@@ -13,10 +13,22 @@ from database import (
 )
 from keyboards import MAIN_KB, STOP_DIALOG_KB, CANCEL_KB, MENU_BUTTON_TEXTS
 from intent_router import classify_intent, dispatch_intent
-from utils import esc, md_to_tg_html_chunks, split_by_lines, utc_to_msk_date
+from utils import esc, md_to_tg_html_parts, utc_to_msk_date
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+# Решалка — только в личке: в группе (если боту видны все сообщения) любой
+# текст длиннее 15 символов уходил к ИИ и бот отвечал всем подряд.
+PRIVATE = F.chat.type == "private"
+TOO_MANY = "⏳ Много вопросов подряд — подожди минутку и спроси ещё раз."
+
+
+def _ai_allowed(message: Message) -> bool:
+    """Лимит запросов к ИИ, как в WebApp (ratelimit «ai»): бесплатный лимит
+    Gemini один человек сжечь не должен."""
+    import ratelimit
+    return ratelimit.allow("ai", message.from_user.id)
 
 SUBJECT_KB = ReplyKeyboardMarkup(
     keyboard=[[KeyboardButton(text=s)] for s in SUBJECTS],
@@ -67,9 +79,9 @@ class LectureSolverState(StatesGroup):
     waiting_task   = State()
 
 
-@router.message(Command("solve"))
-@router.message(Command("solve_ds"))
-@router.message(F.text == "🤖 Решить")
+@router.message(Command("solve"), PRIVATE)
+@router.message(Command("solve_ds"), PRIVATE)
+@router.message(F.text == "🤖 Решить", PRIVATE)
 async def cmd_solve(message: Message, state: FSMContext):
     await upsert_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name or "")
     backend = "deepseek" if (message.text or "").startswith("/solve_ds") else "gemini"
@@ -134,14 +146,12 @@ async def answer_model_text(message: Message, answer: str) -> list[Message]:
     """Ответ модели -> сообщения с HTML-разметкой (см. md_to_tg_html_chunks).
     Если Telegram всё же не принял разметку куска — тот же кусок без неё."""
     sent = []
-    plain_chunks = split_by_lines(answer)
-    for i, chunk in enumerate(md_to_tg_html_chunks(answer)):
+    for md, chunk in md_to_tg_html_parts(answer):
         try:
             sent.append(await message.answer(chunk, parse_mode="HTML"))
         except Exception as e:
             logger.warning(f"Ответ модели не прошёл как HTML, шлю текстом: {e}")
-            fallback = plain_chunks[i] if i < len(plain_chunks) else chunk
-            sent.append(await message.answer(fallback))
+            sent.append(await message.answer(md))
     return sent
 
 
@@ -164,11 +174,14 @@ async def send_answer(message: Message, state: FSMContext, answer: str):
     await state.update_data(msg_ids=msg_ids, hinted=True)
 
 
-@router.message(SolverState.waiting_task, F.text)
+@router.message(SolverState.waiting_task, F.text, PRIVATE)
 async def handle_first_task(message: Message, state: FSMContext):
     data    = await state.get_data()
     subject = data.get("subject", "")
     backend = data.get("backend", "gemini")
+    if not _ai_allowed(message):
+        await message.answer(TOO_MANY)
+        return
     wait    = await message.answer("🧠 Решаю, секунду...")
     try:
         answer = await solve_text(message.text, subject, backend=backend, lectures=await _lectures_for(data, message.text))
@@ -190,29 +203,54 @@ async def handle_first_task(message: Message, state: FSMContext):
         await wait.edit_text(f"❌ Ошибка: {e}")
 
 
-@router.message(SolverState.waiting_task, F.photo)
+def _photo_prompt(caption: str, history: list | None = None) -> str:
+    """Подпись к фото («реши только 2 пункт») — в запрос: раньше она терялась.
+    В диалоге — ещё и прошлые реплики, чтобы фото было в контексте."""
+    earlier = "\n".join(f"{'Студент' if m['role'] == 'user' else 'Ты'}: {m['content'][:500]}"
+                        for m in (history or [])[-6:])
+    question = caption.strip() or "Реши задание на фото с подробным объяснением."
+    return ((f"Предыдущий разговор:\n{earlier}\n\n" if earlier else "")
+            + f"Сообщение студента: {question}\n\nНе используй LaTeX.")
+
+
+async def _photo_answer(message: Message, bot: Bot, data: dict, history: list | None = None) -> str:
+    photo      = message.photo[-1]
+    file       = await bot.get_file(photo.file_id)
+    file_bytes = await bot.download_file(file.file_path)
+    caption    = message.caption or ""
+    return await solve_image(file_bytes.read(), subject=data.get("subject", ""),
+                             lectures=await _lectures_for(data, caption),
+                             prompt=_photo_prompt(caption, history))
+
+
+def _photo_task(message: Message) -> str:
+    return "Задание на фото" + (f": {message.caption}" if message.caption else "")
+
+
+PHOTO_FAIL = ("📝 Не смог распознать фото.\n\n"
+              "Попробуй:\n• Переслать текстом\n• Сделать чёткое фото\n• Прислать скриншот")
+
+
+@router.message(SolverState.waiting_task, F.photo, PRIVATE)
 async def handle_first_photo(message: Message, state: FSMContext, bot: Bot):
     data    = await state.get_data()
     subject = data.get("subject", "")
+    if not _ai_allowed(message):
+        await message.answer(TOO_MANY)
+        return
     wait    = await message.answer("🧠 Анализирую фото...")
     try:
-        photo      = message.photo[-1]
-        file       = await bot.get_file(photo.file_id)
-        file_bytes = await bot.download_file(file.file_path)
-        answer     = await solve_image(file_bytes.read(), subject=subject, lectures=await _lectures_for(data, message.caption or ""))
+        answer = await _photo_answer(message, bot, data)
 
         if not answer or len(answer.strip()) < 10:
-            await wait.edit_text(
-                "📝 Не смог распознать фото.\n\n"
-                "Попробуй:\n• Переслать текстом\n• Сделать чёткое фото\n• Прислать скриншот"
-            )
+            await wait.edit_text(PHOTO_FAIL)
             return
 
         await wait.delete()
-        await add_solver_history(message.from_user.id, "[фото]", answer, subject)
+        await add_solver_history(message.from_user.id, ("[фото] " + (message.caption or "")).strip(), answer, subject)
 
         history = [
-            {"role": "user",      "content": "Задание на фото"},
+            {"role": "user",      "content": _photo_task(message)},
             {"role": "assistant", "content": answer},
         ]
         await state.update_data(history=history)
@@ -223,8 +261,9 @@ async def handle_first_photo(message: Message, state: FSMContext, bot: Bot):
         await wait.edit_text(f"❌ Ошибка: {e}")
 
 
-@router.message(SolverState.in_dialog, F.text)
+@router.message(SolverState.in_dialog, F.text, PRIVATE)
 async def handle_dialog(message: Message, state: FSMContext):
+    import lecture_picker
     data    = await state.get_data()
     subject = data.get("subject", "")
     backend = data.get("backend", "gemini")
@@ -233,11 +272,17 @@ async def handle_dialog(message: Message, state: FSMContext):
 
     # Сохраняем ID входящего сообщения
     msg_ids.append(message.message_id)
+    if not _ai_allowed(message):
+        msg_ids.append((await message.answer(TOO_MANY)).message_id)
+        await state.update_data(msg_ids=msg_ids)
+        return
     history.append({"role": "user", "content": message.text})
 
     wait = await message.answer("🧠 Думаю...")
     try:
-        answer = await solve_with_history(history, subject, backend=backend, lectures=await _lectures_for(data, message.text))
+        # «а почему?», «подробнее» — лекции ищем по теме прошлых вопросов
+        query = lecture_picker.search_query(history)
+        answer = await solve_with_history(history, subject, backend=backend, lectures=await _lectures_for(data, query))
         if not answer or len(answer.strip()) < 10:
             await wait.edit_text("🤔 Не смог ответить. Попробуй иначе.")
             return
@@ -249,6 +294,32 @@ async def handle_dialog(message: Message, state: FSMContext):
         await state.update_data(history=history, msg_ids=msg_ids)
         await send_answer(message, state, answer)
 
+    except Exception as e:
+        logger.error(e)
+        await wait.edit_text(f"❌ Ошибка: {e}")
+
+
+@router.message(SolverState.in_dialog, F.photo, PRIVATE)
+async def handle_dialog_photo(message: Message, state: FSMContext, bot: Bot):
+    """Фото посреди диалога («а вот ещё задача») — раньше молча терялось."""
+    data    = await state.get_data()
+    history = data.get("history", [])
+    msg_ids = data.get("msg_ids", [])
+    msg_ids.append(message.message_id)
+    if not _ai_allowed(message):
+        msg_ids.append((await message.answer(TOO_MANY)).message_id)
+        await state.update_data(msg_ids=msg_ids)
+        return
+    wait = await message.answer("🧠 Анализирую фото...")
+    try:
+        answer = await _photo_answer(message, bot, data, history)
+        if not answer or len(answer.strip()) < 10:
+            await wait.edit_text(PHOTO_FAIL)
+            return
+        await wait.delete()
+        history += [{"role": "user", "content": _photo_task(message)}, {"role": "assistant", "content": answer}]
+        await state.update_data(history=history[-10:], msg_ids=msg_ids)
+        await send_answer(message, state, answer)
     except Exception as e:
         logger.error(e)
         await wait.edit_text(f"❌ Ошибка: {e}")
@@ -277,7 +348,7 @@ async def cmd_history(message: Message):
 # state ниже — апдейт считался обработанным, и lecture_choose_subject /
 # lecture_handle_task не вызывались никогда (/solve_lectures зависал на
 # выборе предмета).
-@router.message(F.text & ~F.text.startswith("/"), StateFilter(None))
+@router.message(F.text & ~F.text.startswith("/"), StateFilter(None), PRIVATE)
 async def handle_plain_text(message: Message, state: FSMContext):
     if message.text in MENU_BUTTON_TEXTS:
         return
@@ -287,6 +358,10 @@ async def handle_plain_text(message: Message, state: FSMContext):
     # «скинь практику 3 по основам предпр деят» — файл, а не вопрос к ИИ
     from handlers.files import answer_file_request
     if await answer_file_request(message):
+        return
+
+    if len(message.text.strip()) >= 3 and not _ai_allowed(message):   # классификатор — тоже запрос к ИИ
+        await message.answer(TOO_MANY)
         return
 
     # Фаза 1: сначала пробуем понять намерение без команд/кнопок
@@ -323,9 +398,30 @@ async def handle_plain_text(message: Message, state: FSMContext):
         await wait.edit_text("❌ ИИ сейчас не ответил — попробуй ещё раз через минуту")
 
 
+# /start обещает «пришли фото задачи — отвечу», а фото без /solve раньше
+# никто не ловил. Подпись к фото — вопрос к нему.
+@router.message(F.photo, StateFilter(None), PRIVATE)
+async def handle_plain_photo(message: Message, bot: Bot):
+    if not _ai_allowed(message):
+        await message.answer(TOO_MANY)
+        return
+    wait = await message.answer("🧠 Анализирую фото...")
+    try:
+        answer = await _photo_answer(message, bot, {})
+        if not answer or len(answer.strip()) < 10:
+            await wait.edit_text(PHOTO_FAIL)
+            return
+        await wait.delete()
+        await add_solver_history(message.from_user.id, ("[фото] " + (message.caption or "")).strip(), answer)
+        await answer_model_text(message, answer)
+    except Exception as e:
+        logger.error(f"решалка (фото): {e!r}")
+        await wait.edit_text("❌ ИИ сейчас не ответил — попробуй ещё раз через минуту")
+
+
 # ── Решалка по лекциям (Gemini, Фаза 9) ─────────────────────────────────────
 
-@router.message(Command("solve_lectures"))
+@router.message(Command("solve_lectures"), PRIVATE)
 async def cmd_solve_lectures(message: Message, state: FSMContext):
     await upsert_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name or "")
     subjects = await get_subjects_with_lecture_text()
@@ -362,11 +458,14 @@ async def lecture_choose_subject(message: Message, state: FSMContext):
     )
 
 
-@router.message(LectureSolverState.waiting_task, F.text)
+@router.message(LectureSolverState.waiting_task, F.text, PRIVATE)
 async def lecture_handle_task(message: Message, state: FSMContext):
     if message.text == "❌ Отмена":
         await state.clear()
         await message.answer("Отменено.", reply_markup=MAIN_KB)
+        return
+    if not _ai_allowed(message):
+        await message.answer(TOO_MANY)       # состояние не сбрасываем — можно прислать ещё раз
         return
 
     data    = await state.get_data()

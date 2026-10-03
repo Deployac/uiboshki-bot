@@ -3,6 +3,7 @@
 
 import logging
 import re
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
@@ -121,6 +122,10 @@ async def download_file(file_id: int, name: str, exp: int, sig: str):
     bot = deps.tg_bot()
     tf = await bot.get_file(f["file_id"])
     data = await bot.download_file(tf.file_path)
+    # Имя в пути — только для красоты ссылки: подпись его не покрывает, так
+    # что имя и Content-Type берём из базы (иначе подменой пути .pdf
+    # превращается в .html с типом text/html).
+    name = _download_name(f, tf.file_path or "")
     return Response(data.getvalue(), media_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name, safe='')}"})
 
@@ -181,11 +186,13 @@ async def api_file_edit(file_id: int, body: FileMeta, user: dict = CurrentUser):
 # Свой путь /api/summary, а не /api/files/{id}/…: stats.kind_for считает
 # любой POST на /api/files/ скачиванием.
 
-async def _summary_view(f: dict) -> dict:
+async def _summary_view(f: dict, s: dict | None = None) -> dict:
+    """s — только что сделанный конспект: неполный (запасной ИИ) в базу не
+    пишется, поэтому показываем его отсюда, а не из базы."""
     import lecture_summary
     from database import get_file_summary, get_file_text
     from file_categories import LABELS, category_of
-    s = await get_file_summary(f["id"])
+    s = s or await get_file_summary(f["id"])
     return {
         "id": f["id"], "title": f["title"], "subject": f.get("subject") or "",
         "category_label": LABELS[category_of(f)], "has_text": bool(s) or bool(await get_file_text(f["id"])),
@@ -216,13 +223,13 @@ async def api_summary_make(file_id: int, user: dict = CurrentUser):
     if not await get_file_summary(file_id) and not ratelimit.allow("ai", user["id"]):
         raise HTTPException(429, "Слишком много запросов к ИИ подряд — подожди минуту")
     try:
-        await lecture_summary.make(file_id, f["title"], f.get("subject") or "", user["id"])
+        made = await lecture_summary.make(file_id, f["title"], f.get("subject") or "", user["id"])
     except lecture_summary.NoText:
         raise HTTPException(422, "В файле нет текста — конспект делать не из чего")
     except Exception as e:
         logger.warning(f"конспект файла {file_id}: {e!r}")
         raise HTTPException(502, "ИИ сейчас не ответил — попробуй через минуту")
-    return await _summary_view(f)
+    return await _summary_view(f, made)
 
 
 
@@ -266,14 +273,21 @@ async def api_file_page(file_id: int, page: int, request: Request, user: dict = 
     return out
 
 
+# PDFium не потокобезопасен: две страницы, которые рисуются в to_thread
+# одновременно, давали сотни «Data format error» (и могут портить память).
+# Вся работа с pypdfium2 — строго под одним замком.
+_pdfium_lock = threading.Lock()
+
+
 def _render_pdf_page(data: bytes, page: int) -> bytes:
     import io
     import pypdfium2 as pdfium
-    pdf = pdfium.PdfDocument(data)
-    try:
-        img = pdf[page - 1].render(scale=1.6).to_pil().convert("RGB")
-    finally:
-        pdf.close()
+    with _pdfium_lock:
+        pdf = pdfium.PdfDocument(data)
+        try:
+            img = pdf[page - 1].render(scale=1.6).to_pil().convert("RGB")
+        finally:
+            pdf.close()
     buf = io.BytesIO()
     img.save(buf, "JPEG", quality=82, optimize=True)
     return buf.getvalue()

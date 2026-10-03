@@ -1,4 +1,7 @@
+import re
+
 from aiogram import Router, F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -10,6 +13,26 @@ from utils import esc, split_by_lines
 router = Router()
 
 
+# Фото из /upload сохраняются с именем «фото_<id сообщения>.jpg»
+# (handlers/files_upload.py) — отдельного поля типа в files нет.
+PHOTO_FILE_NAME = re.compile(r"^фото_\d+\.jpg$")
+
+
+async def send_stored_file(bot, chat_id: int, f: dict, caption: str, **kwargs):
+    """Файл из таблицы files: фото — send_photo, остальное — send_document.
+    file_id фото документом Telegram не отдаёт («can't use file of type Photo
+    as Document»), поэтому при такой ошибке — второй способ (на случай, если
+    имя обмануло)."""
+    as_photo = bool(PHOTO_FILE_NAME.match(f.get("file_name") or ""))
+    first, second = (bot.send_photo, bot.send_document) if as_photo else (bot.send_document, bot.send_photo)
+    try:
+        return await first(chat_id, f["file_id"], caption=caption, **kwargs)
+    except TelegramBadRequest as e:
+        if "file of type" not in str(e):
+            raise
+        return await second(chat_id, f["file_id"], caption=caption, **kwargs)
+
+
 async def send_file_to(bot, user_id: int, fid) -> bool:
     """Файл из «Файлов» в личку: WebApp сама отдать его не может (file_id
     живёт только у бота). False — файла нет."""
@@ -17,9 +40,9 @@ async def send_file_to(bot, user_id: int, fid) -> bool:
     target = next((f for f in await get_files() if str(f["id"]) == str(fid)), None)
     if not target:
         return False
-    await bot.send_document(
-        user_id, target["file_id"],
-        caption=f"📄 <b>{esc(target['title'])}</b>" + (f" ({esc(target['subject'])})" if target.get('subject') else ""),
+    await send_stored_file(
+        bot, user_id, target,
+        f"📄 <b>{esc(target['title'])}</b>" + (f" ({esc(target['subject'])})" if target.get('subject') else ""),
         parse_mode="HTML",
     )
     return True
@@ -252,7 +275,7 @@ STAROSTA_HELP = (
     "/backup — копия базы (сама приходит каждую ночь) · /restore — восстановить из копии\n"
     "/stats — статистика бота · /status — состояние бота (СДО, бэкап, ошибки)\n"
     "/pulsecheck — пускает ли Пульс\n"
-    "/delpost ID — удалить пост из ленты\n"
+    "/delpost ID — удалить пост из ленты · /delnote — удалить заметку к паре\n"
     "/clearsem — сбросить всё под новый семестр"
 )
 

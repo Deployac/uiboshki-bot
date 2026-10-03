@@ -161,6 +161,7 @@ async def receive_file(message: Message, state: FSMContext):
             file_name = message.document.file_name or "файл"
         else:
             tg_file_id = message.photo[-1].file_id
+            # По этому имени фото и отдаётся как фото (handlers.start.send_stored_file)
             file_name = f"фото_{message.message_id}.jpg"
 
         existing = {(f.get("file_name"), f.get("subject") or "") for f in await get_files(subject or None)}

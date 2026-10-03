@@ -1,5 +1,8 @@
 """Группа: голосования, лента «Подслушано», заметки к парам."""
 
+import hashlib
+import hmac
+
 import aiosqlite
 
 from database._conn import connect
@@ -49,22 +52,53 @@ async def close_vote(vote_id: int):
 
 # ── Лента "Подслушано" ────────────────────────────────────────────────────────
 
-async def get_last_feed_post_time(author_id: int) -> str | None:
+# Автор поста не хранится: вместо id — HMAC (ключ из BOT_TOKEN), его хватает
+# для антиспама. Копия базы каждую ночь уходит старосте — по ней автора не
+# узнать. Старший бит 56-битного числа всегда стоит: так хэш не спутать с
+# настоящим id Telegram (те короче 53 бит) при обезличивании старых строк.
+# Через сутки хэш стирается совсем (0): кулдауну хватает минут.
+_HASH_FLAG = 1 << 55
+
+
+def feed_author_hash(user_id: int) -> int:
+    from config import BOT_TOKEN
+    key = hashlib.sha256(b"feed-author:" + (BOT_TOKEN or "").encode()).digest()
+    digest = hmac.new(key, str(int(user_id)).encode(), hashlib.sha256).digest()
+    return int.from_bytes(digest[:7], "big") | _HASH_FLAG
+
+
+async def anonymize_feed_authors():
+    """Обезличить уже записанное: старше суток — 0, свежие настоящие id — хэш.
+    Зовётся при старте бота (handlers.register_handlers) и при каждом посте."""
+    from config import FEED_COOLDOWN_MINUTES
+    keep = f"-{max(24 * 60, FEED_COOLDOWN_MINUTES)} minutes"
+    async with connect() as db:
+        await db.execute("UPDATE feed_posts SET author_id=0 "
+                         "WHERE author_id!=0 AND created_at < datetime('now', ?)", (keep,))
+        rows = await (await db.execute(
+            "SELECT id, author_id FROM feed_posts WHERE author_id>0 AND author_id<?", (_HASH_FLAG,))).fetchall()
+        for post_id, author_id in rows:
+            await db.execute("UPDATE feed_posts SET author_id=? WHERE id=?", (feed_author_hash(author_id), post_id))
+        await db.commit()
+
+
+async def get_last_feed_post_time(user_id: int) -> str | None:
     async with connect() as db:
         cursor = await db.execute("""
             SELECT created_at FROM feed_posts
             WHERE author_id=? AND deleted=0
             ORDER BY created_at DESC LIMIT 1
-        """, (author_id,))
+        """, (feed_author_hash(user_id),))
         row = await cursor.fetchone()
         return row[0] if row else None
 
 
-async def add_feed_post(text: str, photo_file_id: str, author_id: int) -> int:
+async def add_feed_post(text: str, photo_file_id: str, user_id: int) -> int:
+    await anonymize_feed_authors()
     async with connect() as db:
         cursor = await db.execute("""
             INSERT INTO feed_posts (text, photo_file_id, author_id) VALUES (?, ?, ?)
-        """, (text, photo_file_id, author_id))
+        """, (text, photo_file_id, feed_author_hash(user_id)))
         await db.commit()
         return cursor.lastrowid
 

@@ -85,29 +85,47 @@ async def _deepseek_chat(messages: list[dict], model: str = MODEL_DEEPSEEK, **pa
         return resp.json()["choices"][0]["message"]
 
 
+def _fit(lectures: str, max_chars: int | None) -> tuple[str, bool]:
+    return (gemini_solver._fit_context_budget(lectures, max_chars) if max_chars
+            else gemini_solver._fit_context_budget(lectures))
+
+
 def lecture_system_prompt(subject: str, lectures: str, max_chars: int | None = None) -> str:
-    """Промпт решалки + материалы лекций предмета (обрезанные по бюджету
-    Gemini целыми лекциями, см. gemini_solver._fit_context_budget). Раньше
-    лекции подключались только отдельной командой /solve_lectures и только
-    к первому сообщению — обычная решалка про них не знала."""
-    fitted, truncated = (gemini_solver._fit_context_budget(lectures, max_chars) if max_chars
-                         else gemini_solver._fit_context_budget(lectures))
+    """Промпт решалки с лекциями — только правила. Сами лекции (обрезанные
+    по бюджету Gemini целыми лекциями, см. gemini_solver._fit_context_budget)
+    идут в сообщении студента в рамке — with_lectures: их может загрузить
+    любой, и в systemInstruction они звучали бы как правила."""
+    _, truncated = _fit(lectures, max_chars)
     note = " (часть последних лекций не влезла в лимит)" if truncated else ""
-    source = ("Ниже — материалы лекций этого предмета, загруженные группой" if subject else
-              "Ниже — отрывки лекций группы, подобранные под вопрос (по совпадению слов — могут быть не в тему)")
+    source = ("К сообщению студента приложены материалы лекций этого предмета, загруженные группой" if subject else
+              "К сообщению студента приложены отрывки лекций группы, подобранные под вопрос (по совпадению слов — могут быть не в тему)")
     if lectures.lstrip().startswith("=== [1]"):
         # куски от поиска по смыслу (semantic_search.build_context): с номерами —
         # пусть ИИ ссылается на них, а под ответом будут «Лекция 5 · слайд 12»
-        source = ("Ниже — фрагменты лекций группы, найденные под вопрос по смыслу и по словам, с номерами "
+        source = ("К сообщению студента приложены фрагменты лекций группы, найденные под вопрос по смыслу и по словам, с номерами "
                   "[1], [2]… Когда опираешься на фрагмент, ставь его номер в квадратных скобках прямо в "
                   "тексте, например «…дисконтируют [2]». Номера не выдумывай")
     return (
         build_system_prompt(subject) + "\n\n" +
         source + note + ". Опирайся на них "
         "в первую очередь: их определения, методы, обозначения и формулировки. Если какой-то части "
-        "задания в лекциях нет — реши сам и пометь её «(не из лекций)».\n\n"
-        f"=== Лекции ===\n{fitted}"
+        "задания в лекциях нет — реши сам и пометь её «(не из лекций)».\n\n" + gemini_solver.LECTURES_RULE
     )
+
+
+def lecture_block(lectures: str, max_chars: int | None = None) -> str:
+    return gemini_solver.frame_lectures(_fit(lectures, max_chars)[0])
+
+
+def with_lectures(history: list, lectures: str, max_chars: int | None = None) -> list:
+    """Копия истории: лекции в рамке — перед последним вопросом студента
+    (отдельный ход подряд с user deepseek-reasoner не принимает)."""
+    out = [dict(m) for m in history]
+    i = next((k for k in range(len(out) - 1, -1, -1) if out[k]["role"] == "user"), None)
+    if i is None:
+        return out + [{"role": "user", "content": lecture_block(lectures, max_chars)}]
+    out[i]["content"] = f"{lecture_block(lectures, max_chars)}\n\n=== Сообщение студента ===\n{out[i]['content']}"
+    return out
 
 
 # ── Запасной ИИ ─────────────────────────────────────────────────────────────
@@ -131,7 +149,8 @@ async def _gemini_with_retry(history: list, system: str) -> str:
         return await gemini_solver.generate_text(history, system)
 
 
-async def _gemini_then_deepseek(history: list, system: str, ds_system: str) -> str:
+async def _gemini_then_deepseek(history: list, system: str, ds_system: str,
+                                ds_history: list | None = None) -> str:
     try:
         return await _gemini_with_retry(history, system)
     except gemini_solver.GeminiError as e:
@@ -139,7 +158,7 @@ async def _gemini_then_deepseek(history: list, system: str, ds_system: str) -> s
             raise
         logger.warning(f"Gemini недоступен ({e}) — отвечает DeepSeek")
         try:
-            msg = await _deepseek_chat([{"role": "system", "content": ds_system}, *history],
+            msg = await _deepseek_chat([{"role": "system", "content": ds_system}, *(ds_history or history)],
                                        max_tokens=2048, temperature=0.3)
         except Exception as ds_error:
             logger.warning(f"Запасной DeepSeek тоже не ответил: {ds_error}")
@@ -162,10 +181,13 @@ async def solve_with_history(history: list, subject: str = "", backend: str = "g
     lectures — текст лекций предмета (только для Gemini: у DeepSeek окно
     меньше); extra_system — доп. контекст в конец системного промпта
     (например, дедлайны группы для чата WebApp)."""
+    ds_history = None
     if lectures.strip():
         backend = "gemini"
         system = lecture_system_prompt(subject, lectures)
         ds_system = lecture_system_prompt(subject, lectures, FALLBACK_LECTURE_CHARS)
+        history, ds_history = (with_lectures(history, lectures),
+                               with_lectures(history, lectures, FALLBACK_LECTURE_CHARS))
     else:
         system = ds_system = build_system_prompt(subject)
     if extra_system:
@@ -174,7 +196,7 @@ async def solve_with_history(history: list, subject: str = "", backend: str = "g
     if _resolve_backend(backend) == "deepseek":
         msg = await _deepseek_then_gemini(history, system, system, max_tokens=2048, temperature=0.3)
         return msg["content"]
-    return await _gemini_then_deepseek(history, system, ds_system)
+    return await _gemini_then_deepseek(history, system, ds_system, ds_history)
 
 
 async def solve_text(task: str, subject: str = "", backend: str = "gemini", lectures: str = "") -> str:
@@ -184,12 +206,13 @@ async def solve_text(task: str, subject: str = "", backend: str = "gemini", lect
 
 async def solve_image(image_bytes: bytes, mime: str = "image/jpeg", subject: str = "",
                       lectures: str = "", prompt: str = "") -> str:
-    system = lecture_system_prompt(subject, lectures) if lectures.strip() else build_system_prompt(subject)
-    return await gemini_solver.generate_from_image(
-        image_bytes, mime,
-        prompt or "Реши задание на фото с подробным объяснением. Не используй LaTeX.",
-        system,
-    )
+    prompt = prompt or "Реши задание на фото с подробным объяснением. Не используй LaTeX."
+    if lectures.strip():
+        system = lecture_system_prompt(subject, lectures)
+        prompt = f"{lecture_block(lectures)}\n\n=== Сообщение студента ===\n{prompt}"
+    else:
+        system = build_system_prompt(subject)
+    return await gemini_solver.generate_from_image(image_bytes, mime, prompt, system)
 
 
 async def extract_text_from_image(image_bytes: bytes, mime: str = "image/jpeg") -> str:
@@ -200,7 +223,7 @@ async def extract_text_from_image(image_bytes: bytes, mime: str = "image/jpeg") 
     хендлер честно пишет "не смог распознать"."""
     return await gemini_solver.generate_from_image(
         image_bytes, mime, "Извлеки весь текст с этого фото.", OCR_SYSTEM_PROMPT,
-        temperature=0.0,
+        temperature=0.0, mark_truncated=False,     # текст пойдёт в описание дедлайна — без пометок
     )
 
 

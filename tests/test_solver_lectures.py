@@ -41,10 +41,15 @@ async def _feed(dp, bot, text):
 
 
 def test_lecture_prompt_contains_lectures_and_rules():
-    prompt = ai_solver.lecture_system_prompt("Анализ данных", "=== Лекция 1 ===\nМетод наименьших квадратов")
-    assert "Метод наименьших квадратов" in prompt
+    lectures = "=== Лекция 1 ===\nМетод наименьших квадратов"
+    prompt = ai_solver.lecture_system_prompt("Анализ данных", lectures)
     assert "(не из лекций)" in prompt
     assert "Не здоровайся" in prompt  # общий стиль ответа сохранён
+    # сами лекции — не в системном промпте, а в рамке перед вопросом студента
+    assert "Метод наименьших квадратов" not in prompt
+    hist = ai_solver.with_lectures([{"role": "user", "content": "Как найти коэффициенты?"}], lectures)
+    assert "Метод наименьших квадратов" in hist[-1]["content"]
+    assert hist[-1]["content"].endswith("Как найти коэффициенты?")
 
 
 @pytest.mark.asyncio

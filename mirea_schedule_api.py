@@ -124,12 +124,21 @@ async def get_baseinfo(target_id: int, target_type: int) -> dict | None:
         return None
 
 
+# Официальный хост из-за рубежа не отвечает — ему короткий таймаут, иначе
+# после сбоя зеркала (20 с) ждали ещё 20 с впустую.
+_ICAL_SOURCES = ((MIRROR, 20), (BASE, 5))
+
+
 async def fetch_ical(target_id: int, target_type: int) -> bytes | None:
-    for base in (MIRROR, BASE):
+    """ical цели или None (сбой, страница ошибки вместо календаря): HTML с
+    кодом 200 раньше уходил в разбор и давал 500 в /api/target."""
+    for base, timeout in _ICAL_SOURCES:
         try:
-            async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
                 resp = await client.get(f"{base}/ical/{target_type}/{target_id}")
                 resp.raise_for_status()
+                if b"BEGIN:VCALENDAR" not in resp.content[:512]:
+                    raise ValueError("ответ не календарь")
                 return resp.content
         except Exception as e:
             logger.warning(f"mirea ical fetch failed ({base}): {e}")

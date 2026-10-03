@@ -202,9 +202,11 @@ async def mark_published(slug: str, ids: list[int]):
     from zoneinfo import ZoneInfo
     from config import TIMEZONE
     from database import set_setting
-    done = await published()
-    done[slug] = {"ids": ids, "at": datetime.now(ZoneInfo(TIMEZONE)).isoformat(timespec="minutes")}
-    await set_setting("channel:published", json.dumps(done, ensure_ascii=False))
+    from locks import lock
+    async with lock("channel:published"):      # две публикации подряд — в списке обе
+        done = await published()
+        done[slug] = {"ids": ids, "at": datetime.now(ZoneInfo(TIMEZONE)).isoformat(timespec="minutes")}
+        await set_setting("channel:published", json.dumps(done, ensure_ascii=False))
 
 
 def post_link(channel: str, msg_id: int) -> str:

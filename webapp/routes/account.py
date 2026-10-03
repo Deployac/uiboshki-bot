@@ -73,8 +73,10 @@ async def api_notify_save(body: NotifyBody, user: dict = CurrentUser):
             raise HTTPException(status_code=400, detail="такого времени напоминания нет")
         await set_reminder_minutes(uid, body.reminder_minutes)
     if body.prefs is not None:
-        current = notify_prefs.merge((await get_user(uid) or {}).get("notify"))
-        await set_notify(uid, notify_prefs.merge({**current, **body.prefs}))
+        from locks import lock
+        async with lock("notify", uid):          # два быстрых нажатия не перетирают друг друга
+            current = notify_prefs.merge((await get_user(uid) or {}).get("notify"))
+            await set_notify(uid, notify_prefs.merge({**current, **body.prefs}))
     return await _notify_view(uid)
 
 

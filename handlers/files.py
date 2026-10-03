@@ -180,11 +180,11 @@ async def send_file(callback: CallbackQuery, bot: Bot):
     if not f:
         await callback.answer("Файл не найден")
         return
+    from handlers.start import send_stored_file
     try:
-        await bot.send_document(
-            callback.message.chat.id,
-            f["file_id"],
-            caption=f"📄 {f['title']}" + (f"\n📚 {f['subject']}" if f.get("subject") else "")
+        await send_stored_file(
+            bot, callback.message.chat.id, f,
+            f"📄 {f['title']}" + (f"\n📚 {f['subject']}" if f.get("subject") else "")
         )
         await callback.answer()
     except Exception as e:

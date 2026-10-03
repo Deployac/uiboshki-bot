@@ -140,6 +140,7 @@ async function openTarget(type, id, title) {
     openNextLessonDay();
     renderTargetWeek();
   } catch (e) {
+    if (!targetCurrent || targetCurrent.type !== type || targetCurrent.id !== id) return;  // ошибка старого запроса — открыт уже другой
     // сайт МИРЭА лежит: не серая строка в пустоте, а понятно что и «Повторить»
     // (дизайн-ревью, п. 6)
     document.getElementById("target-days").innerHTML = "";

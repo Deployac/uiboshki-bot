@@ -79,6 +79,7 @@ async def send_backup(bot, chat_id: int, silent: bool = True) -> bool:
 
 REQUIRED_TABLES = ("users", "deadlines", "files")
 MAX_RESTORE_BYTES = 20 * 1024 * 1024    # скачать файл бот может до 20 МБ (Bot API)
+MAX_UNPACKED_BYTES = 400 * 1024 * 1024  # распакованная копия — не больше (gzip-«бомба» не съест память)
 
 
 class RestoreError(ValueError):
@@ -91,8 +92,11 @@ def inspect_backup(raw: bytes) -> tuple[str, dict]:
     удаляет apply_backup или вызывающий."""
     if raw[:2] == b"\x1f\x8b":
         try:
-            raw = gzip.decompress(raw)
-        except (OSError, EOFError, zlib.error):
+            d = zlib.decompressobj(16 + zlib.MAX_WBITS)      # gzip, но с пределом на размер
+            raw = d.decompress(raw, MAX_UNPACKED_BYTES + 1)
+            if len(raw) > MAX_UNPACKED_BYTES or d.unconsumed_tail:
+                raise RestoreError(f"распакованная копия больше {MAX_UNPACKED_BYTES // 1024 // 1024} МБ")
+        except zlib.error:
             raise RestoreError("архив повреждён — не распаковался")
     if not raw.startswith(b"SQLite format 3\x00"):
         raise RestoreError("это не база SQLite (нужен файл uiboshki-….db.gz из /backup)")
@@ -130,6 +134,36 @@ def _copy_into(src_path: str, dst_path: str):
         src.close()
 
 
+async def keep_local_copy() -> str | None:
+    """Копия текущей базы файлом рядом с ней на томе — страховка перед
+    /restore, когда прислать копию в Telegram не вышло (больше 50 МБ или
+    база повреждена — тогда копируем файл как есть). → путь или None."""
+    import shutil
+    path = database.DATABASE_PATH + ".before-restore"
+    try:
+        await asyncio.to_thread(_copy_into, database.DATABASE_PATH, path)
+        return path
+    except Exception as e:
+        logger.warning(f"restore: копия через backup API не снялась ({e}) — копирую файл")
+    try:
+        await asyncio.to_thread(shutil.copyfile, database.DATABASE_PATH, path)
+        return path
+    except Exception as e:
+        logger.error(f"restore: не сохранил текущую базу рядом: {e}")
+        return None
+
+
+def _drop_search_index():
+    """Индекс поиска по смыслу — производные данные с id файлов; после
+    восстановления id раздаются заново, и старые куски подклеились бы к чужим
+    файлам. Удаляем — index_pending соберёт заново."""
+    from semantic_index import index_path
+    for suffix in ("", "-wal", "-shm"):
+        p = index_path() + suffix
+        if os.path.exists(p):
+            os.remove(p)
+
+
 async def apply_backup(tmp_path: str):
     """Перелить проверенную копию на место текущей базы и докатить миграции
     (копия могла быть снята старой версией бота)."""
@@ -138,4 +172,8 @@ async def apply_backup(tmp_path: str):
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+    try:
+        _drop_search_index()
+    except Exception as e:
+        logger.error(f"restore: индекс поиска не удалился: {e}")
     await database.init_db()

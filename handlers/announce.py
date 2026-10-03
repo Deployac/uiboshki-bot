@@ -7,7 +7,7 @@ from aiogram import Router, F, Bot
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from database import get_all_subscribed_users
 from config import STAROSTA_ID, is_starosta
@@ -21,10 +21,6 @@ class AnnounceState(StatesGroup):
     waiting = State()
 
 
-class ClearSemState(StatesGroup):
-    confirm = State()
-
-
 @router.message(Command("announce"))
 async def cmd_announce(message: Message, state: FSMContext):
     if STAROSTA_ID and not is_starosta(message.from_user.id):
@@ -36,12 +32,6 @@ async def cmd_announce(message: Message, state: FSMContext):
         "Можно текст, фото или документ.\n\n"
         "/cancel — отмена"
     )
-
-
-@router.message(Command("cancel"), AnnounceState.waiting)
-async def cancel_announce(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Отменено.")
 
 
 @router.message(AnnounceState.waiting)
@@ -85,35 +75,47 @@ async def send_announce(message: Message, state: FSMContext, bot: Bot):
 
 # ── Очистка семестра ─────────────────────────────────────────────────────────
 
+# Подтверждение — кнопкой, а не словом «да»: раньше состояние ждало любой
+# текст, и случайное «да» в другом разговоре стирало семестр.
+
 @router.message(Command("clearsem"))
-async def cmd_clearsem(message: Message, state: FSMContext):
+async def cmd_clearsem(message: Message):
     if STAROSTA_ID and not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
-    await state.set_state(ClearSemState.confirm)
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="🧹 Да, очистить", callback_data="clearsem:yes"),
+        InlineKeyboardButton(text="Не надо", callback_data="clearsem:no"),
+    ]])
     await message.answer(
         "⚠️ <b>Это сбросит данные прошлого семестра:</b>\n\n"
-        "• Дедалйн-трекер 🗓\n"
+        "• Дедлайн-трекер 🗓\n"
         "• Доску ДЗ 📝\n"
         "• Файлы 📁\n"
         "• Голосования 🗳\n\n"
         "<b>Подписки, настройки напоминаний и историю решений это НЕ тронет.</b>\n\n"
-        "Продолжить? Напиши <b>да</b> для подтверждения, или <b>нет</b> для отмены.",
-        parse_mode="HTML"
+        "Продолжить?",
+        parse_mode="HTML", reply_markup=kb,
     )
 
 
-@router.message(ClearSemState.confirm, F.text)
-async def clearsem_confirm(message: Message, state: FSMContext):
-    answer = message.text.strip().lower()
-    if answer in ("да", "yes", "y", "д"):
-        from database import clear_semester_data
-        await clear_semester_data()
-        await state.clear()
-        await message.answer("🧹 Готово! Доска чистого семестра.")
-    else:
-        await state.clear()
-        await message.answer("Отменено — данные сохранены.")
+@router.callback_query(F.data.startswith("clearsem:"))
+async def clearsem_confirm(callback: CallbackQuery):
+    if STAROSTA_ID and not is_starosta(callback.from_user.id):
+        await callback.answer("Только для старосты", show_alert=True)
+        return
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass  # кнопки уже сняты (двойное нажатие) — не страшно
+    if callback.data != "clearsem:yes":
+        await callback.answer("Ок, ничего не трогаю")
+        await callback.message.answer("Отменено — данные сохранены.")
+        return
+    from database import clear_semester_data
+    await clear_semester_data()
+    await callback.answer()
+    await callback.message.answer("🧹 Готово! Доска чистого семестра.")
 
 
 # ── Доска ДЗ и прочие команды группы — отдельными модулями (v5.0.3) ────────
