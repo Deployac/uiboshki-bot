@@ -225,3 +225,45 @@ async def test_offer_next_after_deploy(db, tmp_path, monkeypatch):
     assert await channel.offer_next(bot) is None and len(bot.session.sent) == n   # второй деплой — тишина
     monkeypatch.setattr(config, "CHANNEL_ID", "")
     assert await channel.offer_next(bot) is None                              # канал не задан — молчим
+
+
+# Теги, которые понимает Telegram в parse_mode=HTML
+TG_TAGS = {"b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "code", "pre", "a",
+           "tg-spoiler", "blockquote", "span", "tg-emoji"}
+
+
+def markup_problems(html: str) -> list[str]:
+    """Что Telegram не примет: неизвестный тег (в т.ч. голый «<» в коде —
+    «while misses < 300»), «&» без сущности, незакрытый тег."""
+    import re
+    out, stack = [], []
+    for m in re.finditer(r"<(/?)([^\s>/]*)[^>]*?(/?)>|<", html):
+        if m.group(0) == "<":
+            out.append(f"голый «<» у «{html[m.start():m.start() + 20]}»")
+            continue
+        closing, tag = m.group(1), m.group(2).lower()
+        if tag not in TG_TAGS:
+            out.append(f"тег <{tag}> у «{html[m.start():m.start() + 20]}»")
+        elif closing:
+            if not stack or stack.pop() != tag:
+                out.append(f"лишний </{tag}>")
+        else:
+            stack.append(tag)
+    out += [f"не закрыт <{t}>" for t in stack]
+    out += [f"«&» без сущности у «{html[m.start():m.start() + 15]}»"
+            for m in re.finditer(r"&(?!amp;|lt;|gt;|quot;|#\d+;)", html)]
+    return out
+
+
+def test_markup_problems_found():
+    assert markup_problems("<pre><code>while misses < 300:</code></pre>")
+    assert markup_problems("<b>a</i>") and markup_problems("<b>a") and markup_problems("A & B")
+    assert not markup_problems('<b>a</b> &lt; <a href="x">y</a> <blockquote expandable>z</blockquote>')
+
+
+def test_all_posts_have_valid_markup():
+    """Живой случай 04.10: пост 7 не ушёл — «Unsupported start tag» из-за
+    «misses < 300» в блоке кода. Каждый пост канала — только с тегами
+    Telegram и экранированными «<» и «&»."""
+    bad = {p["slug"]: markup_problems(p["html"]) for p in channel_posts.load_posts()}
+    assert {s: b for s, b in bad.items() if b} == {}
