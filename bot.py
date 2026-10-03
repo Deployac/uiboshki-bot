@@ -73,6 +73,7 @@ STAROSTA_COMMANDS = BOT_COMMANDS + [
     BotCommand(command="stats", description="📊 Статистика"),
     BotCommand(command="status", description="🩺 Состояние бота"),
     BotCommand(command="channel", description="📢 Посты канала"),
+    BotCommand(command="delnote", description="🗑 Удалить заметку к паре"),
     BotCommand(command="pulsecheck", description="📡 Пускает ли Пульс"),
     BotCommand(command="backup", description="💾 Копия базы"),
     BotCommand(command="restore", description="♻️ Восстановить базу из копии"),

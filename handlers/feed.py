@@ -7,8 +7,9 @@
 лента даёт основную частоту возврата.
 
 /feed — пользователь пишет текст/фото анонимно (никто, включая старосту,
-не видит автора в самом посте — id сохраняется в БД только для антиспама
-и модерации), бот публикует это в общий групповой чат (GROUP_CHAT_ID) с
+не видит автора: в БД вместо id — HMAC от него, только для антиспама, и
+через сутки стирается, см. database/social.py; в статистику /feed и сам
+пост не пишутся, см. middleware.py), бот публикует это в общий групповой чат (GROUP_CHAT_ID) с
 кнопками-реакциями. Старосте доступна ручная модерация через /delpost ID.
 
 Это ОТДЕЛЬНАЯ сущность от старого приватного /anon (handlers/social.py) —
@@ -77,7 +78,7 @@ async def cmd_feed_start(message: Message, state: FSMContext):
                 )
                 return
         except Exception as e:
-            logger.warning(f"Подслушано: не проверился антиспам у {message.from_user.id}: {e!r}")
+            logger.warning(f"Подслушано: не проверился антиспам: {e!r}")
 
     await state.set_state(FeedPost.waiting)
     await message.answer(
@@ -87,12 +88,6 @@ async def cmd_feed_start(message: Message, state: FSMContext):
         "/cancel — отмена",
         parse_mode="HTML"
     )
-
-
-@router.message(Command("cancel"), FeedPost.waiting)
-async def cancel_feed(message: Message, state: FSMContext):
-    await state.clear()
-    await message.answer("Отменено.")
 
 
 @router.message(FeedPost.waiting, F.text | F.photo)
@@ -108,12 +103,17 @@ async def publish_feed_post(message: Message, state: FSMContext, bot: Bot):
 
     post_id = await add_feed_post(text, photo_file_id, message.from_user.id)
     caption = f"🗣 <b>Подслушано</b>\n\n{esc(text)}" if text else "🗣 <b>Подслушано</b>"
+    # Реакции — сразу при отправке: id поста уже есть. Раньше вешались потом
+    # через edit_message_reply_markup(GROUP_CHAT_ID, …) позиционно, а первый
+    # параметр там business_connection_id — кнопки не появлялись ни разу.
+    kb = feed_keyboard(post_id, {})
 
     try:
         if photo_file_id:
-            sent = await bot.send_photo(GROUP_CHAT_ID, photo_file_id, caption=caption, parse_mode="HTML")
+            sent = await bot.send_photo(GROUP_CHAT_ID, photo_file_id, caption=caption, parse_mode="HTML",
+                                        reply_markup=kb)
         else:
-            sent = await bot.send_message(GROUP_CHAT_ID, caption, parse_mode="HTML")
+            sent = await bot.send_message(GROUP_CHAT_ID, caption, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
         logger.error(f"Не удалось опубликовать в ленту: {e}")
         # Пост так и не появился в группе — помечаем удалённым, иначе
@@ -127,16 +127,7 @@ async def publish_feed_post(message: Message, state: FSMContext, bot: Bot):
         )
         return
 
-    # Дальше пост уже в группе — сбой кнопок-реакций не делает его
-    # неопубликованным (иначе автор увидел бы "не смог" и запостил дубль).
     await set_feed_post_message_id(post_id, sent.message_id)
-    try:
-        await bot.edit_message_reply_markup(
-            GROUP_CHAT_ID, sent.message_id,
-            reply_markup=feed_keyboard(post_id, {})
-        )
-    except Exception as e:
-        logger.warning(f"Пост #{post_id} опубликован, но кнопки реакций не повесились: {e}")
     await message.answer("✅ Опубликовано анонимно!")
 
 

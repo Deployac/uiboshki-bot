@@ -11,6 +11,7 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 
 from database import add_hw, delete_hw, get_hw_by_subject, get_hw_subjects, init_hw_table, is_editor
+from database.homework import get_hw
 from utils import esc, parse_day_month, today_msk, utc_to_msk_date
 
 router = Router()
@@ -58,6 +59,30 @@ async def cmd_hw(message: Message):
     )
 
 
+def _board_view(subjects: list[str]) -> tuple[str, InlineKeyboardMarkup]:
+    buttons = [[InlineKeyboardButton(text=s, callback_data=f"hw:{i}")] for i, s in enumerate(subjects)]
+    text = "📝 <b>Доска ДЗ</b>\n\n" + ("Выбери предмет:" if subjects else "Пока пусто.")
+    return text, InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def _subject_view(subject: str, items: list[dict], can_edit: bool) -> tuple[str, InlineKeyboardMarkup]:
+    lines = [f"📝 <b>{esc(subject)}</b>\n"]
+    for item in items:
+        dt = utc_to_msk_date(item["created_at"])
+        lesson_badge = ""
+        if item.get("lesson_date"):
+            lesson_badge = f" 📅 к паре {date.fromisoformat(item['lesson_date']).strftime('%d.%m')}"
+        lines.append(f"• {esc(item['content']) or '[файл]'} <i>({dt})</i>{lesson_badge}")
+
+    row = [InlineKeyboardButton(text="◀️ Назад", callback_data="hw_back")]
+    # В кнопке — id самой записи: раньше там был префикс названия предмета
+    # (subject[:20]) и startswith — у предметов с общим началом удалялось ДЗ
+    # чужого предмета.
+    if can_edit and items:
+        row.append(InlineKeyboardButton(text="🗑 Удалить последнее", callback_data=f"hwdel:{items[0]['id']}"))
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=[row])
+
+
 @router.callback_query(F.data.startswith("hw:"))
 async def hw_subject(callback: CallbackQuery):
     idx = int(callback.data.split(":")[1])
@@ -68,28 +93,8 @@ async def hw_subject(callback: CallbackQuery):
     subject = subjects[idx]
     items = await get_hw_by_subject(subject)
 
-    lines = [f"📝 <b>{esc(subject)}</b>\n"]
-    for item in items:
-        dt = utc_to_msk_date(item["created_at"])
-        lesson_badge = ""
-        if item.get("lesson_date"):
-            from datetime import date as date_cls
-            lesson_badge = f" 📅 к паре {date_cls.fromisoformat(item['lesson_date']).strftime('%d.%m')}"
-        lines.append(f"• {esc(item['content']) or '[файл]'} <i>({dt})</i>{lesson_badge}")
-
-    can_edit = await is_editor(callback.from_user.id)
-    kb = None
-    if can_edit:
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="◀️ Назад", callback_data="hw_back"),
-            InlineKeyboardButton(text="🗑 Удалить последнее", callback_data=f"hwdel:{subject[:20]}")
-        ]])
-    else:
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="◀️ Назад", callback_data="hw_back")
-        ]])
-
-    await callback.message.edit_text("\n".join(lines), parse_mode="HTML", reply_markup=kb)
+    text, kb = _subject_view(subject, items, await is_editor(callback.from_user.id))
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
     # Отправляем файлы если есть
@@ -107,13 +112,8 @@ async def hw_subject(callback: CallbackQuery):
 
 @router.callback_query(F.data == "hw_back")
 async def hw_back(callback: CallbackQuery):
-    subjects = await get_hw_subjects()
-    buttons = [[InlineKeyboardButton(text=s, callback_data=f"hw:{i}")] for i, s in enumerate(subjects)]
-    await callback.message.edit_text(
-        "📝 <b>Доска ДЗ</b>\n\nВыбери предмет:",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
+    text, kb = _board_view(await get_hw_subjects())
+    await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
@@ -122,18 +122,26 @@ async def hw_del_last(callback: CallbackQuery):
     if not await is_editor(callback.from_user.id):
         await callback.answer("Нет прав")
         return
-    subject_prefix = callback.data.split(":", 1)[1]
-    subjects = await get_hw_subjects()
-    subject = next((s for s in subjects if s.startswith(subject_prefix)), None)
-    if not subject:
-        await callback.answer("Не найдено")
+    key = callback.data.split(":", 1)[1]
+    item = await get_hw(int(key)) if key.isdigit() else None
+    if not item:
+        # Старая кнопка (уже удалено или сообщение до обновления) — ничего не трогаем
+        await callback.answer("Уже удалено")
         return
+    await delete_hw(item["id"])
+    await callback.answer("✅ Удалено!")
+    # Перерисовываем: иначе кнопка оставалась прежней, и повторное нажатие
+    # удаляло ещё одно ДЗ.
+    subject = item["subject"]
     items = await get_hw_by_subject(subject)
     if items:
-        await delete_hw(items[0]["id"])
-        await callback.answer("✅ Удалено!")
+        text, kb = _subject_view(subject, items, True)
     else:
-        await callback.answer("Нечего удалять")
+        text, kb = _board_view(await get_hw_subjects())
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception as e:
+        logger.warning(f"ДЗ: доска после удаления не перерисовалась: {e!r}")
 
 
 @router.message(Command("addhw"))

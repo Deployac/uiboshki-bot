@@ -1,3 +1,4 @@
+import asyncio
 import re
 import logging
 from datetime import date
@@ -447,6 +448,10 @@ async def sdo_clean_confirm(callback: CallbackQuery):
 # не всегда достоверен (см. PLAN.md, Фаза 4), и светить непроверенное
 # в общий чат всей группы без подтверждения не стоит.
 
+_dlpost_locks: dict[tuple[int, int], asyncio.Lock] = {}
+_dlpost_done: set[tuple[int, int]] = set()
+
+
 @router.callback_query(F.data == "dlpost:yes")
 async def deadline_post_confirm(callback: CallbackQuery):
     if STAROSTA_ID and not is_starosta(callback.from_user.id):
@@ -457,13 +462,26 @@ async def deadline_post_confirm(callback: CallbackQuery):
         return
     text = callback.message.html_text
     group_text = text.removesuffix(DEADLINE_POST_QUESTION.strip()).rstrip()
-    try:
-        await callback.bot.send_message(GROUP_CHAT_ID, group_text, parse_mode="HTML")
-    except Exception as e:
-        await callback.answer(f"Ошибка отправки: {e}", show_alert=True)
-        return
-    await callback.message.edit_text(text + "\n\n✅ Опубликовано в группу.", parse_mode="HTML", reply_markup=None)
+    # Двойное нажатие публиковало дважды: проверка и отправка разделены await.
+    # Замок на сообщение + отметка «уже ушло» — второе нажатие ждёт первое и
+    # видит, что всё готово.
+    key = (callback.message.chat.id, callback.message.message_id)
+    async with _dlpost_locks.setdefault(key, asyncio.Lock()):
+        if key in _dlpost_done:
+            await callback.answer("Уже опубликовано")
+            return
+        try:
+            await callback.bot.send_message(GROUP_CHAT_ID, group_text, parse_mode="HTML")
+        except Exception as e:
+            await callback.answer(f"Ошибка отправки: {e}", show_alert=True)
+            return
+        _dlpost_done.add(key)
+    _dlpost_locks.pop(key, None)
     await callback.answer("Опубликовано!")
+    try:
+        await callback.message.edit_text(text + "\n\n✅ Опубликовано в группу.", parse_mode="HTML", reply_markup=None)
+    except Exception as e:
+        logger.warning(f"dlpost: кнопки не снялись: {e!r}")
 
 
 @router.callback_query(F.data == "dlpost:no")
