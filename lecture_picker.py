@@ -210,6 +210,28 @@ def wants_course(query: str) -> bool:
     return bool(_WANTS_COURSE.search(query or ""))
 
 
+# Быстрые ответы чата («Короче», «Подробнее», «Пример», «Проверь меня» —
+# QUICK_REPLIES в js/chat.js) и короткие «а почему?»: темы в них нет, и
+# поиск по ним приносил случайные куски лекций. Тема — в прошлых вопросах.
+_FOLLOW_UP = re.compile(r"^\s*(объясни то же самое|разбери подробнее|приведи (простой )?пример|задай мне|"
+                        r"короче|подробнее|пример|продолжи|дальше|ещ[её]\b|не понял|непонятно|поясни)", re.I)
+# Заглушки вложения без текста (chat.js): искать лекции не по чему.
+ATTACHMENT_STUBS = ("Разбери этот файл.", "Реши задание на фото.")
+
+
+def search_query(history: list[dict]) -> str:
+    """По чему искать лекции для ответа: последний вопрос, а если он короткий
+    или это быстрый ответ — вместе с 1–2 предыдущими вопросами студента."""
+    users = [(m.get("content") or "").strip() for m in history if m.get("role") == "user"]
+    users = [u for u in users if u]
+    if not users or users[-1] in ATTACHMENT_STUBS:
+        return ""
+    last = users[-1]
+    if not _FOLLOW_UP.match(last) and len(_stems(last)) >= 2:
+        return last
+    return "\n".join(users[-3:])
+
+
 def subject_scores(context: str, query: str, min_score: int = AUTO_MIN_SCORE) -> list[tuple[str, int]]:
     """[(предмет, лучший балл лекции)] по убыванию — для контекста с
     заголовками «предмет: файл». Чат без предмета спрашивает, какой имелся в

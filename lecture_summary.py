@@ -24,6 +24,15 @@ PROMPT = (
 )
 
 _locks: dict[int, asyncio.Lock] = {}
+NOT_SAVED = "\n\n_Конспект не сохранён — нажми ещё раз чуть позже, сделаю полный._"
+
+
+def _final(content: str) -> bool:
+    """Нет пометок запасного ИИ и обрыва ответа (ai_solver, gemini_solver)."""
+    import ai_solver
+    import gemini_solver
+    notes = (ai_solver.FALLBACK_NOTE_DS, ai_solver.FALLBACK_NOTE_GEMINI, gemini_solver.TRUNCATED_NOTE)
+    return not any(n.strip() in content for n in notes)
 
 
 class NoText(Exception):
@@ -54,6 +63,13 @@ async def make(file_id: int, title: str, subject: str, user_id: int) -> dict:
         content = (result.get("content") or "").strip()
         if len(content) < 40:
             raise RuntimeError("ИИ вернул пустой конспект")
+        if not _final(content):
+            # запасной ИИ по урезанной лекции или обрыв по лимиту ответа:
+            # показываем, но не сохраняем навсегда для всех — следующее
+            # нажатие сделает полный конспект
+            logger.info(f"конспект файла {file_id}: неполный, не сохраняю")
+            return {"file_id": file_id, "content": content + NOT_SAVED, "created_by": user_id,
+                    "created_at": None, "temporary": True}
         await save_file_summary(file_id, content, user_id)
         logger.info(f"конспект файла {file_id}: {len(content)} символов")
         return await get_file_summary(file_id)

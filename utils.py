@@ -279,6 +279,49 @@ def _md_to_tg_html(text: str) -> str:
     return "\n".join(lines)
 
 
+TG_HTML_LIMIT = 4000   # как long_messages.LIMIT: длиннее — прослойка порежет HTML вслепую
+
+
+def _split_md(text: str, limit: int) -> list[str]:
+    """split_by_lines, но и строку длиннее limit режем — по пробелу, если есть."""
+    lines = []
+    for line in text.split("\n"):
+        while len(line) > limit:
+            cut = line.rfind(" ", limit // 2, limit)
+            cut = cut if cut > 0 else limit
+            lines.append(line[:cut])
+            line = line[cut:]
+        lines.append(line)
+    return split_by_lines("\n".join(lines), limit)
+
+
+def _close_fences(chunks: list[str]) -> list[str]:
+    in_code = False
+    fixed = []
+    for chunk in chunks:
+        if in_code:
+            chunk = "```\n" + chunk
+        fences = sum(1 for line in chunk.split("\n") if _FENCE_RE.match(line))
+        in_code = fences % 2 == 1
+        if in_code:
+            chunk += "\n```"
+        fixed.append(chunk)
+    return fixed
+
+
+def md_to_tg_html_parts(text: str, limit: int = 3500) -> list[tuple[str, str]]:
+    """[(кусок Markdown, его HTML)] — Markdown нужен, если Telegram всё же не
+    примет HTML: тогда тот же кусок уходит обычным текстом."""
+    out = []
+    for md in _close_fences(_split_md(text or "", limit)):
+        html = _md_to_tg_html(md)
+        if len(html) > TG_HTML_LIMIT and limit > 200:
+            out += md_to_tg_html_parts(md, limit // 2)
+        else:
+            out.append((md, html))
+    return out
+
+
 def md_to_tg_html_chunks(text: str, limit: int = 3500) -> list[str]:
     """Ответ модели (обычный Markdown: **жирный**, ### заголовки, ```код```)
     -> куски HTML для parse_mode="HTML".
@@ -290,16 +333,10 @@ def md_to_tg_html_chunks(text: str, limit: int = 3500) -> list[str]:
     как есть (поймано живым тестом в Telegram). Здесь всё, что не разметка,
     экранируется, так что Telegram не отклонит кусок. Режем по строкам
     исходного текста; если разрез попал внутрь ```-блока, блок закрывается
-    в конце куска и открывается заново в следующем."""
-    chunks = split_by_lines(text or "", limit)
-    in_code = False
-    fixed = []
-    for chunk in chunks:
-        if in_code:
-            chunk = "```\n" + chunk
-        fences = sum(1 for line in chunk.split("\n") if _FENCE_RE.match(line))
-        in_code = fences % 2 == 1
-        if in_code:
-            chunk += "\n```"
-        fixed.append(chunk)
-    return [_md_to_tg_html(chunk) for chunk in fixed]
+    в конце куска и открывается заново в следующем.
+
+    Лимит меряется по готовому HTML: после экранирования (&lt;, &amp;) кусок
+    кода бывал длиннее 4000, и long_messages резал его посреди <pre> —
+    Telegram отвечал «can't parse entities». Такой кусок режется мельче, а
+    слишком длинная строка — ещё в Markdown, до экранирования."""
+    return [html for _, html in md_to_tg_html_parts(text, limit)]

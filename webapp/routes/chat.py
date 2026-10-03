@@ -145,16 +145,24 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
     import ratelimit
     if not ratelimit.allow("ai", user["id"]):
         raise HTTPException(status_code=429, detail="слишком много вопросов подряд — подожди минуту")
-    if not body.history:
+    # Роли — только user/assistant, и первым — вопрос: срез [-20:] мог
+    # начаться с ответа ИИ, а deepseek-reasoner такое не принимает.
+    history = [{"role": m.role, "content": m.content} for m in body.history[-20:]
+               if m.role in ("user", "assistant")]
+    while history and history[0]["role"] != "user":
+        history.pop(0)
+    if not history:
         raise HTTPException(status_code=400, detail="пустая история")
-    history = [{"role": m.role, "content": m.content} for m in body.history[-20:]]
     subject = body.subject.strip()
     # Лекции — только подходящие к вопросу (lecture_picker): после выгрузки
     # СДО их у предмета сотни тысяч символов. Без выбранного предмета — из
     # всех предметов, но только при явном совпадении с вопросом.
     import lecture_picker
     from database import get_all_lecture_context
-    query = next((m["content"] for m in reversed(history) if m["role"] == "user"), "")
+    # «Подробнее», «Пример», «а почему?» — ищем по теме прошлых вопросов,
+    # заглушку вложения («Разбери этот файл.») не ищем вовсе
+    query = lecture_picker.search_query(history)
+    last = history[-1]["content"] if history[-1]["role"] == "user" else ""
     if not body.attachment and history[-1]["role"] == "user":
         found = await _chat_file_request(history[-1]["content"])
         if found:
@@ -180,7 +188,7 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
         lectures = lecture_picker.pick(await get_subject_lecture_context(subject), query)
     elif not subject and query.strip():
         all_lectures = await get_all_lecture_context()
-        if not body.attachment and lecture_picker.wants_course(query):
+        if not body.attachment and lecture_picker.wants_course(last):
             # «объясни 3 лекцию» без предмета: вопрос явно про лекции, а предмет
             # не угадывается — не отвечаем наугад, а даём выбрать (фронт
             # переключит предмет и задаст тот же вопрос)

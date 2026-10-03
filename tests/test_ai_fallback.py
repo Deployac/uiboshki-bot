@@ -16,14 +16,14 @@ def ai(monkeypatch):
     state = {"gemini": [], "ds": None}      # очереди ответов: строка или исключение
 
     async def fake_gemini(history, system, **kw):
-        calls["gemini"].append(system)
+        calls["gemini"].append(system + "".join(m["content"] for m in history))
         r = state["gemini"].pop(0)
         if isinstance(r, Exception):
             raise r
         return r
 
     async def fake_ds(messages, **params):
-        calls["ds"].append(messages[0]["content"])
+        calls["ds"].append("".join(m["content"] for m in messages))
         if isinstance(state["ds"], Exception):
             raise state["ds"]
         return {"content": state["ds"], "reasoning_content": "думал"}
@@ -55,6 +55,7 @@ async def test_limit_goes_to_deepseek_with_note(ai):
     assert out.startswith("четыре") and "DeepSeek" in out
     assert len(calls["gemini"]) == 1                       # на лимит не повторяем
     assert len(calls["ds"][0]) < len(calls["gemini"][0])   # лекции для DeepSeek короче
+    assert HIST == [{"role": "user", "content": "2+2?"}]   # лекции — в копии истории, не в исходной
 
 
 @pytest.mark.asyncio
