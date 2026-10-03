@@ -159,8 +159,24 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
         found = await _chat_file_request(history[-1]["content"])
         if found:
             return found
-    lectures = ""
-    if subject and subject in await get_subjects_with_lecture_text():
+    lectures, sources = "", None
+    with_text = await get_subjects_with_lecture_text()
+    # Сначала — поиск по смыслу (semantic_search): куски лекций с номером
+    # страницы/слайда. «Объясни 3 лекцию» (номер лекции, а не смысл) и пустой
+    # индекс (сразу после деплоя) — по-старому, целыми лекциями.
+    if query.strip() and (not subject or subject in with_text) and not lecture_picker.wants_course(query):
+        try:
+            import semantic_search
+            if await semantic_search.ready():
+                hits = await semantic_search.search(query, subject)
+                if hits:
+                    lectures, sources = semantic_search.build_context(hits)
+        except Exception as e:
+            logger.warning(f"поиск по смыслу: {type(e).__name__}: {e} — подбираю лекции по словам")
+            lectures, sources = "", None
+    if lectures:
+        pass
+    elif subject and subject in with_text:
         lectures = lecture_picker.pick(await get_subject_lecture_context(subject), query)
     elif not subject and query.strip():
         all_lectures = await get_all_lecture_context()
@@ -218,5 +234,5 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
     result["html"] = "\n".join(md_to_tg_html_chunks(result.get("content", "")))
     # ответ без лекций (запасной путь _chat_with_fallback) — источников нет
     if lectures and not result.pop("no_lectures", False):
-        result["sources"] = await _lecture_sources(lectures, subject)
+        result["sources"] = sources if sources is not None else await _lecture_sources(lectures, subject)
     return result

@@ -36,6 +36,9 @@ logger = logging.getLogger(__name__)
 GEMINI_URL_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
+GEMINI_EMBED_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:batchEmbedContents"
+
+
 class GeminiError(RuntimeError):
     """Ошибка Gemini с уже человекочитаемым текстом — хендлеры показывают
     str(e) пользователю как есть ("❌ Ошибка: ...").
@@ -217,3 +220,45 @@ async def solve_with_lecture_context(task: str, subject: str, lecture_context: s
             "в контекст, ответ основан не на всех материалах предмета.\n\n" + text
         )
     return text
+
+
+# ── Эмбеддинги — «вектор смысла» для поиска по лекциям (semantic_search.py) ──
+
+async def embed(texts: list[str], task: str = "RETRIEVAL_DOCUMENT", titles: list[str] | None = None,
+                dims: int | None = None, timeout: float = 60) -> list[list[float]]:
+    """Векторы текстов одним запросом batchEmbedContents. task — RETRIEVAL_DOCUMENT
+    для кусков лекций (с заголовком файла — так точнее), RETRIEVAL_QUERY для
+    вопроса. Длина вектора урезается (Matryoshka) до dims и нормируется:
+    у урезанных векторов Gemini длина не единичная."""
+    from config import GEMINI_EMBED_DIMS, GEMINI_EMBED_MODEL
+    if not GEMINI_API_KEY:
+        raise GeminiError("GEMINI_API_KEY не настроен на сервере")
+    dims = dims or GEMINI_EMBED_DIMS
+    reqs = []
+    for i, t in enumerate(texts):
+        r = {"model": f"models/{GEMINI_EMBED_MODEL}", "content": {"parts": [{"text": t}]},
+             "taskType": task, "outputDimensionality": dims}
+        if titles and task == "RETRIEVAL_DOCUMENT" and titles[i]:
+            r["title"] = titles[i]
+        reqs.append(r)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(GEMINI_EMBED_URL.format(model=GEMINI_EMBED_MODEL),
+                                     headers={"x-goog-api-key": GEMINI_API_KEY}, json={"requests": reqs})
+    except httpx.TimeoutException:
+        raise GeminiError("Gemini не ответил вовремя", transient=True)
+    except httpx.HTTPError as e:
+        raise GeminiError(f"Не достучался до Gemini ({type(e).__name__})", transient=True)
+    if resp.status_code != 200:
+        logger.warning(f"Gemini embed HTTP {resp.status_code}: {resp.text[:500]}")
+        raise GeminiError(f"эмбеддинги: HTTP {resp.status_code}", transient=resp.status_code == 429 or resp.status_code >= 500,
+                          status=resp.status_code)
+    out = []
+    for e in resp.json().get("embeddings") or []:
+        v = e.get("values") or []
+        norm = sum(x * x for x in v) ** 0.5 or 1.0
+        out.append([x / norm for x in v])
+    if len(out) != len(texts):
+        raise GeminiError(f"эмбеддинги: пришло {len(out)} из {len(texts)}")
+    return out
+

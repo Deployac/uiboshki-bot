@@ -361,6 +361,16 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     # обход прервался (редеплой), и обновлять раз в месяц (см. schedule_index).
     import schedule_index
     scheduler.add_job(schedule_index.ensure_fresh, "cron", hour=4, minute=10)
+    # Поиск по смыслу: нарезать лекции по страницам и досчитать векторы —
+    # понемногу, в пределах бесплатных лимитов Gemini (semantic_index.py).
+    import semantic_index
+
+    async def index_lectures():
+        try:
+            await semantic_index.index_pending(bot)
+        except Exception as e:
+            logger.warning(f"индекс поиска: {type(e).__name__}: {e}")
+    scheduler.add_job(index_lectures, "interval", minutes=20, next_run_time=datetime.now(TZ) + timedelta(minutes=2))
     # Копия базы старосте каждую ночь, без звука (backup.py).
     if STAROSTA_ID:
         from backup import send_backup

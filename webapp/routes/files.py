@@ -224,3 +224,91 @@ async def api_summary_make(file_id: int, user: dict = CurrentUser):
         raise HTTPException(502, "ИИ сейчас не ответил — попробуй через минуту")
     return await _summary_view(f)
 
+
+
+# ── Страница лекции по ссылке из ответа ИИ («Лекция 5 · слайд 12») ─────────
+# Текст страницы — из индекса поиска (semantic_index), а у PDF — ещё и сама
+# страница картинкой: pypdfium2 рисует её на сервере. Картинку Telegram-
+# браузер грузит обычным <img> без initData, поэтому ссылка подписана, как /dl.
+
+_pdf_cache: dict[int, bytes] = {}           # последние PDF (байты) — листать страницы без перекачки
+_page_cache: dict[tuple[int, int], bytes] = {}
+
+
+def _pg_sig(file_id: int, page: int, exp: int) -> str:
+    import hashlib
+    import hmac
+    return hmac.new(deps.BOT_TOKEN.encode(), f"pg:{file_id}:{page}:{exp}".encode(), hashlib.sha256).hexdigest()[:32]
+
+
+@router.get("/api/files/{file_id}/page/{page}")
+async def api_file_page(file_id: int, page: int, request: Request, user: dict = CurrentUser):
+    import time
+    from database import get_file_by_id
+    from semantic_index import open_index
+    f = await get_file_by_id(file_id)
+    if not f:
+        raise HTTPException(404, "Файл не найден")
+    async with open_index() as db:
+        rows = await (await db.execute(
+            "SELECT page_from, page_to, kind, text FROM chunks WHERE file_id=? ORDER BY page_from, id", (file_id,))).fetchall()
+    if not rows:
+        raise HTTPException(404, "Файл ещё не разобран по страницам")
+    last = max(r[1] for r in rows)
+    page = max(1, min(page, last))
+    text = "\n\n".join(r[3] for r in rows if r[0] <= page <= r[1])
+    kind = rows[0][2]
+    out = {"id": file_id, "title": f["title"], "page": page, "pages": last, "kind": kind, "text": text, "image": None}
+    if (f.get("file_name") or "").lower().endswith(".pdf"):
+        exp = int(time.time()) + 600
+        base = (deps.WEBAPP_URL or str(request.base_url)).rstrip("/")
+        out["image"] = f"{base}/pg/{file_id}/{page}.jpg?exp={exp}&sig={_pg_sig(file_id, page, exp)}"
+    return out
+
+
+def _render_pdf_page(data: bytes, page: int) -> bytes:
+    import io
+    import pypdfium2 as pdfium
+    pdf = pdfium.PdfDocument(data)
+    try:
+        img = pdf[page - 1].render(scale=1.6).to_pil().convert("RGB")
+    finally:
+        pdf.close()
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=82, optimize=True)
+    return buf.getvalue()
+
+
+@router.get("/pg/{file_id}/{page}.jpg")
+async def file_page_image(file_id: int, page: int, exp: int, sig: str):
+    import asyncio
+    import hmac
+    import time
+    from database import get_file_by_id
+    if exp < time.time() or not hmac.compare_digest(sig, _pg_sig(file_id, page, exp)):
+        raise HTTPException(403, "Ссылка устарела")
+    key = (file_id, page)
+    if key not in _page_cache:
+        data = _pdf_cache.get(file_id)
+        if data is None:
+            f = await get_file_by_id(file_id)
+            if not f:
+                raise HTTPException(404, "Файл не найден")
+            try:
+                bot = deps.tg_bot()
+                tf = await bot.get_file(f["file_id"])
+                data = (await bot.download_file(tf.file_path)).read()
+            except Exception as e:
+                logger.info(f"страница {file_id}/{page}: файл не скачался: {e}")
+                raise HTTPException(413, "Файл слишком большой — открой его целиком")
+            _pdf_cache[file_id] = data
+            while len(_pdf_cache) > 4:
+                _pdf_cache.pop(next(iter(_pdf_cache)))
+        try:
+            _page_cache[key] = await asyncio.to_thread(_render_pdf_page, data, page)
+        except Exception as e:
+            logger.info(f"страница {file_id}/{page}: не нарисовалась: {e}")
+            raise HTTPException(422, "Страница не нарисовалась")
+        while len(_page_cache) > 60:
+            _page_cache.pop(next(iter(_page_cache)))
+    return Response(_page_cache[key], media_type="image/jpeg", headers={"Cache-Control": "private, max-age=600"})

@@ -138,6 +138,17 @@ async def report() -> str:
     lines.append(f"⚠️ Зеркало МИРЭА не отвечает — показываю расписание от {stale}" if stale
                  else "✅ Свежее")
 
+    lines += ["", "<b>Поиск по смыслу</b>"]
+    try:
+        import semantic_index
+        st = await semantic_index.stats()
+        lines.append(f"Лекций в индексе: {st['files']}" + (f" · ждут {st['waiting']}" if st["waiting"] else "") +
+                     f" · фрагментов {st['chunks']}, с векторами {st['embedded']}")
+        if not st["vectors"]:
+            lines.append("⚠️ sqlite-vec не загрузился — ищу только по словам")
+    except Exception as e:
+        lines.append(f"⚠️ индекс недоступен: {type(e).__name__}")
+
     lines += ["", "<b>Бэкап</b>", _line(await _get("backup"), "Копия базы", now, "ещё не было (каждую ночь в 04:40)")]
 
     errors = [r for r in counter.last_day() if r[1] >= logging.ERROR]
