@@ -203,3 +203,25 @@ async def test_channel_command_preview_and_publish(db, tmp_path, monkeypatch):
         assert any(c == "@uiboshki_dev" and t == "PinChatMessage" for c, t, _ in bot.session.sent)
     finally:
         channel.router._parent_router = None
+
+
+@pytest.mark.asyncio
+async def test_offer_next_after_deploy(db, tmp_path, monkeypatch):
+    """После деплоя бот сам присылает старосте превью следующего поста —
+    один раз на пост; в канал без кнопки ничего не уходит."""
+    from handlers import channel
+    _post(tmp_path, "01-start", "<b>Как всё началось</b>")
+    _post(tmp_path, "17-attendance", "<b>Посещения без Пульса</b>")
+    monkeypatch.setattr(channel_posts, "POSTS_DIR", tmp_path)
+    monkeypatch.setattr(config, "CHANNEL_ID", "@uiboshki_dev")
+    monkeypatch.setattr(config, "STAROSTA_ID", STAROSTA_ID)
+    await channel_posts.mark_published("01-start", [1])
+    bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=Session())
+    assert await channel.offer_next(bot) == "17-attendance"
+    sent = bot.session.sent
+    assert all(c == STAROSTA_ID for c, _, _ in sent)                       # только старосте, не в канал
+    assert sent[1][1] == "<b>Посещения без Пульса</b>" and sent[-1][2][0] == "chan:pub:17-attendance"
+    n = len(sent)
+    assert await channel.offer_next(bot) is None and len(bot.session.sent) == n   # второй деплой — тишина
+    monkeypatch.setattr(config, "CHANNEL_ID", "")
+    assert await channel.offer_next(bot) is None                              # канал не задан — молчим

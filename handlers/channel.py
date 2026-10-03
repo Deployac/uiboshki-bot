@@ -39,6 +39,36 @@ async def _preview(bot, chat_id, posts, idx, done):
     await bot.send_message(chat_id, f"👆 Превью · пост {idx + 1} из {len(posts)}", reply_markup=_kb(post["slug"], post["slug"] in done))
 
 
+async def offer_next(bot) -> str | None:
+    """После деплоя (запуск бота): старосте — превью следующего ещё не
+    выпущенного поста с кнопкой «В канал». Один раз на пост: запомненные в
+    channel:offered не повторяются. Публикация — только по кнопке.
+    → slug предложенного поста или None."""
+    import json
+    from config import STAROSTA_ID
+    from channel_posts import load_posts, published
+    from database import get_setting, set_setting
+    if not STAROSTA_ID or not config.CHANNEL_ID:
+        return None
+    posts, done = load_posts(), await published()
+    idx = next((i for i, p in enumerate(posts) if p["slug"] not in done), None)
+    if idx is None:
+        return None
+    try:
+        offered = set(json.loads(await get_setting("channel:offered") or "[]"))
+    except ValueError:
+        offered = set()
+    slug = posts[idx]["slug"]
+    if slug in offered:
+        return None
+    await bot.send_message(STAROSTA_ID, f"🆕 Готов пост для канала — «{esc(posts[idx]['title'])}». Превью ниже, "
+                           "в канал уйдёт только по кнопке.", parse_mode="HTML")
+    await _preview(bot, STAROSTA_ID, posts, idx, done)
+    offered.add(slug)
+    await set_setting("channel:offered", json.dumps(sorted(offered), ensure_ascii=False))
+    return slug
+
+
 @router.message(Command("channel"))
 async def cmd_channel(message: Message):
     if not is_starosta(message.from_user.id):

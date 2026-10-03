@@ -158,6 +158,14 @@ async def main():
     scheduler.start()
 
     await setup_bot_menu(bot)
+
+    async def offer_post():         # новый пост канала — превью старосте после деплоя
+        try:
+            from handlers.channel import offer_next
+            await offer_next(bot)
+        except Exception as e:
+            logger.info(f"превью поста канала: {e}")
+    asyncio.create_task(offer_post())
     webapp_server, webapp_task = start_webapp(WEBAPP_PORT) if WEBAPP_PORT else (None, None)
     # Справочник для /teacher, /group, /room и поиска в WebApp — в фоне:
     # первый обход ~полчаса, дальше продолжается с места остановки.
