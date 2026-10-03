@@ -31,6 +31,11 @@ def test_about_page_and_demo():
 def test_site_scripts_parse_and_demo_data_is_complete():
     for f in ("site.js", "demo.js"):
         subprocess.run(["node", "--check", str(SITE / f)], check=True)
+    # iOS: в iframe прокручивается body внутри экрана фиксированной высоты, а не
+    # окно — иначе на коротком дне нижняя панель уезжала вверх (живой тест 04.10)
+    demo = (SITE / "demo.js").read_text(encoding="utf-8")
+    assert "html{height:100%;overflow:hidden}" in demo and "body{height:100%;overflow-y:auto" in demo
+    assert "window.scrollTo = function" in demo and '"scrollY"' in demo
     fx = json.loads((SITE / "demo.json").read_text(encoding="utf-8"))["fx"]
     # то, что приложение спрашивает при открытии, есть в записи
     for key in ("GET /api/me", "GET /api/today", "GET /api/deadlines", "GET /api/files", "GET /api/sdo/grades",
