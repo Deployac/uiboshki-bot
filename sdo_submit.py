@@ -51,7 +51,8 @@ def _notice(soup: BeautifulSoup) -> str:
     тест 01.10: её показывали вместо настоящей причины."""
     for el in soup.find_all("noscript"):
         el.decompose()
-    for sel in (".alert-danger", ".alert-warning", ".errormessage", ".box.errorbox", ".alert"):
+    for sel in (".alert-danger", ".alert-warning", ".errormessage", ".box.errorbox", ".alert",
+                "#id_error_files_filemanager", ".invalid-feedback", ".form-control-feedback"):
         el = soup.select_one(sel)
         if el and el.get_text(strip=True):
             return el.get_text(" ", strip=True)[:200]
@@ -96,40 +97,70 @@ def parse_edit_page(html: str) -> dict:
         if m:
             repo_id = m.group(1)
             break
-    ctx = re.search(r"\"context\":\{\"id\":\"?(\d+)", html) or re.search(r"\"contextid\":\"?(\d+)", html)
-    client = re.search(r"\"client_id\":\"([0-9a-z]+)\"", html)
-    accepted, labels = accepted_types(html, soup)
-    maxbytes = re.search(r"\"maxbytes\":\"?(-?\d+)", html)
-    maxfiles = re.search(r"\"maxfiles\":\"?(-?\d+)", html)
+    itemid = area.get("value", "")
+    opts = filemanager_options(html, itemid)
+    ctx = (opts.get("context") or {}).get("id") if isinstance(opts.get("context"), dict) else None
+    if not ctx:
+        m = re.search(r"\"context\":\{\"id\":\"?(\d+)", html) or re.search(r"\"contextid\":\"?(\d+)", html)
+        ctx = m and m.group(1)
+    client = opts.get("client_id")
+    if not client:
+        m = re.search(r"\"client_id\":\"([0-9a-z]+)\"", html)
+        client = m.group(1) if m else ""
+    accepted, labels = accepted_types(opts, soup)
     if not (repo_id and ctx and fields.get("sesskey")):
         raise SubmitError("не разобрал форму сдачи в СДО — сдай на сайте")
     return {
         "action": form.get("action") or f"{SDO_BASE_URL}/mod/assign/view.php",
         "fields": fields,
-        "itemid": area.get("value", ""),
+        "itemid": itemid,
         "sesskey": fields["sesskey"],
         "repo_id": repo_id,
-        "ctx_id": ctx.group(1),
-        "client_id": client.group(1) if client else "",
-        "maxbytes": int(maxbytes.group(1)) if maxbytes else 0,
-        "maxfiles": int(maxfiles.group(1)) if maxfiles else 0,
+        "ctx_id": str(ctx),
+        "client_id": str(client),
+        "maxbytes": _int(opts.get("maxbytes")),
+        "maxfiles": _int(opts.get("maxfiles")),
         "accepted": accepted,
         "labels": labels,
     }
 
 
-def accepted_types(html: str, soup: BeautifulSoup) -> tuple[list[str], list[str]]:
-    """Какие файлы принимает задание — как пишет сам СДО под полем файлов
-    («Допустимые типы файлов: Архив (ZIP) .zip»). → ([".zip"], ["Архив (ZIP)"]);
-    пустой список — любые. Живой случай 02.10: задание брало только ZIP, а бот
-    молча пытался грузить PDF и Word, и СДО отказывал без объяснений."""
-    exts: list[str] = []
-    m = re.search(r"\"accepted_types\":(\[[^\]]*\]|\"[^\"]*\")", html)
-    if m:
+def _int(v) -> int:
+    try:
+        return max(0, int(v))          # -1 и 0 у Moodle — «без своего ограничения»
+    except (TypeError, ValueError):
+        return 0
+
+
+def filemanager_options(html: str, itemid: str) -> dict:
+    """Настройки файлового менеджера ответа — M.form_filemanager.init(Y, {…})
+    с itemid поля files_filemanager. Только они: у редактора «ответ текстом»
+    свои настройки со списком картинок (.gif … .svgz) и своими лимитами —
+    живой случай 04.10: бот брал их и не пускал .docx в задание без
+    ограничений. Не нашли — {} (тогда ничего не запрещаем, решает СДО)."""
+    dec, found = json.JSONDecoder(), []
+    for m in re.finditer(r"M\.form_filemanager\.init\(\s*Y\s*,\s*", html):
         try:
-            raw = json.loads(m.group(1))
+            obj, _ = dec.raw_decode(html, m.end())
         except ValueError:
-            raw = []
+            continue
+        if isinstance(obj, dict):
+            found.append(obj)
+    for obj in found:
+        if str(obj.get("itemid")) == str(itemid):
+            return obj
+    return found[0] if len(found) == 1 else {}
+
+
+def accepted_types(opts: dict, soup: BeautifulSoup) -> tuple[list[str], list[str]]:
+    """Какие файлы принимает задание — из настроек файлового менеджера ответа и
+    подписи СДО под полем файлов («Допустимые типы файлов: Архив (ZIP) .zip»).
+    → ([".zip"], ["Архив (ZIP)"]); пустой список — любые. Живой случай 02.10:
+    задание брало только ZIP, а бот молча пытался грузить PDF и Word."""
+    exts: list[str] = []
+    has = "accepted_types" in opts
+    if has:
+        raw = opts["accepted_types"]
         raw = raw if isinstance(raw, list) else [raw]
         exts = [e.strip().lower() for e in raw if isinstance(e, str) and e.strip().startswith(".")]
         if any(isinstance(e, str) and e.strip() == "*" for e in raw):
@@ -143,7 +174,7 @@ def accepted_types(html: str, soup: BeautifulSoup) -> tuple[list[str], list[str]
         name = li.get_text(" ", strip=True)
         if name:
             labels.append(name)
-        if not m:          # нет настроек файлового менеджера — расширения из подписи
+        if not has:        # нет настроек файлового менеджера — расширения из подписи
             exts += [e.lower() for e in re.findall(r"\.[0-9A-Za-z]+", tail)]
     return sorted(set(exts), key=exts.index), labels
 

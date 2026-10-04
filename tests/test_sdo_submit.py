@@ -273,6 +273,32 @@ def test_parse_accepted_types():
     assert sdo_submit.ext_ok("Работа.ZIP", [".zip"]) and not sdo_submit.ext_ok("work.pdf", [".zip"])
 
 
+# Живой случай 04.10: в задании ответ и текстом, и файлом. У редактора текста
+# свои настройки (картинки .gif … .svgz, maxfiles 20) — и они на странице
+# раньше файлового менеджера. Бот брал их и не пускал .docx.
+EDITOR_OPTS = ('<script>Y.use("editor_atto", function() { YUI.M.editor_atto.Editor.init({"elementid":'
+               '"id_onlinetext_editor","filepickeroptions":{"image":{"accepted_types":[".gif",".jpe",".jpeg",'
+               '".jpg",".png",".svg",".svgz"],"maxfiles":20,"maxbytes":0,"itemid":777,'
+               '"client_id":"edit0r1d","context":{"id":9001}}}}); });</script>')
+TEXT_AND_FILE_PAGE = EDIT_PAGE.replace("<form ", '<textarea name="onlinetext_editor[text]"></textarea>' + EDITOR_OPTS + "<form ", 1)
+
+
+def test_editor_image_types_dont_block_files():
+    page = sdo_submit.parse_edit_page(TEXT_AND_FILE_PAGE)
+    assert page["accepted"] == [] and page["client_id"] == "6511ab3c9d1e2" and page["maxfiles"] == 0
+    zip_page = sdo_submit.parse_edit_page(TEXT_AND_FILE_PAGE.replace(
+        '"maxbytes":10485760,"areamaxbytes"', '"maxbytes":10485760,"accepted_types":[".zip"],"areamaxbytes"'))
+    assert zip_page["accepted"] == [".zip"]
+
+
+@pytest.mark.asyncio
+async def test_docx_goes_to_text_and_file_task(moodle):
+    moodle.edit = TEXT_AND_FILE_PAGE
+    res = await sdo_submit.submit_file(COOKIE, 4242, "ПР1.docx", b"%PDF-work")   # содержимое — как ждёт заглушка СДО
+    assert res["status"] == "Отправлено для оценивания"
+    assert any("repository_ajax" in u for _, u, _ in moodle.calls)
+
+
 @pytest.mark.asyncio
 async def test_wrong_type_refused_before_upload(moodle):
     moodle.edit = ZIP_EDIT_PAGE
