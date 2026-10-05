@@ -20,6 +20,9 @@ def test_about_page_and_demo():
     c = _client()
     r = c.get("/about")
     assert r.status_code == 200 and "УИБО-бот" in r.text and 'src="/about/demo"' in r.text
+    # превью ссылки в Telegram — абсолютный адрес картинки, сама картинка есть
+    assert '<meta property="og:image" content="http' in r.text and "__BASE__" not in r.text
+    assert c.get("/site/og.jpg").content[:3] == b"\xff\xd8\xff"
     demo = c.get("/about/demo").text
     assert '<base href="/">' in demo and "site/demo.js?v=" in demo
     assert "telegram.org/js/telegram-web-app.js" not in demo                 # без настоящего SDK
@@ -98,3 +101,19 @@ async def test_public_search_and_target(db, monkeypatch):
     codes = [c.get("/about/api/search?q=УИБО", headers={"X-Forwarded-For": f"9.9.9.{i}"}).status_code for i in range(4)]
     assert codes == [200, 200, 200, 429]
     ratelimit.reset()
+
+
+def test_site_dark_theme_is_fresh():
+    """Тёмная тема сайта — генерируется из светлой (tools/site_dark.py). Поменял
+    стили — запусти скрипт, иначе тёмная тема разойдётся со светлой."""
+    import importlib.util
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location("site_dark", root / "tools" / "site_dark.py")
+    sd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sd)
+    css = sd.CSS.read_text(encoding="utf-8")
+    light = css[:css.index(sd.START)].rstrip() + "\n"
+    assert sd.build(light) in css, "запусти python tools/site_dark.py"
+    assert "white-space" not in sd.build(light)                  # не цвет
+    assert sd.flip("#f8f6f0") < "#3" and sd.flip("#282720") > "#c"   # бумага темнеет, чернила светлеют

@@ -16,7 +16,7 @@ import ipaddress
 import zlib
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 
 router = APIRouter()
 
@@ -52,9 +52,14 @@ def _client_key(request: Request) -> int:
 
 @router.get("/about", include_in_schema=False)
 @router.get("/about/", include_in_schema=False)
-async def about_page():
-    return FileResponse(_site_dir() / "index.html", media_type="text/html",
-                        headers={"Cache-Control": "no-cache"})
+async def about_page(request: Request):
+    """Страница сайта. Превью ссылки (og:image) Telegram берёт только по
+    абсолютному адресу — подставляем свой домен (WEBAPP_URL, иначе адрес
+    запроса)."""
+    from webapp import deps
+    base = (deps.WEBAPP_URL or str(request.base_url)).rstrip("/")
+    html = (_site_dir() / "index.html").read_text(encoding="utf-8").replace("__BASE__", base)
+    return Response(html, media_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
 @router.get("/about/demo", include_in_schema=False)
