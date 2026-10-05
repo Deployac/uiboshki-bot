@@ -94,6 +94,10 @@ if not GROUP_CHAT_ID:
 # смотри актуальный список в Google AI Studio → ключ API → "Copy cURL quickstart".
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
+# Вопросов к ИИ в сутки на человека (ИИ-чат, решалка, конспекты); 0 — без
+# дневного лимита. Бесплатный лимит Gemini — один на всю группу: если его
+# начнут выжигать за день — задать, например, 40. Старосты — без лимита.
+AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "0") or 0)
 # Поиск по смыслу (semantic_search.py): модель эмбеддингов и длина вектора
 # (Matryoshka — урезается без переобучения; 768 — баланс точности и размера).
 GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")

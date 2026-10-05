@@ -220,8 +220,10 @@ async def api_summary_make(file_id: int, user: dict = CurrentUser):
     f = await get_file_by_id(file_id)
     if not f:
         raise HTTPException(404, "Файл не найден")
-    if not await get_file_summary(file_id) and not ratelimit.allow("ai", user["id"]):
-        raise HTTPException(429, "Слишком много запросов к ИИ подряд — подожди минуту")
+    why = None if await get_file_summary(file_id) else ratelimit.ai(user["id"])
+    if why:
+        raise HTTPException(429, ratelimit.day_text(capital=True) if why == "day"
+                            else "Слишком много запросов к ИИ подряд — подожди минуту")
     try:
         made = await lecture_summary.make(file_id, f["title"], f.get("subject") or "", user["id"])
     except lecture_summary.NoText:
