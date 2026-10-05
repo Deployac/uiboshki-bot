@@ -124,6 +124,7 @@ async def collect(days: int = 30) -> dict:
         "days": days, "since": since, "today": today,
         "total": await count_users(), "sdo": await count_sdo_connected(),
         "new_day": sum(d == today for d in joined), "new_week": sum((today - d).days < 7 for d in joined),
+        "from_site": len(screens.get("from_site", ())),
         "day": len(active_day), "week": len(active_week), "month": len(active_month),
         "period": len(active_period),
         "daily": [(since + timedelta(i), len(users_by_day.get(since + timedelta(i), ()))) for i in range(days)],
@@ -208,7 +209,8 @@ def summary(s: dict) -> str:
     acts = " · ".join(f"{n} {label}" for label, n in s["actions"])
     return (f"📊 <b>Статистика за {s['days']} дн.</b>\n"
             f"Всего в боте: <b>{s['total']}</b> · СДО подключили: <b>{s['sdo']}</b>\n"
-            f"Новые: сегодня <b>{s['new_day']}</b> · неделя <b>{s['new_week']}</b>\n"
+            f"Новые: сегодня <b>{s['new_day']}</b> · неделя <b>{s['new_week']}</b>"
+            f" · с сайта за {s['days']} дн.: <b>{s['from_site']}</b>\n"
             f"Активны: сегодня <b>{s['day']}</b> · неделя <b>{s['week']}</b> · месяц <b>{s['month']}</b>\n"
             f"{acts}")
 

@@ -83,3 +83,22 @@ async def test_webapp_send_file_goes_to_chat_without_start(db, monkeypatch):
     assert c.post(f"/api/files/{fid}/send", headers=headers).json() == {"ok": True}
     assert bot.session.docs == [("SendDocument", "TGF2", "📄 <b>ЛК2</b> (ОПД)")]
     assert c.post("/api/files/999/send", headers=headers).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_site_deeplink_counts_in_stats(db, monkeypatch):
+    # кнопки сайта /about ведут на ?start=site — в /stats видно, сколько пришло с сайта
+    import stats
+    from handlers.start import router
+    monkeypatch.setattr(stats, "_last", {})
+    bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=DocSession())
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(router)
+    try:
+        msg = Message(message_id=30, date=0, chat=Chat(id=USER.id, type="private"), from_user=USER, text="/start site")
+        await dp.feed_update(bot, Update(update_id=int(time.time()) + 50, message=msg))
+    finally:
+        router._parent_router = None
+    assert bot.session.sent                                                     # обычное приветствие
+    s = await stats.collect(7)
+    assert s["from_site"] == 1 and "с сайта за 7 дн.: <b>1</b>" in stats.summary(s)
