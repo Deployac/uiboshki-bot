@@ -38,6 +38,9 @@ async def test_collect_and_render(db, monkeypatch):
     await stats.track(2, "submit")
     s = await stats.collect(7)
     assert s["total"] == 3 and s["day"] == 3 and s["week"] == 3
+    assert s["new_day"] == 3 and s["new_week"] == 3 and "Новые: сегодня <b>3</b>" in stats.summary(s)
+    p = await stats.people(7)
+    assert all(a["new"] for a in p["active"]) and "🆕" in stats.people_text(p)   # пришли сегодня
     assert dict((label, n) for label, _, n in s["screens"])["Приложение"] == 3
     assert dict(s["actions"])["сдано работ"] == 1
     assert sum(map(sum, s["heat"])) == 5
