@@ -386,3 +386,4 @@ async def test_fetch_ical_cached_single_flight(monkeypatch):
     assert len(calls) == 2
     assert await api.fetch_ical(13, 1) is None and await api.fetch_ical(13, 1) is None
     assert calls.count((1, 13)) == 2
+    assert (1, 13) not in api._ical_locks and (1, 4928) in api._ical_locks     # замки сбоев не копятся

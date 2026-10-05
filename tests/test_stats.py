@@ -39,6 +39,12 @@ async def test_collect_and_render(db, monkeypatch):
     s = await stats.collect(7)
     assert s["total"] == 3 and s["day"] == 3 and s["week"] == 3
     assert s["new_day"] == 3 and s["new_week"] == 3 and "Новые: сегодня <b>3</b>" in stats.summary(s)
+    assert "ИИ сегодня" not in stats.summary(s)                      # вопросов не было — строки нет
+    for _ in range(3):
+        await stats.track(2, "ai")
+    await stats.track(3, "ai")
+    s2 = await stats.collect(7)
+    assert (s2["ai_today"], s2["ai_top"]) == (4, 3) and "ИИ сегодня: <b>4</b>" in stats.summary(s2)
     p = await stats.people(7)
     assert all(a["new"] for a in p["active"]) and "🆕" in stats.people_text(p)   # пришли сегодня
     assert dict((label, n) for label, _, n in s["screens"])["Приложение"] == 3

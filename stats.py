@@ -102,6 +102,7 @@ async def collect(days: int = 30) -> dict:
     actions = Counter()
     heat = [[0] * 24 for _ in range(7)]
     active_day, active_week, active_month, active_period = set(), set(), set(), set()
+    ai_today = Counter()                    # вопросов ИИ сегодня по людям — для решения про AI_DAILY_LIMIT
     for uid, kind, at in rows:
         t = _msk(at)
         d = t.date()
@@ -111,6 +112,8 @@ async def collect(days: int = 30) -> dict:
             active_week.add(uid)
         if d == today:
             active_day.add(uid)
+            if kind == "ai":
+                ai_today[uid] += 1
         if d < since:
             continue
         active_period.add(uid)
@@ -125,6 +128,7 @@ async def collect(days: int = 30) -> dict:
         "total": await count_users(), "sdo": await count_sdo_connected(),
         "new_day": sum(d == today for d in joined), "new_week": sum((today - d).days < 7 for d in joined),
         "from_site": len(screens.get("from_site", ())),
+        "ai_today": sum(ai_today.values()), "ai_top": max(ai_today.values(), default=0),
         "day": len(active_day), "week": len(active_week), "month": len(active_month),
         "period": len(active_period),
         "daily": [(since + timedelta(i), len(users_by_day.get(since + timedelta(i), ()))) for i in range(days)],
@@ -212,7 +216,9 @@ def summary(s: dict) -> str:
             f"Новые: сегодня <b>{s['new_day']}</b> · неделя <b>{s['new_week']}</b>"
             f" · с сайта за {s['days']} дн.: <b>{s['from_site']}</b>\n"
             f"Активны: сегодня <b>{s['day']}</b> · неделя <b>{s['week']}</b> · месяц <b>{s['month']}</b>\n"
-            f"{acts}")
+            f"{acts}"
+            + (f"\nИИ сегодня: <b>{s['ai_today']}</b> вопросов, у самого активного — <b>{s['ai_top']}</b>"
+               if s["ai_today"] else ""))
 
 
 # ── картинка ─────────────────────────────────────────────────────────────────

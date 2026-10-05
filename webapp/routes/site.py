@@ -27,7 +27,8 @@ def _site_dir():
 
 def _allow(action: str, request: Request):
     import ratelimit
-    if not (ratelimit.allow("site_all", 0) and ratelimit.allow(action, _client_key(request))):
+    # сначала свой лимит по IP: отбитые запросы одного адреса не тратят общий потолок
+    if not (ratelimit.allow(action, _client_key(request)) and ratelimit.allow("site_all", 0)):
         raise HTTPException(status_code=429, detail="слишком часто — подожди минуту")
 
 
@@ -87,8 +88,13 @@ async def about_search(request: Request, q: str = "", type: int = 0):
 
 @router.get("/about/api/target/{target_type}/{target_id}", include_in_schema=False)
 async def about_target(request: Request, target_type: int, target_id: int):
+    import schedule_index
     from webapp.routes.schedule import api_target
     _allow("site_target", request)
+    # только то, что есть в справочнике (его и показывает поиск): случайный id
+    # — это поход за карточкой на официальный сайт МИРЭА (10 с впустую) и на зеркало
+    if target_type not in (1, 2, 3) or not await schedule_index.get_title(target_type, target_id):
+        raise HTTPException(status_code=404, detail="нет такого расписания")
     data = await api_target(target_type, target_id, user={"id": 0})
     data.pop("pinned", None)
     data["weeks"] = data["weeks"][:2]          # сайту хватит этой и следующей недели

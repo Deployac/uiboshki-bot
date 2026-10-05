@@ -78,7 +78,11 @@ async def test_public_search_and_target(db, monkeypatch):
         return {"type": 1, "id": 4928, "title": "УИБО-03-24", "pinned": False, "today": "2026-10-08",
                 "weeks": [{"days": []}] * 8, "stale": None}
 
+    async def title(t, i):
+        return "УИБО-03-24" if (t, i) == (1, 4928) else None
+
     monkeypatch.setattr(schedule_index, "search", search)
+    monkeypatch.setattr(schedule_index, "get_title", title)
     monkeypatch.setattr(schedule_index, "is_ready", ready)
     monkeypatch.setattr(sched, "api_target", target)
     ratelimit.reset()
@@ -100,6 +104,15 @@ async def test_public_search_and_target(db, monkeypatch):
     monkeypatch.setitem(ratelimit.LIMITS, "site_all", (3, 60))
     codes = [c.get("/about/api/search?q=УИБО", headers={"X-Forwarded-For": f"9.9.9.{i}"}).status_code for i in range(4)]
     assert codes == [200, 200, 200, 429]
+    # отбитые лимитом одного адреса запросы общий потолок не тратят
+    ratelimit.reset()
+    monkeypatch.setitem(ratelimit.LIMITS, "site_all", (17, 60))   # 15 по IP + 1 — при старом порядке было бы 19
+    for _ in range(19):
+        c.get("/about/api/target/1/4928", headers={"X-Forwarded-For": "7.7.7.7"})
+    assert c.get("/about/api/search?q=УИБО", headers={"X-Forwarded-For": "6.6.6.6"}).status_code == 200
+    # случайный id — не в справочнике: 404 без похода в МИРЭА
+    ratelimit.reset()
+    assert c.get("/about/api/target/1/99999").status_code == 404
     ratelimit.reset()
 
 
