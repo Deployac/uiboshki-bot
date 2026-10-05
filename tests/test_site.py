@@ -24,8 +24,16 @@ def test_about_page_and_demo():
     assert '<base href="/">' in demo and "site/demo.js?v=" in demo
     assert "telegram.org/js/telegram-web-app.js" not in demo                 # без настоящего SDK
     assert demo.index("site/demo.js") < demo.index("js/core.js")              # заглушка — до приложения
-    for f in ("site/site.css", "site/site.js", "site/demo.js", "site/demo.json", "site/fonts/serif-cyrillic.woff2"):
+    for f in ("site/site.css", "site/site.js", "site/demo.js", "site/demo.json", "site/capy.svg",
+              "site/fonts/serif-cyrillic.woff2", "site/fonts/sans-latin.woff2"):
         assert c.get("/" + f).status_code == 200, f
+    # всё, что ищет site.js по id, есть на странице; шрифты — из /site/fonts
+    import re
+    js = c.get("/site/site.js").text
+    for el in set(re.findall(r'\$\("([\w-]+)"\)', js)):
+        assert f'id="{el}"' in r.text, el
+    css = c.get("/site/site.css").text
+    assert "/assets/" not in css and css.count("url('/site/fonts/") == 4
 
 
 def test_site_scripts_parse_and_demo_data_is_complete():
