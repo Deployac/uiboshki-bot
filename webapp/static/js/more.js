@@ -106,6 +106,7 @@ function renderSdo(connecting) {
       '<input class="searchbox" id="sdo-cookie" placeholder="Вставь MoodleSession…" autocomplete="off" autocapitalize="off" spellcheck="false">' +
       '<div class="lock">' + icon("shield", "inl") + ' Это как «оставаться в системе». Значение сразу шифруется, в переписке и логах не остаётся.</div>' +
       '<button class="primary" id="sdo-save" onclick="connectSdo()">Проверить и сохранить</button>' +
+      (GUIDE_URL ? '<button class="ghost" onclick="openConfigLink(GUIDE_URL)">Гайд со скринами — в канале</button>' : '') +
       '<button class="ghost" onclick="renderSdo()">Позже</button>';
     return;
   }

@@ -11,7 +11,7 @@ def test_index_page_uses_config(monkeypatch):
     html = TestClient(server.app).get("/").text
     assert "УИБО-03-24" not in html.split("<script>window.APP_CONFIG")[0]
     assert "КМБО-01-25&lt;/script&gt;" in html                         # в разметке — экранировано
-    assert 'window.APP_CONFIG = {"group": "КМБО-01-25<\\/script>", "bot": "otherbot", "channel": "", "contact": ""}' in html
+    assert 'window.APP_CONFIG = {"group": "КМБО-01-25<\\/script>", "bot": "otherbot", "channel": "", "contact": "", "guide": ""}' in html
     assert html.index("window.APP_CONFIG") < html.index('src="js/core.js')
 
 

@@ -148,6 +148,23 @@ for _module in (schedule, account, deadlines, files, chat, sdo, channel, site):
 _ASSET_RE = re.compile(r'(src|href)="((?:js/[\w-]+\.js)|app\.css)"')
 
 
+GUIDE_SLUG = "13-sdo-guide-pinned"      # пост-гайд «как подключить СДО» (channel/posts)
+
+
+async def _guide_link() -> str:
+    """Ссылка на выпущенный пост-гайд по СДО в канале — для экрана «Подключить
+    СДО». Номер сообщения — из channel:published (после /channel redo он
+    другой), канал — из CHANNEL_URL (t.me/<имя> или @имя). Нет — пусто."""
+    import config
+    try:
+        from channel_posts import published
+        ids = ((await published()).get(GUIDE_SLUG) or {}).get("ids") or []
+    except Exception:
+        return ""
+    m = re.search(r"(?:t\.me/|^@)(\w+)", config.CHANNEL_URL or "")
+    return f"https://t.me/{m.group(1)}/{ids[0]}" if ids and m else ""
+
+
 _DIGESTS: dict[str, tuple[float, str]] = {}
 
 
@@ -181,7 +198,8 @@ async def index_page():
     import config
     # канал бота и «написать нам» — для плиток меню «Ещё» (дизайн-ревью, п. 18)
     cfg = json.dumps({"group": config.GROUP_NAME, "bot": config.BOT_USERNAME,
-                      "channel": config.CHANNEL_URL, "contact": config.CONTACT_URL},
+                      "channel": config.CHANNEL_URL, "contact": config.CONTACT_URL,
+                      "guide": await _guide_link()},
                      ensure_ascii=False).replace("</", "<\\/")
     html = html.replace("УИБО-03-24", escape(config.GROUP_NAME)).replace(
         '<script src="js/core.js"', f'<script>window.APP_CONFIG = {cfg};</script>\n<script src="js/core.js"', 1)
