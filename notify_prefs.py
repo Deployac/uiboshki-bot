@@ -33,6 +33,7 @@ DEFAULTS = {
     "deadlines": True, "deadline_days": ALL_DAYS,
     "weekly": True,          # обзор недели в воскресенье вечером (weekly_digest.py)
     "grades": True,          # новые баллы в СДО (grade_alerts.py)
+    "new_tasks": True,       # новые задания из СДО после синка (new_tasks.py)
 }
 DAYS_KEY = {"morning": "morning_days", "lessons": "lesson_days", "deadlines": "deadline_days"}
 _BOOLS = [k for k, v in DEFAULTS.items() if isinstance(v, bool)]

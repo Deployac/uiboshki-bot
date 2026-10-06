@@ -249,7 +249,9 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   «другой корпус» (корпус — в скобках в LOCATION, свой = самый частый),
   «только если есть пары», напоминание перед парой по сценарию (`REMIND`:
   первая пара / после короткой перемены / после большого перерыва,
-  `plan_reminders`). Общий выключатель — `users.subscribed`.
+  `plan_reminders`). Общий выключатель — `users.subscribed`. Новые задания
+  из СДО — `new_tasks.py` (после синка каждому со включённым `new_tasks`,
+  только видимые ему и не сданные; больше 8 за синк — выгрузка, не шлём).
 - **Inline-режим** (`handlers/inline.py`, /setinline в BotFather): картинки
   расписания `schedule_card.py` (Pillow, всегда тёмные) по подписанной ссылке
   `/card/<ключ>.jpg?sig=` с сервера WebApp; без `WEBAPP_URL` — текстом.

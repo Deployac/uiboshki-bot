@@ -22,7 +22,7 @@
 
   const noop = () => {};
   const back = { show: noop, hide: noop, onClick: noop, offClick: noop };
-  const cloud = { news_seen: "v5.15", onboarded_v1: "1" };
+  const cloud = { news_seen: "v5.18", onboarded_v1: "1" };
   window.Telegram = { WebApp: {
     initData: "demo", initDataUnsafe: { user: { id: 222, first_name: "Аня" } },
     colorScheme: "dark", themeParams: {}, platform: "ios", version: "8.0",

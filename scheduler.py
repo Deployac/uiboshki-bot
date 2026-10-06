@@ -328,6 +328,12 @@ async def sync_sdo_deadlines(bot: Bot):
             )
         except Exception as e:
             logger.warning(f"Не смог уведомить старосту об автосинке СДО: {e}")
+    # каждому — что появилось нового (у кого включено «Новые задания»)
+    try:
+        import new_tasks
+        await new_tasks.announce(bot, result.get("new_ids") or [])
+    except Exception as e:
+        logger.warning(f"новые задания: рассылка не вышла: {e}")
 
 
 def start_scheduler(bot: Bot) -> AsyncIOScheduler:

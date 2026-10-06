@@ -260,9 +260,10 @@ async def test_sdo_sync_updates_moved_deadline(db, monkeypatch):
 
     first = await sdo_parser.sync_deadlines()
     assert (first["added"], first["updated"]) == (1, 0)
+    assert first["new_ids"] == [(await db.get_deadline_by_external_id("sdo:42"))["id"]]   # для «новых заданий»
 
     again = await sdo_parser.sync_deadlines()
-    assert (again["added"], again["updated"], again["skipped"]) == (0, 0, 1)
+    assert (again["added"], again["updated"], again["skipped"]) == (0, 0, 1) and again["new_ids"] == []
 
     html["value"] = _sdo_html(4102444800 + 86400)  # препод продлил на сутки
     moved = await sdo_parser.sync_deadlines()
