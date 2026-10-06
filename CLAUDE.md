@@ -222,6 +222,8 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   (`index_pending` раз в 20 мин: новые файлы, удалённые убирает, векторы
   пачками до 429), новые файлы — сразу при загрузке; прогресс — в `/status`.
   «Объясни 3 лекцию» и пустой индекс — по-старому, `lecture_picker`.
+  Тот же поиск без ответа ИИ — во вкладке «Файлы» (`/api/lecture-search`,
+  «В тексте лекций»: лекция · слайд · отрывок → `openPage`).
 - **ИИ**: Gemini — основной (`gemini_solver.py`), DeepSeek — опционально
   (`ai_solver.py`). Лекции под вопрос подбирает `lecture_picker.py` (по словам с
   учётом опечаток, до ~200 тыс. символов; без выбранного предмета — по всем
@@ -310,7 +312,7 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).
 
 ## Тесты
-`python -m pytest -q` (≈460 тестов, без сети) и `ruff check .` (линтер, тоже в CI). `tests/conftest.py`: фикстура
+`python -m pytest -q` (700+ тестов, без сети) и `ruff check .` (линтер, тоже в CI). `tests/conftest.py`: фикстура
 `db` (чистая SQLite с миграциями), заглушки сети для расписания и календаря
 СДО, семестр зафиксирован на 26.09.2026. Хендлеры проверяются через настоящий
 `Dispatcher.feed_update` с фейковой сессией бота. `tests/test_webapp_static.py`

@@ -50,6 +50,7 @@ EVENT_PATHS = [
     ("GET", "/api/sdo/grades", "sdo"),
     ("GET", "/api/sdo/task", "sdo"),
     ("GET", "/api/search", "search"),
+    ("GET", "/api/lecture-search", "files"),
     ("GET", "/api/target", "search"),
 ]
 VIEWS = {"open", "deadlines", "files", "sdo", "search", "bot"}

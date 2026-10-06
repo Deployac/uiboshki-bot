@@ -81,7 +81,7 @@ function renderFiles() {
   const list = document.getElementById("file-list");
   head.innerHTML = "";
   if (fileQuery) {
-    list.innerHTML = fileItems.length ? fileItems.map(f => fileCard(f, true)).join("") : capyEmpty("Ничего не нашлось");
+    list.innerHTML = (fileItems.length ? fileItems.map(f => fileCard(f, true)).join("") : "") + '<div id="lec-hits"></div>';
     syncFileBack();
     return;
   }
@@ -160,16 +160,58 @@ async function loadFiles(q) {
     fileItems.forEach(f => fileIndex[f.id] = f);
     if (fileSubject !== null && !fileItems.some(f => f.subject === fileSubject)) fileSubject = null;
     if (!fileItems.length) {
-      list.innerHTML = fileQuery ? capyEmpty("Ничего не нашлось")
+      list.innerHTML = fileQuery ? '<div id="lec-hits"></div>'
         : capyEmpty("Файлов пока нет", "Загрузи их в боте: /upload");
       document.getElementById("file-head").innerHTML = "";
       syncFileBack();
+      if (fileQuery) loadLectureHits(fileQuery, true);
       return;
     }
     renderFiles();
+    if (fileQuery) loadLectureHits(fileQuery, false);
   } catch (e) {
     list.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
   }
+}
+
+// ── Поиск внутри лекций ──────────────────────────────────────────────────
+// Под файлами по названию — места в самих лекциях: «где было про NPV?» →
+// «Лекция 5 · слайд 12» и отрывок; нажал — открылась страница (openPage).
+let lecSeq = 0;
+
+async function loadLectureHits(q, alone) {
+  const my = ++lecSeq;
+  const box = document.getElementById("lec-hits");
+  if (!box) return;
+  if (q.length < 3) { if (alone) box.innerHTML = capyEmpty("Ничего не нашлось"); return; }
+  box.innerHTML = '<div class="lec-head">В тексте лекций</div><div class="skel" style="height:64px"></div>';
+  let d;
+  try {
+    d = await api("/api/lecture-search?q=" + encodeURIComponent(q));
+  } catch (e) {
+    if (my === lecSeq) box.innerHTML = alone ? capyEmpty("Ничего не нашлось") : "";
+    return;
+  }
+  if (my !== lecSeq || fileQuery !== q) return;      // уже ищем другое
+  if (!d.items.length) {
+    box.innerHTML = alone ? capyEmpty("Ничего не нашлось",
+      d.ready ? "Ни в названиях, ни в тексте лекций" : "Тексты лекций ещё индексируются") : "";
+    return;
+  }
+  const stems = q.toLowerCase().split(/[^\wа-яё]+/i).filter(w => w.length >= 3).map(w => w.slice(0, 5));
+  box.innerHTML = '<div class="lec-head">В тексте лекций</div>' + d.items.map(h =>
+    '<div class="lec-hit" onclick="openPage(' + h.file_id + ',' + h.page + ')">' +
+      '<div class="lh-t">' + icon("bookOpen", "inl") + ' ' + escapeHtml(h.title) + ' · <span>' + escapeHtml(h.place) + '</span></div>' +
+      '<div class="lh-s">' + markStems(escapeHtml(h.snippet), stems) + '</div>' +
+      (h.subject ? '<div class="lh-subj">' + escapeHtml(h.subject) + '</div>' : '') +
+    '</div>').join("");
+}
+
+// подсветка слов запроса в уже экранированном отрывке
+function markStems(html, stems) {
+  if (!stems.length) return html;
+  const re = new RegExp("(" + stems.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")[\\wа-яё]*", "gi");
+  return html.replace(re, (m, g, off) => html[off - 1] === "&" ? m : "<mark>" + m + "</mark>");   // не внутри &quot;
 }
 
 let fileEditing = null;

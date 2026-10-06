@@ -234,6 +234,47 @@ async def api_summary_make(file_id: int, user: dict = CurrentUser):
 
 
 
+# ── Поиск внутри лекций (вкладка «Файлы») ────────────────────────────────────
+# Поиск по названиям не находит «где было про NPV»: это внутри лекций. Тот же
+# гибридный поиск, что у ИИ-чата (semantic_search), только без ответа ИИ —
+# сразу места: «Лекция 5 · слайд 12» и отрывок; нажал — открылась страница.
+
+def _snippet(text: str, query: str, width: int = 180) -> str:
+    """Отрывок вокруг первого слова запроса (по началу слова, без окончаний)."""
+    import re
+    flat = re.sub(r"\s+", " ", text or "").strip()
+    low = flat.lower()
+    stems = [w[:5] for w in re.findall(r"[\wё]+", (query or "").lower()) if len(w) >= 3]
+    pos = min((i for i in (low.find(s) for s in stems) if i >= 0), default=-1)
+    if pos < 0:
+        return flat[:width] + ("…" if len(flat) > width else "")
+    start = max(0, pos - 60)
+    piece = flat[start:start + width]
+    return ("…" if start else "") + piece + ("…" if start + width < len(flat) else "")
+
+
+@router.get("/api/lecture-search")
+async def api_lecture_search(q: str = "", subject: str = "", user: dict = CurrentUser):
+    import ratelimit
+    import semantic_search
+    q = q.strip()[:120]
+    if len(q) < 3:
+        return {"items": [], "ready": True}
+    if not ratelimit.allow("lsearch", user["id"]):
+        raise HTTPException(429, "Слишком часто — подожди минуту")
+    if not await semantic_search.ready():
+        return {"items": [], "ready": False}
+    try:
+        hits = await semantic_search.search(q, subject=subject, k=8)
+    except Exception as e:
+        logger.warning(f"поиск в лекциях: {e!r}")
+        raise HTTPException(502, "Поиск в лекциях сейчас не работает")
+    return {"ready": True, "items": [{
+        "file_id": h["file_id"], "title": h["title"], "subject": h["subject"],
+        "place": semantic_search.place(h), "page": h["page_from"], "snippet": _snippet(h["text"], q),
+    } for h in hits]}
+
+
 # ── Страница лекции по ссылке из ответа ИИ («Лекция 5 · слайд 12») ─────────
 # Текст страницы — из индекса поиска (semantic_index), а у PDF — ещё и сама
 # страница картинкой: pypdfium2 рисует её на сервере. Картинку Telegram-

@@ -55,8 +55,17 @@ async def test_menu_button_opens_webapp_when_url_set(monkeypatch):
         async def set_chat_menu_button(self, menu_button):
             calls["menu"] = menu_button
 
+        async def set_my_description(self, text):
+            calls["description"] = text
+
+        async def set_my_short_description(self, text):
+            calls["short"] = text
+
     monkeypatch.setattr(bot, "WEBAPP_URL", "https://example.up.railway.app")
     await bot.setup_bot_menu(FakeBot())
+    # «Что умеет этот бот?» — из кода, в пределах лимитов Telegram (512 и 120)
+    assert "УИБО-03-24" in calls["description"] and len(calls["description"]) <= 512
+    assert "поиск внутри лекций" in calls["description"] and len(calls["short"]) <= 120
     # «Корнилов»: коротко, первым — приложение; команды старосты — только ему
     assert calls["commands"][0] == "app" and "schedule" in calls["commands"] and "announce" not in calls["commands"]
     assert all("announce" in cmds for _, cmds in calls.get("starosta", []))
