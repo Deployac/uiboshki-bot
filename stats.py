@@ -210,6 +210,36 @@ def people_text(p: dict) -> str:
     return "\n".join(lines)
 
 
+def evening_text(s: dict, from_site_today: int, errors: int) -> str | None:
+    """Вечерняя сводка старосте — только в дни, когда пришли новые люди
+    (неделя анонса: рост видно без /stats; в обычный день — тишина)."""
+    if not s["new_day"]:
+        return None
+    site = f" ({from_site_today} с сайта)" if from_site_today else ""
+    ai = f" · ИИ: {s['ai_today']} вопросов" if s["ai_today"] else ""
+    err = f" · ⚠️ ошибок за сутки: {errors}" if errors else ""
+    return (f"📈 <b>За день</b>: +{s['new_day']} новых{site} · всего в боте {s['total']}, "
+            f"СДО подключили {s['sdo']}{ai}{err}\nПодробнее — /stats")
+
+
+async def send_evening(bot):
+    """21:00 (scheduler): вечерняя сводка старосте, если сегодня пришли новые."""
+    import logging as _logging
+    from config import STAROSTA_ID
+    import health
+    if not STAROSTA_ID:
+        return
+    s = await collect(1)
+    site = s["from_site"]                 # за 1 день — это и есть «сегодня»
+    errors = sum(1 for r in health.counter.last_day() if r[1] >= _logging.ERROR)
+    text = evening_text(s, site, errors)
+    if text:
+        try:
+            await bot.send_message(STAROSTA_ID, text, parse_mode="HTML")
+        except Exception as e:
+            logger.info(f"вечерняя сводка: {e}")
+
+
 def summary(s: dict) -> str:
     acts = " · ".join(f"{n} {label}" for label, n in s["actions"])
     return (f"📊 <b>Статистика за {s['days']} дн.</b>\n"

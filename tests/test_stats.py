@@ -152,3 +152,26 @@ async def test_people_button_only_for_starosta(db, monkeypatch):
         announce.router._parent_router = None
     lists = [t for t, _ in bot.session.sent if "Кто пользуется" in t]
     assert len(lists) == 1 and "Аня" in lists[0]
+
+
+@pytest.mark.asyncio
+async def test_evening_summary_only_with_new_people(db, monkeypatch):
+    """Вечером старосте «+N новых (M с сайта)» — только если сегодня пришли новые."""
+    import config
+    sent = []
+
+    class Bot:
+        async def send_message(self, chat_id, text, **kw):
+            sent.append((chat_id, text))
+
+    monkeypatch.setattr(stats, "_last", {})
+    monkeypatch.setattr(config, "STAROSTA_ID", 999)
+    await stats.send_evening(Bot())
+    assert sent == []                                                  # никого — тишина
+    await db.upsert_user(1, "", "")
+    await db.upsert_user(2, "", "")
+    await stats.track(2, "from_site")
+    await stats.send_evening(Bot())
+    (chat, text), = sent
+    assert chat == 999 and text.startswith("📈 <b>За день</b>: +2 новых (1 с сайта) · всего в боте 2")
+    assert stats.evening_text({"new_day": 0}, 0, 0) is None
