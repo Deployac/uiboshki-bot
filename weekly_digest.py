@@ -20,8 +20,39 @@ def next_monday(today: date) -> date:
     return today + timedelta(days=(7 - today.weekday()) % 7 or 7)
 
 
-def build(raw: bytes, monday: date, deadlines: list[dict], home: str | None) -> str | None:
-    """Текст обзора недели, начинающейся с monday; None — неделя пустая."""
+async def week_grades(user_id: int) -> list[tuple[str, float]]:
+    """Прирост баллов за неделю по предметам — у кого подключён свой вход в
+    СДО: [(«Анализ данных», 5.0), …], по убыванию, только рост. Сбой СДО —
+    пусто (обзор недели уходит и без этой строки)."""
+    import sdo_grades
+    import sdo_history
+    from sdo_accounts import cookie_for
+    cookie = await cookie_for(user_id)
+    if not cookie:
+        return []
+    try:
+        courses = (await sdo_grades.overview(user_id, cookie)).get("courses") or []
+    except Exception as e:
+        logger.info(f"обзор недели {user_id}: баллы не загрузились: {type(e).__name__}")
+        return []
+    out = []
+    for c in courses:
+        if c.get("id") is None or c.get("score") is None:
+            continue
+        delta = (await sdo_history.series(user_id, c["id"], c["score"]))["week_delta"]
+        if delta and delta > 0:
+            out.append((c.get("title") or c.get("name") or "", delta))
+    return sorted(out, key=lambda x: -x[1])
+
+
+def _num(x: float) -> str:
+    return f"{x:g}".replace(".", ",")
+
+
+def build(raw: bytes, monday: date, deadlines: list[dict], home: str | None,
+          grades: list[tuple[str, float]] | None = None) -> str | None:
+    """Текст обзора недели, начинающейся с monday; None — неделя пустая.
+    grades — прирост баллов за прошедшую неделю (week_grades)."""
     import notify_prefs
     from schedule_parser import MONTHS_GEN, lessons_for_date, week_number
     lines, total, free = [], 0, []
@@ -58,6 +89,8 @@ def build(raw: bytes, monday: date, deadlines: list[dict], home: str | None) -> 
             out.append(f"• {esc(d['subject'])} — {day}{' ' + d['due_time'] if d.get('due_time') else ''}")
         if len(week_dl) > MAX_DEADLINES:
             out.append(f"…и ещё {len(week_dl) - MAX_DEADLINES}")
+    if grades:
+        out.append("\n📈 <b>Баллы за неделю</b>: " + " · ".join(f"{esc(n)} +{_num(d)}" for n, d in grades[:4]))
     return "\n".join(out)
 
 
@@ -80,11 +113,13 @@ async def send_all(bot, now: datetime | None = None):
     answers = await get_all_optional_answers()
     for user in await get_reminder_users():
         uid = user["user_id"]
-        if not notify_prefs.merge(user.get("notify")).get("weekly"):
+        prefs = notify_prefs.merge(user.get("notify"))
+        if not prefs.get("weekly"):
             continue
+        grades = await week_grades(uid) if prefs.get("grades") else []
         token = HIDE.set(frozenset(s for s in OPTIONAL_SUBJECTS if not answers.get(uid, {}).get(s)))
         try:
-            text = build(raw, monday, await get_active_deadlines(uid), home)
+            text = build(raw, monday, await get_active_deadlines(uid), home, grades)
         finally:
             HIDE.reset(token)
         if not text:
