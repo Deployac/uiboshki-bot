@@ -47,28 +47,3 @@ def allow(action: str, user_id: int) -> bool:
 
 def reset():
     _hits.clear()
-
-
-DAY_TEXT = ("на сегодня вопросы к ИИ кончились ({n} в сутки) — бесплатный лимит ИИ один на всю "
-            "группу. Завтра можно снова")
-
-
-def ai(user_id: int) -> str | None:
-    """Можно ли спросить ИИ: None — можно, "minute" — много подряд, "day" —
-    кончился дневной лимит (config.AI_DAILY_LIMIT; 0 — без него, старосте
-    не действует). Считается за последние сутки."""
-    import config
-    if not allow("ai", user_id):
-        return "minute"
-    n = config.AI_DAILY_LIMIT
-    if n > 0 and not config.is_starosta(user_id):
-        LIMITS["ai_day"] = (n, 86400)
-        if not allow("ai_day", user_id):
-            return "day"
-    return None
-
-
-def day_text(capital: bool = False) -> str:
-    import config
-    text = DAY_TEXT.format(n=config.AI_DAILY_LIMIT)
-    return text[:1].upper() + text[1:] if capital else text

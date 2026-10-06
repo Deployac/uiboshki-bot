@@ -146,11 +146,10 @@ async def api_chat(body: ChatBody, user: dict = CurrentUser):
     from group_context import build_group_context
     from utils import md_to_tg_html_chunks
 
-    import ratelimit
-    why = ratelimit.ai(user["id"])
+    import ai_quota
+    why = await ai_quota.gate(user["id"])
     if why:
-        raise HTTPException(status_code=429, detail=ratelimit.day_text() if why == "day"
-                            else "слишком много вопросов подряд — подожди минуту")
+        raise HTTPException(status_code=429, detail=ai_quota.text(why))
     # Роли — только user/assistant, и первым — вопрос: срез [-20:] мог
     # начаться с ответа ИИ, а deepseek-reasoner такое не принимает.
     history = [{"role": m.role, "content": m.content} for m in body.history[-20:]

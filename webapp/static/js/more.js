@@ -24,6 +24,16 @@ function openConfigLink(url) {
   else openLink(url);
 }
 
+// «Позвать»: переслать в Telegram ссылку на сайт бота (/about — живое демо и
+// поиск расписания, без установки) — после анонса бота зовут одногруппников
+function shareBot() {
+  const site = location.origin + "/about";
+  const text = "Бот нашей группы: расписание, дедлайны и баллы СДО, лекции и ИИ по ним";
+  const url = "https://t.me/share/url?url=" + encodeURIComponent(site) + "&text=" + encodeURIComponent(text);
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(url);
+  else openLink(url);
+}
+
 function closeSheet(id) {
   document.getElementById(id).classList.remove("open");
 }
@@ -96,6 +106,7 @@ function renderSdo(connecting) {
       '<input class="searchbox" id="sdo-cookie" placeholder="Вставь MoodleSession…" autocomplete="off" autocapitalize="off" spellcheck="false">' +
       '<div class="lock">' + icon("shield", "inl") + ' Это как «оставаться в системе». Значение сразу шифруется, в переписке и логах не остаётся.</div>' +
       '<button class="primary" id="sdo-save" onclick="connectSdo()">Проверить и сохранить</button>' +
+      (GUIDE_URL ? '<button class="ghost" onclick="openConfigLink(GUIDE_URL)">Гайд со скринами — в канале</button>' : '') +
       '<button class="ghost" onclick="renderSdo()">Позже</button>';
     return;
   }
@@ -486,7 +497,10 @@ function renderNotify() {
         ntSwitch(p.weekly, "toggleNotify('weekly')") + '</div></div>' +
       '<div class="nt-card' + (p.grades ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("medal") + '</span>' +
         '<div><b>Новые баллы</b><p>напишу, когда в СДО изменятся баллы по предмету (если подключён вход)</p></div>' +
-        ntSwitch(p.grades, "toggleNotify('grades')") + '</div></div>';
+        ntSwitch(p.grades, "toggleNotify('grades')") + '</div></div>' +
+      '<div class="nt-card' + (p.new_tasks ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("deadlines") + '</span>' +
+        '<div><b>Новые задания</b><p>напишу, когда в СДО появится задание или перенесут срок</p></div>' +
+        ntSwitch(p.new_tasks, "toggleNotify('new_tasks')") + '</div></div>';
   }
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';
 }
@@ -580,12 +594,12 @@ function onboardStore(get, done) {
 // Новичок видит знакомство, а «что нового» ему ни к чему — помечаем
 // прочитанным. Остальным — лист с главным, по разу на выпуск NEWS.id.
 const NEWS = {
-  id: "v5.15",
+  id: "v5.19",
   items: [
+    ["deadlines", "Новые задания из СДО", "Появилось задание или перенесли срок — бот напишет, что и до когда. Выключается в «Ещё → Уведомления»."],
+    ["checkCircle", "Сдал — отмечено", "Сдал работу через бота или в СДО она зачтена — дедлайн у тебя отмечается сам, напоминания про неё больше не придут."],
     ["medal", "Цель по предмету", "СДО → предмет → «Цель»: выбери зачёт, «3», «4» или «5» — бот посчитает, сколько не хватает, какие работы и лекции это дадут и хватает ли зачтённых работ (нужно 75 %)."],
     ["search", "Поиск по смыслу", "Спрашивай своими словами — ИИ найдёт нужное в лекциях, даже если там это называется иначе. Под ответом — «Лекция 5 · слайд 12»: нажми, и откроется страница."],
-    ["checkCircle", "Посещения лекций", "СДО → предмет → «Посещаемость»: сколько лекций засчитано, какие именно и сколько баллов ещё можно добрать. Считаем по баллам СДО."],
-    ["send", "Канал бота", "Как делается бот, обновления и гайды — @uiboshki_dev, плитка в меню «Ещё»."],
   ],
 };
 

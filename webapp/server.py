@@ -114,6 +114,12 @@ async def security_headers(request: Request, call_next):
     resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     if request.url.path.startswith(("/api/", "/dl/", "/sdl/")):
         resp.headers["Cache-Control"] = "no-store"
+    elif "v" in request.query_params and request.url.path.endswith((".js", ".css")) and resp.status_code == 200:
+        # js/… и app.css со ссылкой ?v=<хэш содержимого> (index_page): новое
+        # содержимое — новая ссылка, так что старую можно не перепроверять.
+        # Иначе каждое открытие приложения — дюжина запросов «не изменилось?»
+        # до сервера в США.
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return resp
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -142,18 +148,48 @@ for _module in (schedule, account, deadlines, files, chat, sdo, channel, site):
 _ASSET_RE = re.compile(r'(src|href)="((?:js/[\w-]+\.js)|app\.css)"')
 
 
+GUIDE_SLUG = "13-sdo-guide-pinned"      # пост-гайд «как подключить СДО» (channel/posts)
+
+
+async def _guide_link() -> str:
+    """Ссылка на выпущенный пост-гайд по СДО в канале — для экрана «Подключить
+    СДО». Номер сообщения — из channel:published (после /channel redo он
+    другой), канал — из CHANNEL_URL (t.me/<имя> или @имя). Нет — пусто."""
+    import config
+    try:
+        from channel_posts import published
+        ids = ((await published()).get(GUIDE_SLUG) or {}).get("ids") or []
+    except Exception:
+        return ""
+    m = re.search(r"(?:t\.me/|^@)(\w+)", config.CHANNEL_URL or "")
+    return f"https://t.me/{m.group(1)}/{ids[0]}" if ids and m else ""
+
+
+_DIGESTS: dict[str, tuple[float, str]] = {}
+
+
+def _digest(rel: str) -> str:
+    """Хэш содержимого файла статики — пересчитывается, только если файл
+    поменялся (раньше — дюжина sha1 на каждое открытие приложения)."""
+    import hashlib
+    f = STATIC_DIR / rel
+    mtime = f.stat().st_mtime
+    hit = _DIGESTS.get(rel)
+    if not hit or hit[0] != mtime:
+        hit = _DIGESTS[rel] = (mtime, hashlib.sha1(f.read_bytes()).hexdigest()[:10])
+    return hit[1]
+
+
 @app.get("/", include_in_schema=False)
 @app.get("/index.html", include_in_schema=False)
 async def index_page():
     """index.html со ссылками на стили и скрипты с меткой версии (?v=хэш
     содержимого): WebApp Telegram держит старые файлы в кэше, и после
     выкатки у части людей был бы новый HTML со старым JS."""
-    import hashlib
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     def versioned(m):
-        digest = hashlib.sha1((STATIC_DIR / m.group(2)).read_bytes()).hexdigest()[:10]
-        return f'{m.group(1)}="{m.group(2)}?v={digest}"'
+        return f'{m.group(1)}="{m.group(2)}?v={_digest(m.group(2))}"'
 
     # имя группы и бота — из переменных (config.py): одна и та же вёрстка
     # годится для копии бота у другой группы
@@ -162,7 +198,8 @@ async def index_page():
     import config
     # канал бота и «написать нам» — для плиток меню «Ещё» (дизайн-ревью, п. 18)
     cfg = json.dumps({"group": config.GROUP_NAME, "bot": config.BOT_USERNAME,
-                      "channel": config.CHANNEL_URL, "contact": config.CONTACT_URL},
+                      "channel": config.CHANNEL_URL, "contact": config.CONTACT_URL,
+                      "guide": await _guide_link()},
                      ensure_ascii=False).replace("</", "<\\/")
     html = html.replace("УИБО-03-24", escape(config.GROUP_NAME)).replace(
         '<script src="js/core.js"', f'<script>window.APP_CONFIG = {cfg};</script>\n<script src="js/core.js"', 1)

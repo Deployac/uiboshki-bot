@@ -6,6 +6,8 @@
   python tools/changelog.py add 4.45.0 Имя <<'EOF'
   - что сделано (текст версии)
   EOF                                         — добавить версию в CHANGELOG
+  … add 5.18.0 Слово --temp                   — имена из песен кончились: временное
+                                                слово (владелец потом заменит)
 
 Имя должно быть из песен владельца (SONG_WORDS), не занято и не придержано
 (RESERVED). Список слов — отдельные имена и существительные, не текст песен.
@@ -17,12 +19,13 @@ from pathlib import Path
 
 CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
 ANCHOR = "\n## Как будет дальше"
+TEMP_MARK = "(временное имя)"       # имена из песен кончились — владелец заменит
 # придержаны владельцем под особые версии (CLAUDE.md)
 RESERVED = {"Брусилов": "прорыв (уже v5.0.0)", "Корнилов": "эпохальный поход (уже v4.19.0)",
             "Сталин": "что-то торжественное, масштаба Победы", "Кайзер": "разбивка webapp/server.py (уже v4.45.0)",
             "Мегалодон": "что-то масштабное и крутое — решит владелец"}
 # Имена и отдельные слова из песен, которые дал владелец (не цитаты): три
-# первые и ещё две (2 октября 2026).
+# первые, ещё две (2 октября 2026) и песня про капибар (6 октября 2026).
 SONG_WORDS = """
 Буревестник Цветы Фронт Лошадь Милюков Суп Дарданеллы Выходные Локаут Обед Ужин Волопас Кризис Полдник
 Балканы Сончас Гучков Полка Сирень Гельсингфорс Король Некрасов Ленин Львов Чернов Азеф Есенин Троцкий
@@ -38,6 +41,9 @@ SONG_WORDS = """
 Рождество Ежевика Псы Октябрь Рассвет Глухарь Сверхновая Снегокат Подземелье Белград Столовая Кайзер
 Прерии Марс Титан Пруд
 Ингерманландия Кайнозой Киборг Юденич Гусар Стратосфера Лужники Кархародон Прудон Компсогнат Мегалодон Латимерия Термит Нептун Колдун Полковник Останкино Кашалот Гапон Выдра Голицын Пеликан Чхеидзе Рептилия Альбатрос Пуанты Засулич Саванна Монголия Ящер Белинский Гесиод Носорог Раптор Народоволец
+Крот Бластер Мастер Сенобит Верблюд Линкор Термидор Апрель Щавель Капибара Комиссар Сталевар Коммунар
+Кочегар Сазан Ураган Варан Кегельбан Пингвины Гобелен Помидор Путч Тучи Янычар Самовар Ягуар Канцтовары
+Самосвал Тротуар Сверхгусар Постболгар
 """.split() + ["Юрьев день"]
 
 
@@ -54,11 +60,12 @@ def free(text: str) -> list[str]:
     return sorted({w for w in SONG_WORDS if _norm(w) not in used and w not in RESERVED})
 
 
-def check(text: str, name: str) -> str | None:
-    """None — можно; иначе причина."""
+def check(text: str, name: str, temp: bool = False) -> str | None:
+    """None — можно; иначе причина. temp — имена из песен кончились: владелец
+    велел не останавливаться, а брать временное слово (он потом заменит)."""
     if name in RESERVED:
         return f"придержано: {RESERVED[name]}"
-    if _norm(name) not in {_norm(w) for w in SONG_WORDS}:
+    if not temp and _norm(name) not in {_norm(w) for w in SONG_WORDS}:
         return "нет в песнях владельца — не придумывать, спросить"
     taken = [v for v, n in versions(text) if _norm(n) == _norm(name)]
     return f"занято v{taken[0]}" if taken else None
@@ -66,6 +73,8 @@ def check(text: str, name: str) -> str | None:
 
 def main(argv: list[str]) -> int:
     text = CHANGELOG.read_text(encoding="utf-8")
+    temp = "--temp" in argv
+    argv = [a for a in argv if a != "--temp"]
     cmd = argv[1] if len(argv) > 1 else ""
     if cmd == "free":
         print(", ".join(free(text)))
@@ -74,14 +83,15 @@ def main(argv: list[str]) -> int:
             print(n, "—", check(text, n) or "свободно")
     elif cmd == "add" and len(argv) == 4:
         ver, name = argv[2], argv[3]
-        if why := check(text, name):
+        if why := check(text, name, temp):
             sys.exit(f"{name}: {why}")
         if ver in {v for v, _ in versions(text)}:
             sys.exit(f"версия {ver} уже есть")
         body = sys.stdin.read().strip()
         if not body or ANCHOR not in text:
             sys.exit("нет текста версии или раздела «Как будет дальше»")
-        CHANGELOG.write_text(text.replace(ANCHOR, f"\n### v{ver} «{name}»\n{body}\n" + ANCHOR, 1), encoding="utf-8")
+        mark = f" {TEMP_MARK}" if temp else ""
+        CHANGELOG.write_text(text.replace(ANCHOR, f"\n### v{ver} «{name}»{mark}\n{body}\n" + ANCHOR, 1), encoding="utf-8")
         print("ok", ver, name)
     else:
         print(__doc__)

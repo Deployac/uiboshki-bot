@@ -20,6 +20,12 @@ def test_about_page_and_demo():
     c = _client()
     r = c.get("/about")
     assert r.status_code == 200 and "УИБО-бот" in r.text and 'src="/about/demo"' in r.text
+    # стили и скрипт — с меткой версии (кэш на год, после обновления — новая ссылка)
+    import re as _re
+    for rel in ("site/site.css", "site/site.js"):
+        m = _re.search(rf'"/({rel}\?v=\w+)"', r.text)
+        assert m, rel
+        assert "immutable" in c.get("/" + m.group(1)).headers["cache-control"]
     # превью ссылки в Telegram — абсолютный адрес картинки, сама картинка есть
     assert '<meta property="og:image" content="http' in r.text and "__BASE__" not in r.text
     assert c.get("/site/og.jpg").content[:3] == b"\xff\xd8\xff"
@@ -113,6 +119,13 @@ async def test_public_search_and_target(db, monkeypatch):
     # случайный id — не в справочнике: 404 без похода в МИРЭА
     ratelimit.reset()
     assert c.get("/about/api/target/1/99999").status_code == 404
+    # справочник ещё не собран — поиск шёл запасным официальным: его результат открывается
+
+    async def not_ready():
+        return False
+
+    monkeypatch.setattr(schedule_index, "is_ready", not_ready)
+    assert c.get("/about/api/target/1/99999").status_code == 200
     ratelimit.reset()
 
 

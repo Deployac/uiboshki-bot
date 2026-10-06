@@ -27,9 +27,11 @@ tier (и implicit, и explicit caching — платная фича) — поэт
 
 import base64
 import logging
+import time
+
 import httpx
 
-from config import GEMINI_API_KEY, GEMINI_MODEL, GROUP_NAME, GROUP_PROGRAM
+from config import GEMINI_API_KEY, GEMINI_FALLBACK_MODELS, GEMINI_MODEL, GROUP_NAME, GROUP_PROGRAM
 
 logger = logging.getLogger(__name__)
 
@@ -90,8 +92,10 @@ _HTTP_ERROR_TEXT = {
 
 async def _generate(contents: list[dict], system_instruction: str | None = None, *,
                     temperature: float = 0.3, max_output_tokens: int | None = None,
-                    timeout: float = 60, mark_truncated: bool = True) -> str:
+                    timeout: float = 60, mark_truncated: bool = True, fallback: bool = True) -> str:
     """Один запрос generateContent, возвращает склеенный текст ответа.
+    fallback=False — без запасных моделей (классификатор намерений: их
+    маленький дневной лимит — для настоящих вопросов, а не «привет»).
     Кидает GeminiError (RuntimeError) с понятным текстом при любой проблеме."""
     if not GEMINI_API_KEY:
         raise GeminiError("GEMINI_API_KEY не настроен на сервере")
@@ -102,8 +106,41 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
     payload: dict = {"contents": contents, "generationConfig": generation_config}
     if system_instruction:
         payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
-    url = GEMINI_URL_TEMPLATE.format(model=GEMINI_MODEL)
+    # основная модель упёрлась в лимит — тот же запрос запасной (лимиты у
+    # моделей свои); запасной нет у Google (404) — дальше по списку
+    # основная, упёршаяся в лимит, 10 минут не дёргается — сразу запасная
+    # (иначе каждый вопрос — лишний запрос и ожидание)
+    spare = [m for m in GEMINI_FALLBACK_MODELS if m != GEMINI_MODEL] if fallback else []
+    resting = spare and time.monotonic() < _primary_rest_until
+    models = spare if resting else [GEMINI_MODEL] + spare
+    limited = None
+    for i, model in enumerate(models):
+        try:
+            return await _generate_once(model, payload, timeout, mark_truncated)
+        except GeminiError as e:
+            if model == GEMINI_MODEL and e.status == 429:
+                _rest_primary()
+            if e.status == 429 or (model != GEMINI_MODEL and e.status == 404):
+                limited = limited or e
+                if i + 1 < len(models):
+                    logger.info(f"Gemini {model}: HTTP {e.status} — пробую {models[i + 1]}")
+                    continue
+                raise limited
+            raise
+    raise limited or GeminiError("Gemini не ответил")
 
+
+PRIMARY_REST = 600            # сек: основная после 429 — сразу к запасной
+_primary_rest_until = 0.0
+
+
+def _rest_primary():
+    global _primary_rest_until
+    _primary_rest_until = time.monotonic() + PRIMARY_REST
+
+
+async def _generate_once(model: str, payload: dict, timeout: float, mark_truncated: bool) -> str:
+    url = GEMINI_URL_TEMPLATE.format(model=model)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             # Ключ — в заголовке, а НЕ в ?key= query-параметре: текст ошибки
@@ -118,7 +155,7 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
     if resp.status_code != 200:
         logger.warning(f"Gemini HTTP {resp.status_code}: {resp.text[:1000]}")
         template = _HTTP_ERROR_TEXT.get(resp.status_code, "Gemini ответил ошибкой HTTP {code}")
-        raise GeminiError(template.format(model=GEMINI_MODEL, code=resp.status_code),
+        raise GeminiError(template.format(model=model, code=resp.status_code),
                           transient=resp.status_code == 429 or resp.status_code >= 500,
                           status=resp.status_code)
 
@@ -151,10 +188,11 @@ def _to_contents(history: list[dict]) -> list[dict]:
 
 async def generate_text(history: list[dict], system_instruction: str, *,
                         temperature: float = 0.3, max_output_tokens: int | None = 4096,
-                        timeout: float = 60) -> str:
+                        timeout: float = 60, fallback: bool = True) -> str:
     return await _generate(
         _to_contents(history), system_instruction,
         temperature=temperature, max_output_tokens=max_output_tokens, timeout=timeout,
+        fallback=fallback,
     )
 
 

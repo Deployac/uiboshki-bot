@@ -215,15 +215,14 @@ async def api_summary(file_id: int, user: dict = CurrentUser):
 async def api_summary_make(file_id: int, user: dict = CurrentUser):
     """«Сделать конспект»: первый нажавший ждёт ИИ, дальше конспект у всех."""
     import lecture_summary
-    import ratelimit
     from database import get_file_by_id, get_file_summary
     f = await get_file_by_id(file_id)
     if not f:
         raise HTTPException(404, "Файл не найден")
-    why = None if await get_file_summary(file_id) else ratelimit.ai(user["id"])
+    import ai_quota
+    why = None if await get_file_summary(file_id) else await ai_quota.gate(user["id"])
     if why:
-        raise HTTPException(429, ratelimit.day_text(capital=True) if why == "day"
-                            else "Слишком много запросов к ИИ подряд — подожди минуту")
+        raise HTTPException(429, ai_quota.text(why, capital=True))
     try:
         made = await lecture_summary.make(file_id, f["title"], f.get("subject") or "", user["id"])
     except lecture_summary.NoText:

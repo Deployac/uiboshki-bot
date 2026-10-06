@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 MAX_BYTES = 20 * 1024 * 1024
 MAX_FILES = 3            # за раз из WebApp (владелец: «до трёх файлов»)
-CMID_RE = re.compile(r"/mod/assign/view\.php\?(?:[^#]*&)?id=(\d+)")
+CMID_RE = re.compile(r"/mod/(assign|quiz)/view\.php\?(?:[^#\s\"']*&)?id=(\d+)")
 
 
 class SubmitError(Exception):
@@ -40,9 +40,13 @@ class NoForm(SubmitError):
     """На странице сдачи нет формы с файлами — причину ищем на странице задания."""
 
 
-def cmid_of(url: str) -> int | None:
-    m = CMID_RE.search(url or "")
-    return int(m.group(1)) if m else None
+def cmid_of(url: str, quiz: bool = False) -> int | None:
+    """Номер задания (cmid) из ссылки mod/assign; quiz=True — и тестов (для
+    отметки «сдал», sdo_done; сдавать файлом можно только assign)."""
+    for m in CMID_RE.finditer(url or ""):
+        if m.group(1) == "assign" or quiz:
+            return int(m.group(2))
+    return None
 
 
 def _notice(soup: BeautifulSoup) -> str:

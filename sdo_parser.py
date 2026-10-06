@@ -341,6 +341,8 @@ async def sync_deadlines() -> dict:
 
     from schedule_parser import get_group_subjects
     added = updated = skipped = 0
+    new_ids: list[int] = []               # для рассылки «новые задания» (new_tasks.py)
+    moved: dict[int, str] = {}            # id → прежний срок «YYYY-MM-DD»: преподаватель перенёс
     subjects = await get_group_subjects(**SEMESTER_WINDOW)
     old = [i for i in items if not_this_semester(i, subjects)]
     items = [i for i in items if not not_this_semester(i, subjects)]
@@ -363,10 +365,12 @@ async def sync_deadlines() -> dict:
             if (existing["subject"], existing["due_date"], existing["due_time"]) != fresh:
                 await update_deadline_due(existing["id"], *fresh)
                 updated += 1
+                if (existing["due_date"], existing["due_time"]) != fresh[1:]:
+                    moved[existing["id"]] = existing["due_date"]
             else:
                 skipped += 1
             continue
-        await add_deadline(
+        did = await add_deadline(
             subject=item["subject"],
             description=item["description"],
             due_date=item["due_date"],
@@ -375,8 +379,11 @@ async def sync_deadlines() -> dict:
             external_id=item["external_id"],
         )
         added += 1
+        if did:
+            new_ids.append(did)
 
     logger.info(f"СДО sync: добавлено {added}, обновлено {updated}, пропущено {skipped}, прошлый семестр {len(old)}")
-    return {"added": added, "updated": updated, "skipped": skipped, "old_semester": len(old),
+    return {"added": added, "updated": updated, "skipped": skipped, "old_semester": len(old), "new_ids": new_ids,
+            "moved": moved,
             "old_courses": sorted({i.get("course") or course_of(i["subject"]) for i in old} - {""}),
             "expired": False}

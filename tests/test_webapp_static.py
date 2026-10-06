@@ -494,13 +494,14 @@ def _more_menu():
     return HTML[HTML.index('<div class="more-grid">'):HTML.index('id="sdo-sheet"')]
 
 
-def test_more_menu_ten_tiles_with_actions():
-    # 10 плиток: прежние 6 + ДЗ, «Что нового», «Канал бота», «Написать нам»
+def test_more_menu_tiles_with_actions():
+    # 11 плиток: прежние 6 + ДЗ, «Что нового», «Канал бота», «Написать нам», «Позвать»
     menu = _more_menu()
     labels = re.findall(r'<span class="lbl">([^<]+)</span>', menu)
     assert labels == ["Файлы", "Дедлайны", "ДЗ", "Календарь", "Уведомления", "Безопасность",
-                      "Ярлык", "Что нового", "Канал бота", "Написать нам"]
-    for call in ("openHomework()", "showWhatsNew()", "openConfigLink(CHANNEL_URL)", "openConfigLink(CONTACT_URL)"):
+                      "Ярлык", "Что нового", "Канал бота", "Написать нам", "Позвать"]
+    for call in ("openHomework()", "showWhatsNew()", "openConfigLink(CHANNEL_URL)", "openConfigLink(CONTACT_URL)",
+                 "shareBot()"):
         assert f'toggleMore(false); {call}"' in menu, call
     assert 'href="#i-send"' in menu and 'href="#i-message"' in menu and 'href="#i-sparkle"' in menu
     # ДЗ — функцией, а не кликом по кнопке сегмента
@@ -965,3 +966,26 @@ def test_onclick_built_in_js_call_defined_functions():
     assert {"markLecture", "tapWork", "setGoal", "openTk", "openPos", "openSubject"} <= called
     missing = called - defined - builtins
     assert not missing, f"нет функций: {sorted(missing)}"
+
+
+def test_share_bot_sends_site_link():
+    # «Позвать» — пересылка в Telegram ссылки на сайт /about с подписью
+    fn = JS["js/more.js"].split("function shareBot()")[1].split("\n}\n")[0]
+    assert 'location.origin + "/about"' in fn and "t.me/share/url?url=" in fn and "tg.openTelegramLink(url)" in fn
+
+
+@pytest.mark.asyncio
+async def test_sdo_guide_link_from_published_post(db, monkeypatch):
+    """Экран «Подключить СДО» — ссылка на гайд в канале: номер сообщения из
+    channel:published, канал из CHANNEL_URL; не выпущен — кнопки нет."""
+    import config
+    import webapp.server as server
+    from channel_posts import mark_published
+    monkeypatch.setattr(config, "CHANNEL_URL", "https://t.me/uiboshki_dev")
+    assert await server._guide_link() == ""
+    await mark_published(server.GUIDE_SLUG, [23])
+    assert await server._guide_link() == "https://t.me/uiboshki_dev/23"
+    monkeypatch.setattr(config, "CHANNEL_URL", "@uiboshki_dev")
+    assert await server._guide_link() == "https://t.me/uiboshki_dev/23"
+    assert "(GUIDE_URL ?" in JS["js/more.js"] and "const GUIDE_URL = APP_CONFIG.guide" in JS["js/core.js"]
+    assert (server.STATIC_DIR.parent.parent / "channel" / "posts" / server.GUIDE_SLUG).is_dir()

@@ -328,6 +328,12 @@ async def sync_sdo_deadlines(bot: Bot):
             )
         except Exception as e:
             logger.warning(f"Не смог уведомить старосту об автосинке СДО: {e}")
+    # каждому — что появилось нового (у кого включено «Новые задания»)
+    try:
+        import new_tasks
+        await new_tasks.announce(bot, result.get("new_ids") or [], result.get("moved") or {})
+    except Exception as e:
+        logger.warning(f"новые задания: рассылка не вышла: {e}")
 
 
 def start_scheduler(bot: Bot) -> AsyncIOScheduler:
@@ -356,6 +362,8 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(keepalive_due,           "interval", minutes=1, args=[bot])
     from database import purge_events          # статистика старше 180 дней не нужна
     scheduler.add_job(purge_events,            "cron", hour=4, minute=20)
+    import health
+    scheduler.add_job(health.alert_errors,     "interval", minutes=15, args=[bot])   # всплеск ошибок — старосте
     scheduler.add_job(check_schedule_changes,  "interval", minutes=SCHEDULE_DIFF_CHECK_MINUTES, args=[bot])
     # Справочник для поиска преподавателей/групп/аудиторий: достроить, если
     # обход прервался (редеплой), и обновлять раз в месяц (см. schedule_index).

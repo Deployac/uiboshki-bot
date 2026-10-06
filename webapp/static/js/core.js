@@ -10,6 +10,7 @@ const GROUP_NAME = APP_CONFIG.group || "УИБО-03-24";
 // Канал бота и «Написать нам» (config.py: CHANNEL_URL, CONTACT_URL); пусто — плитка говорит «Скоро»
 const CHANNEL_URL = APP_CONFIG.channel || "";
 const CONTACT_URL = APP_CONFIG.contact || "";
+const GUIDE_URL = APP_CONFIG.guide || "";          // пост-гайд «как подключить СДО» в канале
 
 if (tg) {
   tg.ready();

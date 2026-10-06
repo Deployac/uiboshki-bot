@@ -143,6 +143,11 @@
       }).join("");
       body = '<div class="week-switch" aria-label="Неделя расписания">' + tabs + '</div><div>' + days + '</div>';
     }
+    // подписка на тот же календарь МИРЭА: телефон сам подтягивает изменения
+    const ical = "english.mirea.ru/schedule/api/ical/" + (+s.type) + "/" + (+s.id);
+    body += '<div class="cal-row"><a class="cal-sub" href="webcal://' + ical + '">+ В календарь телефона</a>' +
+      '<button type="button" class="cal-copy" data-ical="https://' + ical + '">скопировать ссылку</button>' +
+      '<span>обновляется само · на Android — ссылку в Google Календарь</span></div>';
     sched.innerHTML = '<div class="schedule-result"><div class="schedule-heading"><div><p class="eyebrow">' + (KINDS[s.type] || "Расписание") +
       '</p><h3>' + esc(s.title) + '</h3></div><span class="live-label"><i></i> ' + (s.stale ? "Сохранённая копия" : "Актуальное расписание") +
       '</span></div>' + body + '</div>';
@@ -161,6 +166,12 @@
   sched.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
+    if (b.dataset.ical) {
+      const done = () => { b.textContent = "скопировано"; setTimeout(() => (b.textContent = "скопировать ссылку"), 1600); };
+      if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.ical).then(done, () => prompt("Ссылка на календарь", b.dataset.ical));
+      else prompt("Ссылка на календарь", b.dataset.ical);
+      return;
+    }
     if (b.dataset.retry && selected) open(selected);
     else if (b.dataset.w !== undefined) { week = +b.dataset.w; renderSchedule(); }
   });

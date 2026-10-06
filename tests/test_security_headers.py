@@ -52,3 +52,18 @@ def test_httpx_urls_not_logged():
     import logging
     import webapp.server  # noqa: F401 — настраивает логи
     assert logging.getLogger("httpx").level >= logging.WARNING
+
+
+def test_versioned_assets_cached_long_unversioned_not():
+    """js/… и app.css по ссылке с ?v=<хэш> — кэш на год (новое содержимое —
+    новая ссылка); без ?v= и index — перепроверять; API — не хранить."""
+    import re
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    c = TestClient(server.app)
+    index = c.get("/")
+    assert index.headers["cache-control"] == "no-cache"
+    url = re.search(r'src="(js/core\.js\?v=\w+)"', index.text).group(1)
+    assert c.get("/" + url).headers["cache-control"] == "public, max-age=31536000, immutable"
+    assert "immutable" not in c.get("/js/core.js").headers.get("cache-control", "")
+    assert c.get("/" + url).status_code == 200
