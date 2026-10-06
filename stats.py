@@ -140,7 +140,8 @@ async def collect(days: int = 30) -> dict:
 
 # Чем пользуется — коротко, для списка «кто пользуется»
 USES = {"open": "приложение", "bot": "бот", "deadlines": "дедлайны", "files": "файлы", "download": "файлы",
-        "ai": "ИИ", "summary": "конспекты", "sdo": "СДО", "sdo_connect": "СДО", "submit": "сдача работ", "search": "поиск"}
+        "ai": "ИИ", "summary": "конспекты", "sdo": "СДО", "sdo_connect": "СДО", "submit": "сдача работ", "search": "поиск",
+        "from_site": "пришёл с сайта"}
 
 
 def period_label(days: int) -> str:

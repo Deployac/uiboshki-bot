@@ -185,6 +185,23 @@ async def report() -> str:
     except Exception as e:
         lines.append(f"⚠️ индекс недоступен: {type(e).__name__}")
 
+    lines += ["", "<b>ИИ</b>"]
+    try:
+        import ai_quota
+        import config
+        import gemini_solver
+        from utils import esc
+        counts = await ai_quota.today()
+        limit = f" · лимит {config.AI_DAILY_LIMIT} на человека" if config.AI_DAILY_LIMIT else " · дневного лимита нет"
+        lines.append(f"Вопросов сегодня: {sum(counts.values())}, у самого активного — "
+                     f"{max(counts.values(), default=0)}{limit}")
+        rest = gemini_solver._primary_rest_until - time.monotonic()
+        if rest > 0:
+            lines.append(f"⚠️ {esc(config.GEMINI_MODEL)} упёрлась в лимит — ещё {int(rest // 60) + 1} мин отвечают "
+                         f"запасные: {esc(', '.join(config.GEMINI_FALLBACK_MODELS) or 'нет')}")
+    except Exception as e:
+        lines.append(f"⚠️ не узнал: {type(e).__name__}")
+
     lines += ["", "<b>Бэкап</b>", _line(await _get("backup"), "Копия базы", now, "ещё не было (каждую ночь в 04:40)")]
 
     errors = [r for r in counter.last_day() if r[1] >= logging.ERROR]

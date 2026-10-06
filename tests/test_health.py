@@ -94,3 +94,23 @@ def test_error_spike_alert(monkeypatch):
     assert "Gemini &lt;429&gt;" in text
     assert health.error_spike(now + 600) is None                         # через 10 минут — не повторяем
     assert health.error_spike(now + 3 * 3600 + 1) is None                # ошибки уже старые
+
+
+@pytest.mark.asyncio
+async def test_report_ai_section(db, monkeypatch):
+    """/status: вопросы ИИ сегодня и «основная модель отдыхает — отвечают запасные»."""
+    import time
+    import ai_quota
+    import config
+    import gemini_solver
+    import health
+    await ai_quota.take(1)
+    await ai_quota.take(1)
+    await ai_quota.take(2)
+    text = await health.report()
+    assert "Вопросов сегодня: 3, у самого активного — 2 · дневного лимита нет" in text
+    assert "упёрлась в лимит" not in text
+    monkeypatch.setattr(config, "AI_DAILY_LIMIT", 40)
+    monkeypatch.setattr(gemini_solver, "_primary_rest_until", time.monotonic() + 290)   # 4 мин 50 с → «ещё 5 мин»
+    text = await health.report()
+    assert "лимит 40 на человека" in text and "упёрлась в лимит — ещё 5 мин" in text

@@ -12,6 +12,17 @@
   const frame = $("demo-frame");
   if (frame) frame.addEventListener("load", () => $("demo-loading").classList.add("loaded"));
 
+  // «Поделиться» — системное меню телефона (там же Telegram); где его нет —
+  // кнопка скрыта, ссылку и так видно в адресной строке
+  const share = $("share-site");
+  if (share && navigator.share) {
+    share.hidden = false;
+    share.addEventListener("click", () => navigator.share({
+      title: "УИБО-бот", text: "Бот нашей группы: расписание, дедлайны и баллы СДО, лекции и ИИ по ним",
+      url: location.origin + "/about",
+    }).catch(() => {}));
+  }
+
   // ── возможности ──
   const FEATURES = [
     { label: "Сегодня", title: "День, собранный за тебя",
