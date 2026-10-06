@@ -24,6 +24,16 @@ function openConfigLink(url) {
   else openLink(url);
 }
 
+// «Позвать»: переслать в Telegram ссылку на сайт бота (/about — живое демо и
+// поиск расписания, без установки) — после анонса бота зовут одногруппников
+function shareBot() {
+  const site = location.origin + "/about";
+  const text = "Бот нашей группы: расписание, дедлайны и баллы СДО, лекции и ИИ по ним";
+  const url = "https://t.me/share/url?url=" + encodeURIComponent(site) + "&text=" + encodeURIComponent(text);
+  if (tg && tg.openTelegramLink) tg.openTelegramLink(url);
+  else openLink(url);
+}
+
 function closeSheet(id) {
   document.getElementById(id).classList.remove("open");
 }
