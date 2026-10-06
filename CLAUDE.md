@@ -104,7 +104,7 @@ Telegram-бот и Mini App (WebApp) группы **УИБО-03-24, РТУ МИ�
 `mekit54567/uiboshki-bot` (main) → форк **`Deployac/uiboshki-bot`** → Railway
 (деплой из форка). После мержа владелец жмёт в форке **Sync fork → Update
 branch** (в приложении GitHub на iOS такой кнопки нет — только в браузере).
-WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в процессе
+WebApp: `https://www.uiboshki.ru` (старый адрес `https://uiboshki-bot-production.up.railway.app` тоже работает), живёт в процессе
 бота (FastAPI + uvicorn, `webapp/server.py`, `bot.start_webapp`).
 
 Переменные окружения (см. `config.py`): `GROUP_NAME`, `BOT_USERNAME`,
