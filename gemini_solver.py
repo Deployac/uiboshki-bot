@@ -29,7 +29,7 @@ import base64
 import logging
 import httpx
 
-from config import GEMINI_API_KEY, GEMINI_MODEL, GROUP_NAME, GROUP_PROGRAM
+from config import GEMINI_API_KEY, GEMINI_FALLBACK_MODELS, GEMINI_MODEL, GROUP_NAME, GROUP_PROGRAM
 
 logger = logging.getLogger(__name__)
 
@@ -102,8 +102,26 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
     payload: dict = {"contents": contents, "generationConfig": generation_config}
     if system_instruction:
         payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
-    url = GEMINI_URL_TEMPLATE.format(model=GEMINI_MODEL)
+    # основная модель упёрлась в лимит — тот же запрос запасной (лимиты у
+    # моделей свои); запасной нет у Google (404) — дальше по списку
+    models = [GEMINI_MODEL] + [m for m in GEMINI_FALLBACK_MODELS if m != GEMINI_MODEL]
+    limited = None
+    for i, model in enumerate(models):
+        try:
+            return await _generate_once(model, payload, timeout, mark_truncated)
+        except GeminiError as e:
+            if e.status == 429 or (i > 0 and e.status == 404):
+                limited = limited or e
+                if i + 1 < len(models):
+                    logger.info(f"Gemini {model}: HTTP {e.status} — пробую {models[i + 1]}")
+                    continue
+                raise limited
+            raise
+    raise limited or GeminiError("Gemini не ответил")
 
+
+async def _generate_once(model: str, payload: dict, timeout: float, mark_truncated: bool) -> str:
+    url = GEMINI_URL_TEMPLATE.format(model=model)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             # Ключ — в заголовке, а НЕ в ?key= query-параметре: текст ошибки
@@ -118,7 +136,7 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
     if resp.status_code != 200:
         logger.warning(f"Gemini HTTP {resp.status_code}: {resp.text[:1000]}")
         template = _HTTP_ERROR_TEXT.get(resp.status_code, "Gemini ответил ошибкой HTTP {code}")
-        raise GeminiError(template.format(model=GEMINI_MODEL, code=resp.status_code),
+        raise GeminiError(template.format(model=model, code=resp.status_code),
                           transient=resp.status_code == 429 or resp.status_code >= 500,
                           status=resp.status_code)
 

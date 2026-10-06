@@ -112,7 +112,8 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 несколько через запятую — второй аккаунт; первый основной, `is_starosta()`),
 `GROUP_CHAT_ID` (пока не задан — лента «Подслушано» выключена), `ICAL_URL`
 (календарь группы, по умолчанию УИБО-03-24 = группа 4928 на зеркале),
-`DATABASE_PATH`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `AI_DAILY_LIMIT` (вопросов к ИИ в
+`DATABASE_PATH`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODELS` (запасные
+модели через запятую на случай 429, по умолчанию gemini-2.5-flash), `AI_DAILY_LIMIT` (вопросов к ИИ в
 сутки на человека, 0 — без лимита, старосте не действует), `DEEPSEEK_API_KEY`
 (необязательно), `WEBAPP_URL`, `PORT`, `SDO_SESSION_COOKIE`,
 `SDO_SYNC_INTERVAL_HOURS` (6), `SDO_CRYPT_KEY` (необязательно, ключ шифрования
