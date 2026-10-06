@@ -62,6 +62,42 @@ def install():
         root.addHandler(counter)
 
 
+# Всплеск ошибок — старосте сам, не дожидаясь /status: внешнего трекера
+# ошибок нет, а узнать о поломке от одногруппников — поздно.
+ALERT_MIN = 5              # ошибок (ERROR) за час — повод написать
+ALERT_EVERY = 3 * 3600     # не чаще раза в три часа
+_alerted_at = 0.0
+
+
+def error_spike(now: float | None = None) -> str | None:
+    """Текст тревоги, если за последний час ошибок ≥ ALERT_MIN и давно не
+    писали; иначе None. Сама отметка «написали» — здесь же."""
+    global _alerted_at
+    now = now or time.time()
+    errs = [r for r in counter.records if r[0] >= now - 3600 and r[1] >= logging.ERROR]
+    if len(errs) < ALERT_MIN or now - _alerted_at < ALERT_EVERY:
+        return None
+    _alerted_at = now
+    by_area: dict[str, int] = {}
+    for r in errs:
+        by_area[r[2]] = by_area.get(r[2], 0) + 1
+    areas = " · ".join(f"{a} — {n}" for a, n in sorted(by_area.items(), key=lambda x: -x[1]))
+    from utils import esc
+    return (f"⚠️ <b>За час {len(errs)} ошибок</b>: {esc(areas)}\n"
+            f"Последняя: <code>{esc(errs[-1][3])}</code>\nПодробнее — /status")
+
+
+async def alert_errors(bot):
+    """Раз в 15 минут (scheduler): всплеск ошибок — старосте."""
+    from config import STAROSTA_ID
+    text = error_spike()
+    if text and STAROSTA_ID:
+        try:
+            await bot.send_message(STAROSTA_ID, text, parse_mode="HTML")
+        except Exception as e:
+            logging.getLogger(__name__).info(f"тревога об ошибках не ушла: {e}")
+
+
 async def note(key: str, ok: bool, detail: str = ""):
     """Запомнить, чем кончилась проверка (sdo_sync, sdo_cookie, backup)."""
     try:

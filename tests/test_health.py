@@ -72,3 +72,25 @@ async def test_status_only_for_starosta(db):
         announce.router._parent_router = None
     sent = [t for t, _ in bot.session.sent if "Состояние бота" in t]
     assert len(sent) == 1
+
+
+def test_error_spike_alert(monkeypatch):
+    """Всплеск ошибок — старосте сам: ≥5 ERROR за час, не чаще раза в 3 часа;
+    предупреждения и старые ошибки не считаются."""
+    import logging
+    import health
+    monkeypatch.setattr(health, "_alerted_at", 0.0)
+    monkeypatch.setattr(health.counter, "records", health.deque(maxlen=2000))
+    now = 1_000_000.0
+    rec = health.counter.records
+    for i in range(4):
+        rec.append((now - 60 * i, logging.ERROR, "СДО", f"синк упал {i}"))
+    rec.append((now - 7200, logging.ERROR, "ИИ", "давно"))              # старше часа
+    rec.append((now - 10, logging.WARNING, "ИИ", "предупреждение"))
+    assert health.error_spike(now) is None                               # 4 — ещё не повод
+    rec.append((now - 5, logging.ERROR, "ИИ", "Gemini <429>"))
+    text = health.error_spike(now)
+    assert text.startswith("⚠️ <b>За час 5 ошибок</b>: СДО — 4 · ИИ — 1")
+    assert "Gemini &lt;429&gt;" in text
+    assert health.error_spike(now + 600) is None                         # через 10 минут — не повторяем
+    assert health.error_spike(now + 3 * 3600 + 1) is None                # ошибки уже старые

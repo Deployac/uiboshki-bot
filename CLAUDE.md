@@ -243,7 +243,9 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 - **Состояние бота** (`health.py`, `/status` у старосты): отметки «когда и чем
   кончилось» — синк СДО, проверка куки (раз в 55 мин, `scheduler.sdo_keepalive`),
   бэкап — в `settings` (`health:*`); ошибки и предупреждения из логов за сутки по
-  разделам — `health.ErrorCounter` (в памяти, ставится в `bot.py`).
+  разделам — `health.ErrorCounter` (в памяти, ставится в `bot.py`); всплеск —
+  ≥5 ошибок за час — бот сам пишет старосте (`health.alert_errors`, раз в
+  15 мин, не чаще раза в 3 часа).
 - **Уведомления** (`notify_prefs.py`, WebApp ☰ Ещё → Уведомления, `/api/notify`):
   JSON в `users.notify` поверх `DEFAULTS` — что слать и в какие дни, погода,
   «другой корпус» (корпус — в скобках в LOCATION, свой = самый частый),
