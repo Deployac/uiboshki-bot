@@ -108,7 +108,8 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
 несколько через запятую — второй аккаунт; первый основной, `is_starosta()`),
 `GROUP_CHAT_ID` (пока не задан — лента «Подслушано» выключена), `ICAL_URL`
 (календарь группы, по умолчанию УИБО-03-24 = группа 4928 на зеркале),
-`DATABASE_PATH`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `DEEPSEEK_API_KEY`
+`DATABASE_PATH`, `GEMINI_API_KEY`, `GEMINI_MODEL`, `AI_DAILY_LIMIT` (вопросов к ИИ в
+сутки на человека, 0 — без лимита, старосте не действует), `DEEPSEEK_API_KEY`
 (необязательно), `WEBAPP_URL`, `PORT`, `SDO_SESSION_COOKIE`,
 `SDO_SYNC_INTERVAL_HOURS` (6), `SDO_CRYPT_KEY` (необязательно, ключ шифрования
 входов студентов в СДО; без него — производный от `BOT_TOKEN`), `SDO_KEEP_COURSES` (по умолчанию «Учебный отдел»),
@@ -284,7 +285,14 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   телефона — `/about/demo` (index.html + `site/demo.js` вместо SDK Telegram:
   заглушка, сдвиг времени на запись, ответы `/api/…` из `site/demo.json` —
   записаны со стенда, ничьих настоящих данных; при изменении API — перезаписать),
-  публичный поиск расписания `/about/api/search|target` (ratelimit по IP).
+  публичный поиск расписания `/about/api/search|target` (ratelimit по IP —
+  самый правый публичный адрес X-Forwarded-For, плюс общий `site_all`).
+  Дизайн (v5.17.0) — макет владельца, перенесён статикой без сборки;
+  тёмная тема генерируется из светлой `tools/site_dark.py` (поменял
+  site.css — запусти, тест следит), картинка превью ссылки `site/og.jpg` —
+  `tools/site_og.py` со стенда. Кнопки сайта ведут на `?start=site` —
+  в `/stats` «с сайта». Чужие календари МИРЭА кэшируются на 10 минут
+  (`mirea_schedule_api.fetch_ical`).
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

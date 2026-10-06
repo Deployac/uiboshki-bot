@@ -3,93 +3,124 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>УИБО-бот — расписание, СДО и лекции группы в Telegram</title>
+<title>УИБО-бот — учёба группы в одном месте</title>
 <meta name="description" content="Бот и мини-приложение группы УИБО-03-24, РТУ МИРЭА: расписание любого в МИРЭА, дедлайны и баллы из СДО, файлы курсов и ИИ, который отвечает по лекциям.">
-<meta property="og:title" content="УИБО-бот">
-<meta property="og:description" content="Расписание, СДО и лекции группы — прямо в Telegram.">
-<meta name="theme-color" content="#F3F0E8" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1A1916" media="(prefers-color-scheme: dark)">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="УИБО-бот">
+<meta property="og:title" content="УИБО-бот — учёба группы в одном месте">
+<meta property="og:description" content="Расписание, дедлайны, баллы и лекции группы — прямо в Telegram.">
+<meta property="og:url" content="__BASE__/about">
+<meta property="og:image" content="__BASE__/site/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#f8f6f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#24211a" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="/site/capy.svg" type="image/svg+xml">
 <link rel="preload" href="/site/fonts/serif-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="/site/fonts/sans-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/site/site.css">
 </head>
-<body>
+<body class="antialiased">
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="capy" viewBox="55 40 400 430"><path fill="currentColor" d="M321 450l-36 13-39 3-8-3 2-5 13-11 29-3 21-6 6 0 13 7zM164 387l5-2 25 11 23 7 21 33 1 8-16 13-27-7-30-23-12-19-1-9zM382 375l-4 16-19 30-13 11-6 3-25-5-1-5 7-18 4-24 18-12 21-21 6 1 11 5zM233 295l3 26 4 5 16 15 4 13-1 6-6 6-32 26-21-5-27-13-4-11-6-23-1-18 4-7 19-20 19-12zM306 268l18 7 22 12 5 8 6 25 1 20-15 17-25 17-6-1-38-15-5-11 1-6 19-7 14-20 0-9-8-31 0-5 3-2zM194 275l-15 11-23 24-11-2-1-5 2-5 20-29 24-25 6-4 4 1zM295 229l27 16 27 10 10 9 0 5-5 5-6 1-47-20-10-16-1-10zM411 91l2 15 10 16 22 68 5 35 0 17-5 11-18 15-12 5-9 3-16-1-18-11-18-17-40-16-27-19-5 9-2 15 7 49 7 25-10 17-10 0-7 4-9 0-4-6-8-7-5-40-7-19-29-33-7 1-12 9-22 22-15 18-11 17-12 28-3 12 2 14 9 13 14 10 2 3-2 7-8 6-5 8-6 1-10-2-7 5-9-1-12-21-9-31-5-33-1-42-11-33-4-24 1-37 7-26 15-32 19-24 20-18 29-17 19-7 31-6 33 0 28 5 42 12 44 16 4 0 11-9 4 4 5 14 11 4 5-1 5-15 10 5zM403 242l0 8 6 7 6 0 2-5-3-11-8-3zM385 171l8 8 2-3-6-17-4-1z"/></symbol>
+  <symbol id="arrow" viewBox="0 0 24 24"><path d="M4 12h15m-6-6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="arrow-d" viewBox="0 0 24 24"><path d="M6 18 18 6M6 6h12v12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 </svg>
+<a class="skip-link" href="#main">Перейти к содержимому</a>
 
-<header class="top">
-  <a class="mark" href="/about" aria-label="УИБО-бот">
-    <span class="mark-ic"><svg><use href="#capy"/></svg></span>УИБО-бот
-  </a>
-  <nav>
-    <a class="quiet" href="https://t.me/uiboshki_dev" target="_blank" rel="noopener">Канал</a>
-    <a class="btn small" href="https://t.me/UiboshkiBot" target="_blank" rel="noopener">Открыть в Telegram</a>
-  </nav>
+<header class="header" id="top">
+  <a class="brand" href="#top" aria-label="УИБО-бот — в начало"><img src="/site/capy.svg" width="34" height="34" alt=""><span>УИБО-бот<span class="brand-period">.</span></span></a>
+  <nav aria-label="Главная навигация"><a href="#inside">Возможности</a><a href="#schedule">Расписание</a><a href="#project">О проекте</a></nav>
+  <a class="button button-small button-outline" href="https://t.me/UiboshkiBot?start=site" target="_blank" rel="noopener noreferrer">Открыть бота <svg><use href="#arrow-d"/></svg></a>
 </header>
 
-<main>
-  <section class="hero">
-    <div class="hero-text reveal">
-      <p class="eyebrow">РТУ МИРЭА · УИБО-03-24</p>
-      <h1>Учёба группы — там, где&nbsp;ты и&nbsp;так сидишь</h1>
-      <p class="lead">Расписание, дедлайны и баллы из СДО, файлы курсов и ИИ, который отвечает по нашим лекциям. Бот и приложение — прямо в Telegram.</p>
-      <div class="actions">
-        <a class="btn" href="https://t.me/UiboshkiBot" target="_blank" rel="noopener">Открыть @UiboshkiBot</a>
-        <a class="link" href="https://t.me/uiboshki_dev" target="_blank" rel="noopener">Как это делалось <span aria-hidden="true">→</span></a>
+<main id="main">
+  <section class="hero section-shell" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="tiny-dot accent"></span> СДЕЛАНО ДЛЯ УИБО-03-24 · РТУ МИРЭА</p>
+      <h1 id="hero-title">Учёба группы. <br>В одном <span class="underlined">месте<svg viewBox="0 0 290 14" fill="none" aria-hidden="true"><path d="M2 10C81 1 189 1 284 7M17 13C111 6 204 7 273 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>.</h1>
+      <p class="hero-description">Расписание, дедлайны, баллы и лекции. <br class="wide-break"> Бот и мини-приложение — прямо в Telegram, <br class="wide-break"> там, где мы и так общаемся.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="https://t.me/UiboshkiBot?start=site" target="_blank" rel="noopener noreferrer">Открыть в Telegram <svg><use href="#arrow-d"/></svg></a>
+        <a class="text-link" href="#schedule">Найти расписание <svg><use href="#arrow"/></svg></a>
       </div>
+      <div class="hero-note"><span class="hand-star" aria-hidden="true">✳</span><p>Маленький проект, который <br>делает учебный день немного проще.</p></div>
     </div>
-    <figure class="phone-wrap reveal">
-      <div class="phone" id="phone">
+    <div class="demo-stage" id="demo">
+      <div class="stage-orbit orbit-one"></div><div class="stage-orbit orbit-two"></div>
+      <span class="stage-star star-one" aria-hidden="true">✳</span><span class="stage-star star-two" aria-hidden="true">✳</span>
+      <div class="demo-side-label">МИНИ-ПРИЛОЖЕНИЕ В TELEGRAM</div>
+      <div class="phone">
+        <div class="phone-island" aria-hidden="true"></div>
         <div class="phone-screen">
-          <iframe id="demo" src="/about/demo" title="Приложение УИБО-бота на демо-данных" loading="eager"></iframe>
+          <iframe id="demo-frame" src="/about/demo" title="Живое демо УИБО-бота на вымышленных данных" loading="eager"></iframe>
+          <div class="demo-loading" id="demo-loading">Открываем приложение…</div>
         </div>
       </div>
-      <figcaption>Настоящее приложение на выдуманных данных — нажимай что угодно</figcaption>
-    </figure>
-  </section>
-
-  <section class="block" id="schedule">
-    <div class="block-head reveal">
-      <p class="eyebrow">Расписание МИРЭА</p>
-      <h2>Любая группа, преподаватель или&nbsp;аудитория</h2>
-      <p class="sub">Работает по-настоящему, прямо здесь. В боте — то же самое, плюс своё расписание с напоминаниями. И с включённым КВН тоже.</p>
-    </div>
-    <div class="finder reveal">
-      <label class="field">
-        <span class="sr">Кого ищем</span>
-        <input id="q" type="search" placeholder="УИБО-03-24, Иванов, А-17…" autocomplete="off" spellcheck="false">
-      </label>
-      <div id="results" class="results" role="listbox" aria-label="Найдено"></div>
-      <div id="week" class="week" aria-live="polite"></div>
+      <div class="demo-caption"><span class="caption-arrow" aria-hidden="true">↖</span><p><b>Да, здесь можно нажимать</b><span>Настоящее приложение. Демо-данные.</span></p></div>
+      <a href="/about/demo" target="_blank" rel="noopener" class="demo-expand" aria-label="Открыть демо в отдельной вкладке"><svg><use href="#arrow-d"/></svg></a>
     </div>
   </section>
 
-  <section class="block" id="inside">
-    <div class="split">
-      <div class="block-head reveal">
-        <p class="eyebrow">Что внутри</p>
-        <h2>Четыре вещи, ради которых я его открываю</h2>
+  <div class="chapter-strip section-shell"><span>ОДИН БОТ, ВЕСЬ УЧЕБНЫЙ ДЕНЬ</span>
+    <a href="#inside" data-feature="0">Расписание<i>↗</i></a><a href="#inside" data-feature="1">СДО и баллы<i>↗</i></a><a href="#inside" data-feature="2">Файлы курсов<i>↗</i></a><a href="#inside" data-feature="3">ИИ по лекциям<i>↗</i></a>
+  </div>
+
+  <section class="inside section-shell" id="inside" aria-labelledby="inside-title">
+    <div class="section-intro">
+      <p class="eyebrow">01 / ЧТО ВНУТРИ</p>
+      <h2 id="inside-title">Меньше искать. <br><span class="muted-serif">Больше успевать.</span></h2>
+      <p>Когда учёба разбросана по чатам, <br class="desktop-break"> вкладкам и папкам, хочется собрать <br class="desktop-break"> всё нужное рядом. Я так и сделал.</p>
+      <a class="text-link" href="#demo">Попробовать в демо <svg><use href="#arrow"/></svg></a>
+      <div class="notebook-art" aria-hidden="true"><span class="notebook-sheet sheet-back"></span><span class="notebook-sheet sheet-front"><span></span><span></span><span></span><i>всё под рукой</i></span><span class="notebook-spark">✳</span></div>
+    </div>
+    <div class="feature-list" id="features"></div>
+  </section>
+
+  <section class="schedule-section" id="schedule" aria-labelledby="schedule-title">
+    <div class="section-shell schedule-layout">
+      <div class="section-intro">
+        <p class="eyebrow">02 / ПОПРОБУЙ ПРЯМО ЗДЕСЬ</p>
+        <h2 id="schedule-title">А что <br>по парам?</h2>
+        <p>Расписание любой группы, <br class="desktop-break"> преподавателя или аудитории <br class="desktop-break"> МИРЭА. Живое, прямо на сайте.</p>
+        <div class="schedule-aside"><span class="tiny-dot"></span><span>Без входа в Telegram — <br>и с включённым КВН тоже</span></div>
       </div>
-      <ol class="list reveal">
-        <li><span class="n">01</span><div><h3>Сегодня</h3><p>Пары с аудиториями, что идёт сейчас, погода и какие дедлайны уже горят. Утром — сводка в личку.</p></div></li>
-        <li><span class="n">02</span><div><h3>СДО</h3><p>Баллы по каждому предмету, сколько осталось до зачёта или «4», правило 75&nbsp;% и посещения. Работы сдаются прямо из Telegram.</p></div></li>
-        <li><span class="n">03</span><div><h3>Лекции</h3><p>Все файлы курсов по предметам и типам. Конспект любой лекции — одной кнопкой.</p></div></li>
-        <li><span class="n">04</span><div><h3>ИИ по нашим лекциям</h3><p>Спрашиваешь своими словами — он ищет по смыслу и показывает слайд, откуда взял ответ.</p></div></li>
-      </ol>
+      <div class="finder">
+        <form class="search-field" id="finder-form">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="m16 16 5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          <label class="sr-only" for="schedule-query">Группа, преподаватель или аудитория</label>
+          <input id="schedule-query" type="search" maxlength="60" autocomplete="off" spellcheck="false" placeholder="Группа, фамилия или аудитория" aria-describedby="search-help">
+          <button class="search-submit" type="submit" aria-label="Найти расписание" disabled><svg><use href="#arrow"/></svg></button>
+        </form>
+        <div id="search-help" class="search-examples"><span>Например:</span><button type="button">УИБО-03-24</button><button type="button">Иванов</button><button type="button">А-17</button></div>
+        <div id="finder-out" aria-live="polite"></div>
+        <div id="finder-schedule"></div>
+        <div class="finder-foot"><span class="tiny-dot"></span> Данные расписания МИРЭА · в боте — со своими напоминаниями</div>
+      </div>
     </div>
   </section>
 
-  <section class="note reveal">
-    <blockquote>Делаю это в&nbsp;первую очередь для&nbsp;себя — и&nbsp;для&nbsp;группы. Сломалось или&nbsp;придумал, как лучше, — напиши.</blockquote>
-    <p class="who">Никита, староста УИБО-03-24 · <a href="https://t.me/Partykq" target="_blank" rel="noopener">@Partykq</a></p>
+  <section class="project section-shell" id="project" aria-labelledby="project-title">
+    <div class="project-label"><p class="eyebrow">03 / ЗА ПРОЕКТОМ</p><img src="/site/capy.svg" alt="Капибара — символ УИБО-бота" width="100" height="108"></div>
+    <div class="project-copy">
+      <h2 id="project-title">Сначала для себя. <br>Потом для всей группы.</h2>
+      <p>УИБО-бот вырос из обычных учебных задач: найти пару, не пропустить дедлайн, разобраться в баллах и отыскать нужную лекцию. Делаю его для себя и нашей группы — и продолжаю улучшать. Сломалось или придумал, как лучше, — напиши.</p>
+      <div class="author"><span class="author-monogram">Н</span><div><b>Никита</b><span>Староста УИБО-03-24, автор проекта</span></div><a href="https://t.me/Partykq" target="_blank" rel="noopener noreferrer" aria-label="Написать Никите в Telegram"><svg><use href="#arrow-d"/></svg></a></div>
+      <a class="text-link" href="https://t.me/uiboshki_dev" target="_blank" rel="noopener noreferrer">Как это делалось — в канале проекта <svg><use href="#arrow-d"/></svg></a>
+    </div>
+  </section>
+
+  <section class="closing section-shell">
+    <div><p class="eyebrow">УЧЁБА РЯДОМ</p><h2>Увидимся в Telegram.</h2><p>Открывай бота. Остальное уже под рукой.</p></div>
+    <a class="button button-primary" href="https://t.me/UiboshkiBot?start=site" target="_blank" rel="noopener noreferrer">Перейти к @UiboshkiBot <svg><use href="#arrow-d"/></svg></a>
   </section>
 </main>
 
-<footer class="foot"><div>
-  <span>УИБО-03-24 · РТУ МИРЭА · 2026</span>
-  <span><a href="https://t.me/UiboshkiBot" target="_blank" rel="noopener">Бот</a> · <a href="https://t.me/uiboshki_dev" target="_blank" rel="noopener">Канал</a></span>
-</div></footer>
+<footer class="footer section-shell">
+  <div><a class="brand" href="#top" aria-label="УИБО-бот — в начало"><img src="/site/capy.svg" width="34" height="34" alt=""><span>УИБО-бот<span class="brand-period">.</span></span></a><span>УИБО-03-24 · РТУ МИРЭА · 2026</span></div>
+  <nav aria-label="Ссылки проекта"><a href="https://t.me/uiboshki_dev" target="_blank" rel="noopener noreferrer">Канал проекта ↗</a><a href="/about/demo" target="_blank" rel="noopener">Демо ↗</a><a href="https://t.me/Partykq" target="_blank" rel="noopener noreferrer">Обратная связь ↗</a></nav>
+</footer>
 
 <script src="/site/site.js"></script>
 </body>

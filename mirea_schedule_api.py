@@ -25,7 +25,10 @@
 с коротким таймаутом. ical тоже сначала с зеркала: там только он и есть.
 """
 
+import asyncio
 import logging
+import time
+
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -129,7 +132,44 @@ async def get_baseinfo(target_id: int, target_type: int) -> dict | None:
 _ICAL_SOURCES = ((MIRROR, 20), (BASE, 5))
 
 
+# Чужое расписание (поиск в приложении и на сайте /about) — кэш на 10 минут
+# и одна загрузка на всех, кто открыл ту же цель одновременно: после анонса
+# одну группу открывают десятки людей, а зеркало МИРЭА отвечает по 1–3 с.
+# Сбои не кэшируются.
+ICAL_TTL = 600
+ICAL_CACHE_MAX = 300
+_ical_cache: dict[tuple[int, int], tuple[float, bytes]] = {}
+_ical_locks: dict[tuple[int, int], asyncio.Lock] = {}
+
+
+def reset_ical_cache():
+    _ical_cache.clear()
+    _ical_locks.clear()
+
+
 async def fetch_ical(target_id: int, target_type: int) -> bytes | None:
+    """ical цели (из кэша, если свежий) или None."""
+    key = (target_type, target_id)
+    hit = _ical_cache.get(key)
+    if hit and time.monotonic() - hit[0] < ICAL_TTL:
+        return hit[1]
+    async with _ical_locks.setdefault(key, asyncio.Lock()):
+        hit = _ical_cache.get(key)
+        if hit and time.monotonic() - hit[0] < ICAL_TTL:
+            return hit[1]
+        data = await _fetch_ical(target_id, target_type)
+        if data is not None:
+            if len(_ical_cache) >= ICAL_CACHE_MAX:
+                oldest = min(_ical_cache, key=lambda k: _ical_cache[k][0])
+                _ical_cache.pop(oldest, None)
+                _ical_locks.pop(oldest, None)
+            _ical_cache[key] = (time.monotonic(), data)
+    if key not in _ical_cache:
+        _ical_locks.pop(key, None)          # сбой — замок не копим (id с сайта бывают любые)
+    return data
+
+
+async def _fetch_ical(target_id: int, target_type: int) -> bytes | None:
     """ical цели или None (сбой, страница ошибки вместо календаря): HTML с
     кодом 200 раньше уходил в разбор и давал 500 в /api/target."""
     for base, timeout in _ICAL_SOURCES:

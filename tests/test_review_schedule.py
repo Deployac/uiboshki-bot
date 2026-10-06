@@ -361,3 +361,29 @@ def test_card_link_expires(monkeypatch):
     later = time.time() + 40 * 86400
     monkeypatch.setattr(schedule_card, "time", SimpleNamespace(time=lambda: later))
     assert schedule_card.parse_key(key, sig) is None
+
+
+@pytest.mark.asyncio
+async def test_fetch_ical_cached_single_flight(monkeypatch):
+    """Чужое расписание: десять человек открыли одну группу — одна загрузка с
+    зеркала; через 10 минут — заново; сбой не запоминается."""
+    import asyncio
+    import mirea_schedule_api as api
+    calls = []
+
+    async def slow(target_id, target_type):
+        calls.append((target_type, target_id))
+        await asyncio.sleep(0.01)
+        return None if target_id == 13 else b"BEGIN:VCALENDAR\r\nEND:VCALENDAR"
+
+    clock = [100.0]
+    monkeypatch.setattr(api, "_fetch_ical", slow)
+    monkeypatch.setattr(api.time, "monotonic", lambda: clock[0])
+    res = await asyncio.gather(*(api.fetch_ical(4928, 1) for _ in range(10)))
+    assert all(r.startswith(b"BEGIN:VCALENDAR") for r in res) and calls == [(1, 4928)]
+    clock[0] += api.ICAL_TTL + 1
+    await api.fetch_ical(4928, 1)
+    assert len(calls) == 2
+    assert await api.fetch_ical(13, 1) is None and await api.fetch_ical(13, 1) is None
+    assert calls.count((1, 13)) == 2
+    assert (1, 13) not in api._ical_locks and (1, 4928) in api._ical_locks     # замки сбоев не копятся

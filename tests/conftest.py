@@ -77,7 +77,10 @@ def _fixed_semester(monkeypatch):
 def _fresh_rate_limits():
     """Счётчики ratelimit живут в памяти процесса — между тестами сбрасываем,
     иначе один тест на лимит (21 дедлайн подряд) роняет соседние с 429."""
+    import mirea_schedule_api
     import ratelimit
     ratelimit.reset()
+    mirea_schedule_api.reset_ical_cache()       # кэш чужих календарей — тоже в памяти процесса
     yield
     ratelimit.reset()
+    mirea_schedule_api.reset_ical_cache()

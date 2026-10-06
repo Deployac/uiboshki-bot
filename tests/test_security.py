@@ -36,3 +36,30 @@ def test_ratelimit_forgets_stale_keys(monkeypatch):
     clock[0] += 61
     assert ratelimit.allow("site_search", -100) and len(ratelimit._hits) == 1
     ratelimit.reset()
+
+
+def test_ai_daily_limit_switch(monkeypatch):
+    """AI_DAILY_LIMIT: 0 — без дневного лимита; задан — после N вопросов за
+    сутки «day»; старосте не действует."""
+    import config
+    from tests.conftest import STAROSTA_ID
+    ratelimit.reset()
+    clock = [1000.0]
+    monkeypatch.setattr(ratelimit.time, "monotonic", lambda: clock[0])
+    for _ in range(30):                                   # по умолчанию выключен
+        clock[0] += 61
+        assert ratelimit.ai(555) is None
+    monkeypatch.setattr(config, "AI_DAILY_LIMIT", 3)
+    ratelimit.reset()
+    got = []
+    for _ in range(4):
+        clock[0] += 61
+        got.append(ratelimit.ai(555))
+    assert got == [None, None, None, "day"] and "3 в сутки" in ratelimit.day_text()
+    assert ratelimit.day_text(capital=True).startswith("На сегодня")
+    for _ in range(5):
+        clock[0] += 61
+        assert ratelimit.ai(STAROSTA_ID) is None
+    clock[0] += 86400
+    assert ratelimit.ai(555) is None                      # через сутки — снова можно
+    ratelimit.reset()

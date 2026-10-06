@@ -20,12 +20,23 @@ def test_about_page_and_demo():
     c = _client()
     r = c.get("/about")
     assert r.status_code == 200 and "УИБО-бот" in r.text and 'src="/about/demo"' in r.text
+    # превью ссылки в Telegram — абсолютный адрес картинки, сама картинка есть
+    assert '<meta property="og:image" content="http' in r.text and "__BASE__" not in r.text
+    assert c.get("/site/og.jpg").content[:3] == b"\xff\xd8\xff"
     demo = c.get("/about/demo").text
     assert '<base href="/">' in demo and "site/demo.js?v=" in demo
     assert "telegram.org/js/telegram-web-app.js" not in demo                 # без настоящего SDK
     assert demo.index("site/demo.js") < demo.index("js/core.js")              # заглушка — до приложения
-    for f in ("site/site.css", "site/site.js", "site/demo.js", "site/demo.json", "site/fonts/serif-cyrillic.woff2"):
+    for f in ("site/site.css", "site/site.js", "site/demo.js", "site/demo.json", "site/capy.svg",
+              "site/fonts/serif-cyrillic.woff2", "site/fonts/sans-latin.woff2"):
         assert c.get("/" + f).status_code == 200, f
+    # всё, что ищет site.js по id, есть на странице; шрифты — из /site/fonts
+    import re
+    js = c.get("/site/site.js").text
+    for el in set(re.findall(r'\$\("([\w-]+)"\)', js)):
+        assert f'id="{el}"' in r.text, el
+    css = c.get("/site/site.css").text
+    assert "/assets/" not in css and css.count("url('/site/fonts/") == 4
 
 
 def test_site_scripts_parse_and_demo_data_is_complete():
@@ -67,7 +78,11 @@ async def test_public_search_and_target(db, monkeypatch):
         return {"type": 1, "id": 4928, "title": "УИБО-03-24", "pinned": False, "today": "2026-10-08",
                 "weeks": [{"days": []}] * 8, "stale": None}
 
+    async def title(t, i):
+        return "УИБО-03-24" if (t, i) == (1, 4928) else None
+
     monkeypatch.setattr(schedule_index, "search", search)
+    monkeypatch.setattr(schedule_index, "get_title", title)
     monkeypatch.setattr(schedule_index, "is_ready", ready)
     monkeypatch.setattr(sched, "api_target", target)
     ratelimit.reset()
@@ -89,4 +104,29 @@ async def test_public_search_and_target(db, monkeypatch):
     monkeypatch.setitem(ratelimit.LIMITS, "site_all", (3, 60))
     codes = [c.get("/about/api/search?q=УИБО", headers={"X-Forwarded-For": f"9.9.9.{i}"}).status_code for i in range(4)]
     assert codes == [200, 200, 200, 429]
+    # отбитые лимитом одного адреса запросы общий потолок не тратят
     ratelimit.reset()
+    monkeypatch.setitem(ratelimit.LIMITS, "site_all", (17, 60))   # 15 по IP + 1 — при старом порядке было бы 19
+    for _ in range(19):
+        c.get("/about/api/target/1/4928", headers={"X-Forwarded-For": "7.7.7.7"})
+    assert c.get("/about/api/search?q=УИБО", headers={"X-Forwarded-For": "6.6.6.6"}).status_code == 200
+    # случайный id — не в справочнике: 404 без похода в МИРЭА
+    ratelimit.reset()
+    assert c.get("/about/api/target/1/99999").status_code == 404
+    ratelimit.reset()
+
+
+def test_site_dark_theme_is_fresh():
+    """Тёмная тема сайта — генерируется из светлой (tools/site_dark.py). Поменял
+    стили — запусти скрипт, иначе тёмная тема разойдётся со светлой."""
+    import importlib.util
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location("site_dark", root / "tools" / "site_dark.py")
+    sd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sd)
+    css = sd.CSS.read_text(encoding="utf-8")
+    light = css[:css.index(sd.START)].rstrip() + "\n"
+    assert sd.build(light) in css, "запусти python tools/site_dark.py"
+    assert "white-space" not in sd.build(light)                  # не цвет
+    assert sd.flip("#f8f6f0") < "#3" and sd.flip("#282720") > "#c"   # бумага темнеет, чернила светлеют

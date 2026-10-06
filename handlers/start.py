@@ -83,6 +83,9 @@ async def cmd_start_deeplink(message: Message, command: CommandObject):
         except Exception:
             pass
         return
+    if payload == "site":                       # кнопка «Открыть бота» на сайте /about — для /stats
+        import stats
+        await stats.track(user.id, "from_site")
     await cmd_start(message)
 
 

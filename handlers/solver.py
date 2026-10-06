@@ -24,11 +24,14 @@ PRIVATE = F.chat.type == "private"
 TOO_MANY = "⏳ Много вопросов подряд — подожди минутку и спроси ещё раз."
 
 
-def _ai_allowed(message: Message) -> bool:
-    """Лимит запросов к ИИ, как в WebApp (ratelimit «ai»): бесплатный лимит
-    Gemini один человек сжечь не должен."""
+def _ai_block(message: Message) -> str | None:
+    """Лимит запросов к ИИ, как в WebApp (ratelimit.ai): бесплатный лимит
+    Gemini один человек сжечь не должен. Почему нельзя — текст ответа, или None."""
     import ratelimit
-    return ratelimit.allow("ai", message.from_user.id)
+    why = ratelimit.ai(message.from_user.id)
+    if why == "day":
+        return "⏳ " + ratelimit.day_text(capital=True) + "."
+    return TOO_MANY if why else None
 
 SUBJECT_KB = ReplyKeyboardMarkup(
     keyboard=[[KeyboardButton(text=s)] for s in SUBJECTS],
@@ -179,8 +182,8 @@ async def handle_first_task(message: Message, state: FSMContext):
     data    = await state.get_data()
     subject = data.get("subject", "")
     backend = data.get("backend", "gemini")
-    if not _ai_allowed(message):
-        await message.answer(TOO_MANY)
+    if (why := _ai_block(message)):
+        await message.answer(why)
         return
     wait    = await message.answer("🧠 Решаю, секунду...")
     try:
@@ -235,8 +238,8 @@ PHOTO_FAIL = ("📝 Не смог распознать фото.\n\n"
 async def handle_first_photo(message: Message, state: FSMContext, bot: Bot):
     data    = await state.get_data()
     subject = data.get("subject", "")
-    if not _ai_allowed(message):
-        await message.answer(TOO_MANY)
+    if (why := _ai_block(message)):
+        await message.answer(why)
         return
     wait    = await message.answer("🧠 Анализирую фото...")
     try:
@@ -272,8 +275,8 @@ async def handle_dialog(message: Message, state: FSMContext):
 
     # Сохраняем ID входящего сообщения
     msg_ids.append(message.message_id)
-    if not _ai_allowed(message):
-        msg_ids.append((await message.answer(TOO_MANY)).message_id)
+    if (why := _ai_block(message)):
+        msg_ids.append((await message.answer(why)).message_id)
         await state.update_data(msg_ids=msg_ids)
         return
     history.append({"role": "user", "content": message.text})
@@ -306,8 +309,8 @@ async def handle_dialog_photo(message: Message, state: FSMContext, bot: Bot):
     history = data.get("history", [])
     msg_ids = data.get("msg_ids", [])
     msg_ids.append(message.message_id)
-    if not _ai_allowed(message):
-        msg_ids.append((await message.answer(TOO_MANY)).message_id)
+    if (why := _ai_block(message)):
+        msg_ids.append((await message.answer(why)).message_id)
         await state.update_data(msg_ids=msg_ids)
         return
     wait = await message.answer("🧠 Анализирую фото...")
@@ -360,8 +363,8 @@ async def handle_plain_text(message: Message, state: FSMContext):
     if await answer_file_request(message):
         return
 
-    if len(message.text.strip()) >= 3 and not _ai_allowed(message):   # классификатор — тоже запрос к ИИ
-        await message.answer(TOO_MANY)
+    if len(message.text.strip()) >= 3 and (why := _ai_block(message)):   # классификатор — тоже запрос к ИИ
+        await message.answer(why)
         return
 
     # Фаза 1: сначала пробуем понять намерение без команд/кнопок
@@ -402,8 +405,8 @@ async def handle_plain_text(message: Message, state: FSMContext):
 # никто не ловил. Подпись к фото — вопрос к нему.
 @router.message(F.photo, StateFilter(None), PRIVATE)
 async def handle_plain_photo(message: Message, bot: Bot):
-    if not _ai_allowed(message):
-        await message.answer(TOO_MANY)
+    if (why := _ai_block(message)):
+        await message.answer(why)
         return
     wait = await message.answer("🧠 Анализирую фото...")
     try:
@@ -464,8 +467,8 @@ async def lecture_handle_task(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("Отменено.", reply_markup=MAIN_KB)
         return
-    if not _ai_allowed(message):
-        await message.answer(TOO_MANY)       # состояние не сбрасываем — можно прислать ещё раз
+    if (why := _ai_block(message)):
+        await message.answer(why)       # состояние не сбрасываем — можно прислать ещё раз
         return
 
     data    = await state.get_data()
