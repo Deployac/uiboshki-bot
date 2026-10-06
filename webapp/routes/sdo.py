@@ -137,6 +137,11 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     logger.info(f"СДО: {user['id']} сдал файл в задание {cmid}")
     import sdo_grades
     sdo_grades.forget(user["id"])    # статусы и баллы — заново
+    try:
+        import sdo_done              # дедлайн этого задания — у себя сданным
+        await sdo_done.mark(user["id"], [cmid])
+    except Exception as e:
+        logger.info(f"отметка «сдал» после сдачи: {e}")
     return result
 
 
@@ -197,6 +202,11 @@ async def api_sdo_course(course_id: int, user: dict = CurrentUser):
         data = {**data, "history": await sdo_history.series(user["id"], course_id, data.get("score"))}
     except Exception as e:
         logger.info(f"история баллов: {e}")
+    try:
+        import sdo_done             # зачтено или ждёт оценки — дедлайн у себя сданным
+        await sdo_done.mark(user["id"], sdo_done.finished(data))
+    except Exception as e:
+        logger.info(f"отметка «сдал» по журналу: {e}")
     try:
         import attendance           # посещения лекций из баллов за посещаемость
         data = {**data, "attendance": await attendance.for_course(user["id"], data)}

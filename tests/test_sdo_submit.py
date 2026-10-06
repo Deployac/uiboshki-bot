@@ -157,6 +157,7 @@ async def test_webapp_connect_and_submit(db, moodle, monkeypatch):
 
     res = c.post("/api/sdo/submit", json=body, headers=h)
     assert res.status_code == 200 and res.json()["status"] == "Отправлено для оценивания"
+    assert await db.is_deadline_done(did, 222)              # сдал через бота — дедлайн у себя отмечен сам
 
     moodle.logged_in = False                                                     # СДО разлогинил
     assert c.post("/api/sdo/submit", json=body, headers=h).status_code == 403
