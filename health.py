@@ -11,6 +11,7 @@
 
 import json
 import logging
+import math
 import time
 from collections import deque
 from datetime import datetime
@@ -184,6 +185,22 @@ async def report() -> str:
             lines.append("⚠️ sqlite-vec не загрузился — ищу только по словам")
     except Exception as e:
         lines.append(f"⚠️ индекс недоступен: {type(e).__name__}")
+
+    lines += ["", "<b>ИИ</b>"]
+    try:
+        import ai_quota
+        import config
+        import gemini_solver
+        from utils import esc
+        total, top = await ai_quota.summary()
+        limit = f" · лимит {config.AI_DAILY_LIMIT} на человека" if config.AI_DAILY_LIMIT else " · дневного лимита нет"
+        lines.append(f"Вопросов сегодня: {total}, у самого активного — {top}{limit}")
+        rest, spare = gemini_solver.rest_status()
+        if rest > 0:
+            lines.append(f"⚠️ {esc(config.GEMINI_MODEL)} упёрлась в лимит — ещё {math.ceil(rest / 60)} мин отвечают "
+                         f"запасные: {esc(', '.join(spare))}")
+    except Exception as e:
+        lines.append(f"⚠️ не узнал: {type(e).__name__}")
 
     lines += ["", "<b>Бэкап</b>", _line(await _get("backup"), "Копия базы", now, "ещё не было (каждую ночь в 04:40)")]
 

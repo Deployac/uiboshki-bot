@@ -110,7 +110,7 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
     # моделей свои); запасной нет у Google (404) — дальше по списку
     # основная, упёршаяся в лимит, 10 минут не дёргается — сразу запасная
     # (иначе каждый вопрос — лишний запрос и ожидание)
-    spare = [m for m in GEMINI_FALLBACK_MODELS if m != GEMINI_MODEL] if fallback else []
+    spare = _spare_models() if fallback else []
     resting = spare and time.monotonic() < _primary_rest_until
     models = spare if resting else [GEMINI_MODEL] + spare
     limited = None
@@ -132,6 +132,18 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
 
 PRIMARY_REST = 600            # сек: основная после 429 — сразу к запасной
 _primary_rest_until = 0.0
+
+
+def _spare_models() -> list[str]:
+    return [m for m in GEMINI_FALLBACK_MODELS if m != GEMINI_MODEL]
+
+
+def rest_status() -> tuple[float, list[str]]:
+    """(сколько секунд основная ещё «отдыхает», запасные) — для /status.
+    Без запасных основная не отдыхает: её дёргаем дальше."""
+    spare = _spare_models()
+    left = _primary_rest_until - time.monotonic() if spare else 0.0
+    return max(0.0, left), spare
 
 
 def _rest_primary():

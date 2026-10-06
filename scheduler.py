@@ -364,6 +364,8 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(purge_events,            "cron", hour=4, minute=20)
     import health
     scheduler.add_job(health.alert_errors,     "interval", minutes=15, args=[bot])   # всплеск ошибок — старосте
+    import stats
+    scheduler.add_job(stats.send_evening,      "cron", hour=21, minute=3, args=[bot])  # +N новых за день — старосте
     scheduler.add_job(check_schedule_changes,  "interval", minutes=SCHEDULE_DIFF_CHECK_MINUTES, args=[bot])
     # Справочник для поиска преподавателей/групп/аудиторий: достроить, если
     # обход прервался (редеплой), и обновлять раз в месяц (см. schedule_index).

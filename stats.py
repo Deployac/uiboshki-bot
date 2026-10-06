@@ -121,14 +121,14 @@ async def collect(days: int = 30) -> dict:
             actions[kind] += 1
     joined = [_msk(u["joined_at"]).date() for u in await get_all_users() if u.get("joined_at")]
     import ai_quota
-    ai_counts = await ai_quota.today()
+    ai_total, ai_top = await ai_quota.summary()
     return {
         "days": days, "since": since, "today": today,
         "total": await count_users(), "sdo": await count_sdo_connected(),
         "new_day": sum(d == today for d in joined), "new_week": sum((today - d).days < 7 for d in joined),
         "from_site": len(screens.get("from_site", ())),
         # вопросов ИИ сегодня (чат, решалка, фото, конспекты) — для решения про AI_DAILY_LIMIT
-        "ai_today": sum(ai_counts.values()), "ai_top": max(ai_counts.values(), default=0),
+        "ai_today": ai_total, "ai_top": ai_top,
         "day": len(active_day), "week": len(active_week), "month": len(active_month),
         "period": len(active_period),
         "daily": [(since + timedelta(i), len(users_by_day.get(since + timedelta(i), ()))) for i in range(days)],
@@ -140,7 +140,8 @@ async def collect(days: int = 30) -> dict:
 
 # Чем пользуется — коротко, для списка «кто пользуется»
 USES = {"open": "приложение", "bot": "бот", "deadlines": "дедлайны", "files": "файлы", "download": "файлы",
-        "ai": "ИИ", "summary": "конспекты", "sdo": "СДО", "sdo_connect": "СДО", "submit": "сдача работ", "search": "поиск"}
+        "ai": "ИИ", "summary": "конспекты", "sdo": "СДО", "sdo_connect": "СДО", "submit": "сдача работ", "search": "поиск",
+        "from_site": "пришёл с сайта"}
 
 
 def period_label(days: int) -> str:
@@ -207,6 +208,44 @@ def people_text(p: dict) -> str:
         lines += ["", f"В боте, но за период не заходили ({len(p['idle'])}): "
                   + ", ".join(_person(u) for u in p["idle"])]
     return "\n".join(lines)
+
+
+def evening_text(new: int, from_site: int, total: int, sdo: int, ai: int, errors: int) -> str | None:
+    """Вечерняя сводка старосте — только если за сутки пришли новые люди
+    (неделя анонса: рост видно без /stats; в обычный день — тишина)."""
+    from utils import plural
+    if not new:
+        return None
+    site = f" ({from_site} с сайта)" if from_site else ""
+    ai_txt = f" · ИИ: {ai} {plural(ai, 'вопрос', 'вопроса', 'вопросов')}" if ai else ""
+    err = f" · ⚠️ ошибок за сутки: {errors}" if errors else ""
+    return (f"📈 <b>За сутки</b>: +{new} {plural(new, 'новый', 'новых', 'новых')}{site} · всего в боте {total}, "
+            f"СДО подключили {sdo}{ai_txt}{err}\nПодробнее — /stats")
+
+
+async def send_evening(bot, now: datetime | None = None):
+    """21:03 (scheduler): сводка старосте за последние сутки — с прошлой
+    сводки, так что пришедшие поздно вечером попадут в завтрашнюю. «С сайта» —
+    только среди новых (старые жмут /start site тоже)."""
+    import logging as _logging
+    import ai_quota
+    import health
+    from config import STAROSTA_ID
+    from database import count_sdo_connected, count_users, events_since, get_all_users
+    if not STAROSTA_ID:
+        return
+    now = now or datetime.now(TZ)
+    since = now - timedelta(days=1)
+    new = {u["user_id"] for u in await get_all_users() if u.get("joined_at") and _msk(u["joined_at"]) > since}
+    site = {uid for uid, kind, at in await events_since(2) if kind == "from_site" and _msk(at) > since} & new
+    errors = sum(1 for r in health.counter.last_day() if r[1] >= _logging.ERROR)
+    total_ai, _ = await ai_quota.summary()
+    text = evening_text(len(new), len(site), await count_users(), await count_sdo_connected(), total_ai, errors)
+    if text:
+        try:
+            await bot.send_message(STAROSTA_ID, text, parse_mode="HTML")
+        except Exception as e:
+            logger.info(f"вечерняя сводка: {e}")
 
 
 def summary(s: dict) -> str:
