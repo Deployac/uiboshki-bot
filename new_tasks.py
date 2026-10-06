@@ -1,5 +1,6 @@
 """
-Новые задания из СДО — всем, у кого включено (уведомления → «Новые задания»).
+Новые задания из СДО и перенесённые сроки — всем, у кого включено
+(уведомления → «Новые задания»).
 
 Синк СДО (scheduler.sync_sdo_deadlines, раз в 6 ч) раньше писал только
 старосте «добавлено N». Теперь каждому — одно сообщение на синк со списком:
@@ -26,34 +27,58 @@ def when(due_date: str, due_time: str | None) -> str:
     return text + (f" до {due_time}" if due_time else "")
 
 
-def build(items: list[dict]) -> str:
+def _was(iso: str) -> str:
+    from schedule_parser import MONTHS_GEN
+    d = date.fromisoformat(iso)
+    return f"{d.day} {MONTHS_GEN[d.month - 1]}"
+
+
+def _lines(items: list[dict]) -> list[str]:
     from utils import esc
-    head = "🆕 В СДО новое задание:" if len(items) == 1 else "🆕 В СДО новые задания:"
-    lines = [f"• <b>{esc(i['subject'])}</b> — {when(i['due_date'], i.get('due_time'))}"
-             for i in sorted(items, key=lambda i: (i["due_date"], i.get("due_time") or ""))]
-    return head + "\n" + "\n".join(lines)
+    return [f"• <b>{esc(i['subject'])}</b> — " + ("теперь " if i.get("was") else "")
+            + when(i["due_date"], i.get("due_time"))
+            + (f" (было {_was(i['was'])})" if i.get("was") and i["was"] != i["due_date"] else "")
+            for i in sorted(items, key=lambda i: (i["due_date"], i.get("due_time") or ""))]
 
 
-async def announce(bot, new_ids: list[int]) -> int:
-    """Разослать про новые дедлайны (id из синка). → скольким ушло."""
+def build(items: list[dict], moved: list[dict] | None = None) -> str:
+    """Новые задания и перенесённые сроки — одним сообщением."""
+    parts = []
+    if items:
+        head = "🆕 В СДО новое задание:" if len(items) == 1 else "🆕 В СДО новые задания:"
+        parts.append(head + "\n" + "\n".join(_lines(items)))
+    if moved:
+        head = "📅 Срок перенесли:" if len(moved) == 1 else "📅 Сроки перенесли:"
+        parts.append(head + "\n" + "\n".join(_lines(moved)))
+    return "\n\n".join(parts)
+
+
+async def announce(bot, new_ids: list[int], moved: dict[int, str] | None = None) -> int:
+    """Разослать про новые дедлайны и перенесённые сроки (из синка). → скольким ушло."""
     import notify_prefs
     from database import get_active_deadlines, get_reminder_users
     from keyboards import app_button
-    if not new_ids:
-        return 0
+    moved = moved or {}
     if len(new_ids) > MASS:
         logger.info(f"новые задания: {len(new_ids)} за раз — не рассылаю (выгрузка, а не новое)")
+        new_ids = []
+    if len(moved) > MASS:
+        logger.info(f"перенесённые сроки: {len(moved)} за раз — не рассылаю")
+        moved = {}
+    if not new_ids and not moved:
         return 0
     ids, sent = set(new_ids), 0
     for user in await get_reminder_users():
         uid = user["user_id"]
         if not notify_prefs.merge(user.get("notify")).get("new_tasks"):
             continue
-        mine = [d for d in await get_active_deadlines(uid) if d["id"] in ids and not d.get("done")]
-        if not mine:
+        visible = [d for d in await get_active_deadlines(uid) if not d.get("done")]
+        mine = [d for d in visible if d["id"] in ids]
+        shifted = [dict(d, was=moved[d["id"]]) for d in visible if d["id"] in moved]
+        if not mine and not shifted:
             continue
         try:
-            await bot.send_message(uid, build(mine), parse_mode="HTML",
+            await bot.send_message(uid, build(mine, shifted), parse_mode="HTML",
                                    reply_markup=app_button("📋 Открыть дедлайны", "deadlines"))
             sent += 1
         except Exception as e:

@@ -331,7 +331,7 @@ async def sync_sdo_deadlines(bot: Bot):
     # каждому — что появилось нового (у кого включено «Новые задания»)
     try:
         import new_tasks
-        await new_tasks.announce(bot, result.get("new_ids") or [])
+        await new_tasks.announce(bot, result.get("new_ids") or [], result.get("moved") or {})
     except Exception as e:
         logger.warning(f"новые задания: рассылка не вышла: {e}")
 

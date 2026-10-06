@@ -39,3 +39,20 @@ async def test_announce_respects_prefs_done_and_mass(db):
     bot = FakeBot()
     assert await new_tasks.announce(bot, list(range(1, new_tasks.MASS + 2))) == 0 and not bot.sent   # выгрузка всего
     assert await new_tasks.announce(bot, []) == 0
+
+
+@pytest.mark.asyncio
+async def test_moved_deadline_announced(db):
+    """Преподаватель продлил срок — тем, кто не сдал: «Срок перенесли … теперь … (было …)»."""
+    await db.upsert_user(1, "", "")
+    await db.upsert_user(2, "", "")
+    d = await db.add_deadline("Практика 2 · Анализ данных", "", "2026-10-09", "23:59", 0, external_id="sdo:7")
+    await db.mark_deadline_done(d, 2)
+    bot = FakeBot()
+    assert await new_tasks.announce(bot, [], {d: "2026-10-08"}) == 1
+    (uid, text), = bot.sent
+    assert uid == 1 and text.startswith("📅 Срок перенесли:")
+    assert "теперь пт, 9 октября до 23:59 (было 8 октября)" in text
+    both = new_tasks.build([{"subject": "Тест", "due_date": "2026-10-10", "due_time": None}],
+                           [{"subject": "Практика", "due_date": "2026-10-09", "due_time": None, "was": "2026-10-09"}])
+    assert both.index("🆕") < both.index("📅") and "(было" not in both     # сдвинули только время — без «было»

@@ -488,7 +488,7 @@ function renderNotify() {
         '<div><b>Новые баллы</b><p>напишу, когда в СДО изменятся баллы по предмету (если подключён вход)</p></div>' +
         ntSwitch(p.grades, "toggleNotify('grades')") + '</div></div>' +
       '<div class="nt-card' + (p.new_tasks ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("deadlines") + '</span>' +
-        '<div><b>Новые задания</b><p>напишу, когда в СДО появится новое задание — что и до когда</p></div>' +
+        '<div><b>Новые задания</b><p>напишу, когда в СДО появится задание или перенесут срок</p></div>' +
         ntSwitch(p.new_tasks, "toggleNotify('new_tasks')") + '</div></div>';
   }
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';

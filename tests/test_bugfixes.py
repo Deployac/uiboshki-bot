@@ -268,6 +268,7 @@ async def test_sdo_sync_updates_moved_deadline(db, monkeypatch):
     html["value"] = _sdo_html(4102444800 + 86400)  # препод продлил на сутки
     moved = await sdo_parser.sync_deadlines()
     assert (moved["added"], moved["updated"]) == (0, 1)
+    assert list(moved["moved"].values()) == ["2100-01-01"]                  # прежний срок — для «Срок перенесли»
 
     d = await db.get_deadline_by_external_id("sdo:42")
     assert d["due_date"] == "2100-01-02"
