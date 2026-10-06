@@ -4,8 +4,8 @@
 
 **Домен uiboshki.ru (v5.20.2, PR claude/domain-uiboshki):** www.uiboshki.ru → Railway
 работает, ссылки в README и постах 00/20 переведены на голый домен (корень вне Telegram → /about, v5.21.0). Ждём от владельца:
-WEBAPP_URL в Railway → `https://www.uiboshki.ru`, переадресация корня
-uiboshki.ru → www у reg.ru, описание канала, `/channel edit 0 20`.
+WEBAPP_URL в Railway → `https://www.uiboshki.ru`, описание канала,
+`/channel edit 1 21` (номера — как в списке /channel).
 
 **Открыто шесть PR, мержить по порядку: #106 → #107 → #108 → #109 → #110 → #111**, потом
 Sync fork. #106 — сдача .docx в заданиях «текстом и файлом»; #107 — лимит

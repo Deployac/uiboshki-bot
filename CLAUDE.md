@@ -106,6 +106,14 @@ Telegram-бот и Mini App (WebApp) группы **УИБО-03-24, РТУ МИ�
 branch** (в приложении GitHub на iOS такой кнопки нет — только в браузере).
 WebApp: `https://www.uiboshki.ru` (старый адрес `https://uiboshki-bot-production.up.railway.app` тоже работает), живёт в процессе
 бота (FastAPI + uvicorn, `webapp/server.py`, `bot.start_webapp`).
+Домен `uiboshki.ru` (reg.ru, NS — Cloudflare, бесплатный тариф): CNAME `www` →
+**`uiboshki-bot-production.up.railway.app`** (серое облако), а не цель, которую
+предлагает Railway (`9rht1rl3.up.railway.app` = 69.46.46.125 — из России не
+открывается, 06.10 проверено у владельца; .5 под старым адресом открывается и
+отдаёт и www). TXT `_railway-verify.www` — подтверждение Railway. Корень `@` —
+A 192.0.2.1 с оранжевым облаком + Redirect Rule корень → www (на тарифе Railway
+один свой домен). Сайт и приложение только через серое облако: Cloudflare-прокси
+в России тормозят.
 
 Переменные окружения (см. `config.py`): `GROUP_NAME`, `BOT_USERNAME`,
 `GROUP_PROGRAM` (необязательно, по умолчанию УИБО-03-24), `BOT_TOKEN`, `STAROSTA_ID` (можно
