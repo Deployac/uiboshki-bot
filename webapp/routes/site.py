@@ -58,8 +58,13 @@ async def about_page(request: Request):
     абсолютному адресу — подставляем свой домен (WEBAPP_URL, иначе адрес
     запроса)."""
     from webapp import deps
+    from webapp.server import _digest
     base = (deps.WEBAPP_URL or str(request.base_url)).rstrip("/")
     html = (_site_dir() / "index.html").read_text(encoding="utf-8").replace("__BASE__", base)
+    # стили и скрипт сайта — по ссылке с хэшем: после обновления браузер не
+    # склеит новую страницу со старым site.js (и кэширует их надолго)
+    for rel in ("site/site.css", "site/site.js"):
+        html = html.replace(f'"/{rel}"', f'"/{rel}?v={_digest(rel)}"')
     return Response(html, media_type="text/html", headers={"Cache-Control": "no-cache"})
 
 
