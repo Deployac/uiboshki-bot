@@ -51,6 +51,16 @@ def _client_key(request: Request) -> int:
     return -(zlib.crc32(ip.encode()) + 1)
 
 
+def og_meta(base: str) -> str:
+    """Теги превью ссылки (description, og:*, twitter:*) со страницы сайта —
+    их же отдаёт корень: www.uiboshki.ru в Telegram должен выглядеть как
+    сайт, а JS-переход на /about ботам-превьюшникам не виден."""
+    lines = (_site_dir() / "index.html").read_text(encoding="utf-8").splitlines()
+    keep = [ln for ln in lines if ln.startswith(('<meta name="description"', '<meta property="og:',
+                                                 '<meta name="twitter:'))]
+    return "\n".join(keep).replace("__BASE__", base)
+
+
 @router.get("/about", include_in_schema=False)
 @router.get("/about/", include_in_schema=False)
 async def about_page(request: Request):
@@ -69,12 +79,12 @@ async def about_page(request: Request):
 
 
 @router.get("/about/demo", include_in_schema=False)
-async def about_demo():
+async def about_demo(request: Request):
     """Приложение как в Telegram, но на демо-данных: base href — чтобы
     относительные js/… и app.css грузились от корня, а SDK Telegram
     заменён на site/demo.js (он же подменяет fetch для /api/…)."""
     from webapp.server import index_page
-    page = await index_page()
+    page = await index_page(request)
     html = page.body.decode("utf-8")
     demo = _site_dir() / "demo.js"
     v = hashlib.sha1(demo.read_bytes() + (_site_dir() / "demo.json").read_bytes()).hexdigest()[:10]
