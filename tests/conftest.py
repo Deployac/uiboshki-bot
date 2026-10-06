@@ -71,6 +71,10 @@ def _fixed_semester(monkeypatch):
     import sdo_parser
     real = sdo_parser.current_semester_tag
     monkeypatch.setattr(sdo_parser, "current_semester_tag", lambda today=None: real(today or date(2026, 9, 26)))
+    # сроки работ ТК (срок прошёл / 15 дней ждём оценку) — от той же даты
+    from datetime import datetime
+    import sdo_grades
+    monkeypatch.setattr(sdo_grades, "_now_msk", lambda: datetime(2026, 9, 26, 12, 0))
 
 
 @pytest.fixture(autouse=True)

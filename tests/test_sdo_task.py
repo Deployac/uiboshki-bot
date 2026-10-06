@@ -138,3 +138,16 @@ async def test_webapp_submit_several_files(db, monkeypatch):
         {"name": "отчёт.pdf", "data": b64}, {"name": "расчёты.pdf", "data": b64}]})
     assert res.status_code == 200
     assert sum("action=upload" in u for _, u, _ in fake.calls) == 2
+
+
+def test_teacher_feedback_comment():
+    """Комментарий преподавателя к оценке («Отзыв в виде комментария») — в экран
+    задания (владелец, 06.10)."""
+    html = ('<div role="main"><h2>Аналитическая работа 1</h2><table>'
+            '<tr><th>Состояние ответа на задание</th><td>Отправлено для оценивания</td></tr>'
+            '<tr><th>Оценка</th><td>5,00 / 8,00</td></tr>'
+            '<tr><th>Отзыв в виде комментария</th><td><p>Хорошо, но SWOT</p><p>без выводов.</p></td></tr>'
+            '</table></div>')
+    p = sdo_grades.parse_task_page(html)
+    assert p["feedback"] == "Хорошо, но SWOT\nбез выводов."
+    assert sdo_grades.parse_assign_page("<table><tr><th>Оценка</th><td>-</td></tr></table>")["feedback"] == ""

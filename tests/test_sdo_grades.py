@@ -178,3 +178,63 @@ async def test_pulsecheck_command_only_for_starosta(monkeypatch):
     finally:
         announce.router._parent_router = None
     assert [t for t, _ in bot.session.sent] == ["🔴 Пульс МИРЭА с сервера бота: блокирует (DDoS-Guard не пускает адрес сервера)\nHTTP 403 · 120 мс"]
+
+
+def test_closed_quiz_dash_is_not_below_threshold():
+    """Закрытый тест в журнале — «—» (иногда с классом gradefail): это не
+    «ниже порога» (владелец, 06.10), а «ещё закрыто»."""
+    html = ('<table class="user-grade"><tr><th class="column-itemname level2">'
+            '<a href="https://x/mod/quiz/view.php?id=7">Тест</a></th>'
+            '<td class="column-grade gradefail">—</td><td class="column-range">0–5</td></tr></table>')
+    (it,) = sdo_grades.parse_report(html)["items"]
+    assert not it["graded"] and it["grade"] is None and it["passed"] is None
+    page = {"opens": "суббота, 1 ноября 2026, 00:00"}
+    assert sdo_grades.work_status(dict(it), page) == "soon"
+    # даже если журнал что-то показал, тест, который ещё не открылся, — «закрыт»
+    assert sdo_grades.work_status({"grade": 0, "passed": False, "module": "quiz"}, page) == "soon"
+    assert sdo_grades._blank("Не оценено") and not sdo_grades._blank("Не зачтено")
+
+
+def test_overdue_without_grade_waits_15_days():
+    """Срок прошёл, ответа и оценки нет: 15 дней ждём (могли сдать на паре) —
+    работа ещё может дать баллы; потом — пропущена. Тест — пропущен сразу."""
+    from datetime import datetime
+    w, page = {"grade": None, "passed": None, "module": "assign"}, {"due": "среда, 1 октября 2026, 23:59"}
+    assert sdo_grades.work_status(w, page, now=datetime(2026, 9, 30)) == "todo"
+    assert sdo_grades.work_status(w, page, now=datetime(2026, 10, 10)) == "late"
+    assert sdo_grades.work_status(w, page, now=datetime(2026, 10, 17, 12)) == "miss"
+    assert sdo_grades.work_status(dict(w, module="quiz"), page, now=datetime(2026, 10, 2)) == "miss"
+    off = dict(page, offline=True)
+    assert sdo_grades.work_status(w, off, now=datetime(2026, 9, 30)) == "offline"
+    assert sdo_grades.work_status(w, off, now=datetime(2026, 10, 20)) == "miss"
+    import sdo_goal
+    assert "late" in sdo_goal.OPEN
+
+
+def test_works_order_numbers_and_test_by_due():
+    """1, 3, 2 в журнале → 1, 2, 3; тест встаёт между практиками по сроку
+    (пример владельца: практики 1-го числа месяца, тест 8 ноября → после 3-й)."""
+    def pr(n, month):
+        return {"name": f"Практическая работа №{n}", "module": "assign", "due": f"1 {month} 2026, 23:59"}
+    works = [pr(1, "сентября"), pr(3, "ноября"), pr(2, "октября"),
+             {"name": "Тестирование", "module": "quiz", "due": "8 ноября 2026, 23:59"},
+             pr(4, "декабря"), {"name": "Контрольная работа", "module": "assign"}, pr(5, "декабря")]
+    names = [w["name"] for w in sdo_grades.order_works(works)]
+    assert names == ["Практическая работа №1", "Практическая работа №2", "Практическая работа №3",
+                     "Тестирование", "Практическая работа №4", "Контрольная работа", "Практическая работа №5"]
+
+
+def test_auto_needs_75_percent_of_works():
+    """«На автомат» (плитка «Баллы СДО») — баллов на зачёт/«3» мало: нужно ещё
+    зачесть ≥ 75 % работ ТК (владелец, 06.10)."""
+    def item(name, grade, passed, cmid=None, level=2):
+        return {"name": name, "kind": "", "module": "assign" if cmid else "", "cmid": cmid, "grade": grade,
+                "graded": grade is not None, "text": "", "max": 10 if cmid else 60, "passed": passed,
+                "level": level, "category": "Текущий контроль" if cmid else ""}
+    rep = {"categories": [{"name": "Текущий контроль", "level": 1}],
+           "items": [item("Текущий контроль", 45, None, level=1)] +
+                    [item(f"Работа {i}", 10 if i < 3 else None, True if i < 3 else None, cmid=i) for i in range(1, 5)]}
+    s = sdo_grades.summarize(rep, "Экономика")
+    assert s["closed"] and not s["auto"] and s["works_need"] == 1      # 45 баллов, но зачтено 2 из 4
+    rep["items"][3].update(grade=10, graded=True, passed=True)
+    assert sdo_grades.summarize(rep, "Экономика")["auto"]

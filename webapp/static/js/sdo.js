@@ -131,12 +131,19 @@ async function openSdo(fresh) {
   }
 }
 
-// Сводка семестра: сколько предметов закрыто на «3»/зачёт и какой ближе
-// всего — одна на hero экрана СДО и плитку «Баллы СДО» на главной.
+// баллов на автомат хватает, а зачтённых работ < 75 % — чего не хватает (иначе "")
+function autoWorksText(c) {
+  return c.closed && c.works_need ? "зачесть ещё " + c.works_need + " " + plural(c.works_need, "работу", "работы", "работ") : "";
+}
+
+// Сводка семестра: сколько предметов идут на автомат (зачёт/«3» и ≥ 75 % работ)
+// и какой ближе всего — одна на hero экрана СДО и плитку «Баллы СДО» на главной.
 function sdoSummary(list) {
+  const auto = c => c.auto !== undefined ? c.auto : c.closed;   // старый кэш без auto — как раньше
   return {
-    closed: list.filter(c => c.closed).length, total: list.length,
-    near: list.filter(c => !c.closed).sort((a, b) => a.need - b.need)[0] || null,
+    // «на автомат»: баллов на зачёт/«3» и зачтено ≥ 75 % работ (sdo_grades.summarize → auto)
+    closed: list.filter(c => auto(c)).length, total: list.length,
+    near: list.filter(c => !auto(c)).sort((a, b) => (a.closed ? 0 : a.need) - (b.closed ? 0 : b.need))[0] || null,
   };
 }
 
@@ -168,9 +175,9 @@ function renderSdoList() {
   if (!list.length) { box.innerHTML = '<div class="empty">В СДО пока нет журналов с баллами за этот семестр</div>'; return; }
   const { closed, near } = sdoSummary(list);
   box.innerHTML =
-    '<div class="sc-sum"><div class="e">Закрыто на «3» или зачёт</div>' +
+    '<div class="sc-sum"><div class="e">На автомат: зачёт или «3» и ≥ 75 % работ</div>' +
       '<div class="b">' + closed + ' из ' + list.length + ' ' + plural(list.length, "предмета", "предметов", "предметов") + '</div>' +
-      '<div class="m">' + (near ? "ближе всего: " + escapeHtml(near.title) + " — " + needText(near).replace(/<\/?b>/g, "") : "все предметы закрыты " + icon("party", "mood")) + '</div>' +
+      '<div class="m">' + (near ? "ближе всего: " + escapeHtml(near.title) + " — " + (autoWorksText(near) || needText(near).replace(/<\/?b>/g, "")) : "все предметы закрыты " + icon("party", "mood")) + '</div>' +
       // деления — шкала: закрытые заполняются слева, а не там, где стоит карточка
       '<div class="pips">' + list.map((c, i) => '<i class="' + (i < closed ? "on" : "") + '"></i>').join("") + '</div></div>' +
     legendHtml(list) +
@@ -449,7 +456,7 @@ function histScale(values, marks, max) {
 const WORK_LOOK = {
   ok: ["check", "зачтено"], low: ["cross", "ниже порога"], wait: ["clock", "сдано · ждёт оценки"],
   todo: ["upload", "можно сдавать"], offline: ["classroom", "сдаётся на занятии"], soon: ["lock", "ещё закрыто"],
-  miss: ["warning", "срок прошёл"], none: ["", ""],
+  late: ["clock", "срок прошёл · ждём оценку"], miss: ["warning", "срок прошёл"], none: ["", ""],
 };
 
 function openTk(filter) {
@@ -482,6 +489,7 @@ function workMeta(w) {
   const tl = w.time_limit ? " · " + (w.time_limit % 60 ? w.time_limit + " мин" : w.time_limit / 60 + " ч") + " на тест" : "";
   if (w.status === "soon" && w.opens) return "откроется " + shortDate(w.opens) + tl;
   if ((w.status === "todo" || w.status === "miss") && w.due) return "до " + shortDate(w.due) + (w.status === "miss" ? " · срок прошёл" : tl);
+  if (w.status === "late" && w.due) return "срок был " + shortDate(w.due) + " · ждём оценку";
   return (WORK_LOOK[w.status] || WORK_LOOK.none)[1] || escapeHtml(w.kind);
 }
 
@@ -497,7 +505,7 @@ function renderTk() {
   const todo = works.filter(w => w.status === "todo").length;
   const graded = works.filter(w => w.grade != null).length;
   const shown = works.filter(w => tkFilter === "all" || (tkFilter === "todo" ? w.status === "todo" : w.grade != null));
-  const sq = s => ({ ok: "g", low: "r", wait: "b" })[s] || "";
+  const sq = s => ({ ok: "g", low: "r", wait: "b", late: "b" })[s] || "";
   box.innerHTML =
     '<h2 class="section" style="margin-top:6px"><span>Текущий контроль</span></h2>' +
     '<div class="card"><div class="sd-head"><span class="n">' + fmtNum(tk.score) + '</span><span class="of">из ' + fmtNum(tk.max) + '</span>' +
@@ -647,7 +655,8 @@ async function openTask(w) {
 }
 
 const TASK_TAG = { ok: ["ok", icon("check", "inl") + "зачтено"], low: ["bad", "ниже порога"], wait: ["", icon("clock", "inl") + "ждёт оценки"], todo: ["warn", ""],
-  offline: ["", icon("classroom", "inl") + "сдаётся на занятии"], soon: ["", icon("lock", "inl") + "ещё закрыто"], miss: ["bad", "срок прошёл"] };
+  offline: ["", icon("classroom", "inl") + "сдаётся на занятии"], soon: ["", icon("lock", "inl") + "ещё закрыто"], miss: ["bad", "срок прошёл"],
+  late: ["", icon("clock", "inl") + "ждём оценку"] };
 
 function renderTask() {
   const t = sdoTask, w = t.work;
@@ -662,9 +671,12 @@ function renderTask() {
     '<div class="card">' +
       (t.due ? '<div class="t-due"><div><div class="eyebrow">Срок сдачи</div><b>' + shortDate(t.due) + '</b></div>' +
         (remain ? '<span class="t-tag ' + tag[0] + '">' + remain + '</span>' : '') + '</div>' : '') +
-      '<div class="t-tags">' + (t.status ? '<span class="t-tag">' + escapeHtml(humanStatus(t.status)) + '</span>' : '') +
+      '<div class="t-tags">' + (w.status === "ok" || w.status === "low" ? '<span class="t-tag">Оценено</span>' :
+        (t.status ? '<span class="t-tag">' + escapeHtml(humanStatus(t.status)) + '</span>' : '')) +
         '<span class="t-tag">' + (w.grade != null ? "Оценка " + fmtNum(w.grade) + " / " + fmtNum(w.max) : "Не оценено") + '</span></div>' +
       (t.description ? '<p class="t-desc">' + escapeHtml(t.description).replace(/\n/g, "<br>") + '</p>' : '') + '</div>' +
+    (t.feedback ? '<h2 class="section">Комментарий преподавателя</h2><div class="card"><p class="t-desc">' +
+      escapeHtml(t.feedback).replace(/\n/g, "<br>") + '</p></div>' : '') +
     (t.files.length ? '<h2 class="section">Файлы задания' + (t.files.length > 1 ? '<button class="link-btn" onclick="downloadAllSdo(this)">' + icon("download", "inl") + ' Скачать все · ' + t.files.length + '</button>' : '') + '</h2>' +
       '<div class="card pad">' + t.files.map((f, i) => fileRow(f, i, false)).join("") + '</div>' : '') +
     (t.mine.length ? '<h2 class="section">Мой ответ</h2><div class="card pad">' + t.mine.map((f, i) => fileRow(f, i, true)).join("") + '</div>' : '') +

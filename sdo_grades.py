@@ -21,8 +21,10 @@
 
 import asyncio
 import logging
+import math
 import re
 import time
+from datetime import datetime, timedelta
 
 import httpx
 from bs4 import BeautifulSoup
@@ -58,6 +60,14 @@ def _level(el) -> int:
 
 def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
+
+
+def _blank(text: str) -> bool:
+    """Оценки нет: пусто, любое тире («-», «–», «—») или «Не оценено» / «Нет
+    оценки». Закрытый тест показывал «—», бот считал его оценённым и красил
+    «ниже порога» (владелец, 06.10)."""
+    t = (text or "").strip().lower()
+    return not t or not t.strip("-–—‒ ") or t.startswith(("не оцен", "нет оцен", "без оцен"))
 
 
 def is_tk(name: str) -> bool:
@@ -103,12 +113,14 @@ def parse_report(html: str) -> dict:
         rng = _RANGE.search(range_td.get_text(" ") if range_td else "")
         classes = " ".join(grade_td.get("class") or []) if grade_td else ""
         passed = True if "gradepass" in classes else (False if "gradefail" in classes else None)
-        blank = not text or text in ("-", "–")
+        blank = _blank(text)
         grade = None if blank else _num(text)
-        if not blank and grade is None and passed is None:
+        if blank:
+            passed = None       # «-» с классом gradefail у закрытого теста — не «не зачтено»
+        elif grade is None and passed is None:
             # оценка шкалой: «Зачтено» / «Не зачтено» — числа нет, но работа оценена
             low = text.lower()
-            passed = False if low.startswith("не ") else (True if "зачт" in low else None)
+            passed = False if low.startswith(("не ", "неуд")) else True
         m = _MOD.search(link["href"]) if link else None
         items.append({
             "name": name, "kind": kind.capitalize(),
@@ -132,7 +144,7 @@ def summarize(report: dict, course_name: str = "") -> dict:
     top = min((i["level"] for i in items if not i["cmid"]), default=0)
     cats = [i for i in items if i["level"] == top and not i["cmid"] and i is not total and i is not final
             and i["max"] and "итог" not in i["name"].lower()]
-    works = [i for i in items if i["cmid"] and (is_tk(i["category"]) or not any(is_tk(c["name"]) for c in report["categories"]))]
+    works = order_works([i for i in items if i["cmid"] and (is_tk(i["category"]) or not any(is_tk(c["name"]) for c in report["categories"]))])
     for w in works:
         if w["passed"] is None and w["grade"] is not None:
             w["passed"] = True     # порога нет — зачтена любая выставленная оценка
@@ -152,12 +164,16 @@ def summarize(report: dict, course_name: str = "") -> dict:
     marks = CREDIT_MARKS if credit else EXAM_MARKS
     passed = sum(1 for w in works if w["passed"])
     graded = sum(1 for w in works if w["graded"])
+    works_need = max(0, math.ceil(len(works) * PASS_SHARE) - passed)
     goal = next((p for p, _ in marks if score < p), None)
     return {
         "kind": "credit" if credit else "exam",
         "score": round(score, 2), "max": total_max, "final": final_text,
         "marks": [{"at": p, "label": l} for p, l in marks],
         "closed": score >= marks[0][0],
+        # «на автомат»: баллов на зачёт/«3» и зачтено ≥ 75 % работ ТК (правило БРС)
+        "auto": score >= marks[0][0] and not works_need,
+        "works_need": works_need,
         "need": round(goal - score, 2) if goal is not None else 0,
         "need_label": next((l for p, l in marks if score < p), ""),
         # set — выставлено ли вообще («-» у преподавателя, который ещё ничего не внёс, ≠ 0)
@@ -203,6 +219,17 @@ def parse_assign_page(html: str) -> dict:
         time_limit = int(round(n * (60 if tl.group(2).lower().startswith("ч") else 1)))
     low = status.lower()
     draft = "черновик" in low or "draft" in low
+    # «Отзыв в виде комментария» в блоке оценки — что написал преподаватель
+    feedback = ""
+    for tr in soup.find_all("tr"):
+        th, td = tr.find("th"), tr.find("td")
+        key = _clean(th.get_text(" ")).lower() if th else ""
+        if td and "коммент" in key and ("отзыв" in key or "feedback" in key):
+            for br in td.find_all("br"):
+                br.replace_with("\n")
+            parts = [_clean(el.get_text(" ")) for el in td.find_all(["p", "li", "div"]) if not el.find(["p", "li", "div"])]
+            feedback = "\n".join(x for x in parts if x) or _clean(td.get_text(" "))
+            break
     return {
         "pass": float(pass_m.group(1).replace(",", ".")) if pass_m else None,
         "status": status,
@@ -213,28 +240,82 @@ def parse_assign_page(html: str) -> dict:
         "draft": draft,
         "offline": "вне сайта" in low,
         "remaining": next((v for k, v in rows.items() if k.startswith("оставшееся время")), ""),
-        "due": due, "opens": opens, "time_limit": time_limit,
+        "due": due, "opens": opens, "time_limit": time_limit, "feedback": feedback[:3000],
         "can_submit": bool(soup.find(attrs={"name": "action", "value": "editsubmission"})
                            or "action=editsubmission" in html),
     }
 
 
-def work_status(w: dict, page: dict | None) -> str:
+GRACE_DAYS = 15     # срок прошёл, оценки нет — столько дней ждём (могли сдать на паре)
+_MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа",
+           "сентября", "октября", "ноября", "декабря")
+
+
+def parse_due(text: str) -> datetime | None:
+    """«среда, 9 октября 2026, 23:59» → datetime (время МСК, без зоны)."""
+    m = re.search(r"(\d{1,2})\s+([а-яё]+)\s+(\d{4})(?:\D+(\d{1,2}):(\d{2}))?", (text or "").lower())
+    if not m or m.group(2) not in _MONTHS:
+        return None
+    return datetime(int(m.group(3)), _MONTHS.index(m.group(2)) + 1, int(m.group(1)),
+                    int(m.group(4) or 23), int(m.group(5) or 59))
+
+
+def _now_msk() -> datetime:
+    from datetime import timezone
+    return datetime.now(timezone(timedelta(hours=3))).replace(tzinfo=None)
+
+
+def work_status(w: dict, page: dict | None, now: datetime | None = None) -> str:
     """ok — зачтено; low — оценка ниже порога; wait — сдано, ждёт оценки;
     todo — можно сдавать; offline — сдаётся на занятии; soon — ещё закрыто;
-    miss — срок прошёл, ответа нет."""
-    if w["grade"] is not None or w.get("graded"):
-        return "ok" if w["passed"] else "low"
+    late — срок прошёл, оценки нет, ждём GRACE_DAYS (могли сдать на паре);
+    miss — срок прошёл давно, ответа и оценки нет."""
     page = page or {}
+    closed_quiz = w.get("module") == "quiz" and page.get("opens") and not page.get("submitted")
+    if (w["grade"] is not None or w.get("graded")) and not closed_quiz:
+        return "ok" if w["passed"] else "low"
     if page.get("submitted"):
         return "wait"
-    if page.get("offline"):
-        return "offline"
-    if page.get("opens"):
-        return "soon"
-    if "просроч" in (page.get("remaining") or "").lower():
+    due = parse_due(page.get("due", ""))
+    now = now or _now_msk()
+    overdue = (due is not None and due < now) or "просроч" in (page.get("remaining") or "").lower()
+    if not overdue:
+        if page.get("offline"):
+            return "offline"
+        return "soon" if page.get("opens") else "todo"   # тест ещё не открыт — не «ниже порога»
+    if w.get("module") == "quiz":
+        return "miss"           # тест не пройден в срок — на паре его не сдают
+    if due is not None and now - due > timedelta(days=GRACE_DAYS):
         return "miss"
-    return "todo"
+    return "late"
+
+
+def order_works(works: list[dict]) -> list[dict]:
+    """Порядок работ ТК (владелец, 06.10): одноимённые с номером — строго по
+    номеру («Практическая работа №1, 2, 3», в журнале бывало 1, 3, 2), они
+    занимают те же места; тест встаёт между ними по своему сроку (или дате
+    открытия); остальное — как в журнале."""
+    num = re.compile(r"^(.*?)\s*(?:№\s*)?(\d+)\s*$")
+    out = list(works)
+    fams: dict[str, list[int]] = {}
+    for i, w in enumerate(out):
+        m = num.match(w.get("name") or "")
+        if m:
+            fams.setdefault(m.group(1).strip().lower(), []).append(i)
+    for idx in fams.values():
+        ordered = sorted((out[i] for i in idx), key=lambda w: int(num.match(w["name"]).group(2)))
+        for i, w in zip(idx, ordered):
+            out[i] = w
+
+    def when(w):
+        return parse_due(w.get("due") or "") or parse_due(w.get("opens") or "")
+
+    tests = [w for w in out if w.get("module") == "quiz" and not num.match(w.get("name") or "") and when(w)]
+    for t in tests:
+        out.remove(t)
+        at = next((i for i, w in enumerate(out) if when(w) and when(w) > when(t)), len(out))
+        out.insert(at, t)
+    return out
 
 
 # ── загрузка из СДО ──────────────────────────────────────────────────────────
@@ -344,6 +425,7 @@ async def course_detail(user_id: int, cookie: str, course_id: int) -> dict:
                           opens=p.get("opens", ""), remaining=p.get("remaining", ""), time_limit=p.get("time_limit"),
                           can_submit=bool(p.get("can_submit")) and w["module"] == "assign",
                           url=f"{SDO_BASE_URL}/mod/{w['module']}/view.php?id={w['cmid']}"))
+    works = order_works(works)
     passed = sum(1 for w in works if w["status"] == "ok")
     out = dict(s, id=course_id, name=course["name"], title=course["title"], works=works, works_passed=passed)
     return _store(key, out)
