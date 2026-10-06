@@ -3,7 +3,7 @@
 ## Где мы сейчас (6 октября 2026, v5.19.2)
 
 **Домен uiboshki.ru (v5.20.2, PR claude/domain-uiboshki):** www.uiboshki.ru → Railway
-работает, ссылки в README и постах 00/20 переведены. Ждём от владельца:
+работает, ссылки в README и постах 00/20 переведены на голый домен (корень вне Telegram → /about, v5.21.0). Ждём от владельца:
 WEBAPP_URL в Railway → `https://www.uiboshki.ru`, переадресация корня
 uiboshki.ru → www у reg.ru, описание канала, `/channel edit 0 20`.
 

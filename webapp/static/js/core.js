@@ -2,6 +2,11 @@
 // Файлы подключаются по порядку и делят глобальную область видимости.
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
+// Корень открыли в обычном браузере (не из Telegram) — это гость по ссылке
+// www.uiboshki.ru: ему нужен сайт-презентация, а не приложение без входа.
+if (!(tg && tg.initData) && (location.pathname === "/" || location.pathname === "/index.html")) {
+  location.replace("/about");
+}
 // Имя бота и группы сервер подставляет в страницу (config.py: BOT_USERNAME,
 // GROUP_NAME); без него (файл открыт напрямую) — как у УИБО-03-24.
 const APP_CONFIG = window.APP_CONFIG || {};
