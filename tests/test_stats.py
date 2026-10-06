@@ -156,8 +156,11 @@ async def test_people_button_only_for_starosta(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_evening_summary_only_with_new_people(db, monkeypatch):
-    """Вечером старосте «+N новых (M с сайта)» — только если сегодня пришли новые."""
+    """Вечером старосте «+N новых (M с сайта)» за сутки — только если пришли
+    новые; «с сайта» — только среди новых; склонения."""
+    import aiosqlite
     import config
+    from datetime import datetime, timedelta
     sent = []
 
     class Bot:
@@ -168,10 +171,19 @@ async def test_evening_summary_only_with_new_people(db, monkeypatch):
     monkeypatch.setattr(config, "STAROSTA_ID", 999)
     await stats.send_evening(Bot())
     assert sent == []                                                  # никого — тишина
-    await db.upsert_user(1, "", "")
-    await db.upsert_user(2, "", "")
+    for uid in (1, 2, 3):
+        await db.upsert_user(uid, "", "")
+    async with aiosqlite.connect(db.DATABASE_PATH) as con:             # 3 — старый, пришёл неделю назад
+        await con.execute("UPDATE users SET joined_at = datetime('now', '-7 days') WHERE user_id = 3")
+        await con.commit()
     await stats.track(2, "from_site")
+    await stats.track(3, "from_site")                                  # старый жмёт /start site — не «новый с сайта»
     await stats.send_evening(Bot())
     (chat, text), = sent
-    assert chat == 999 and text.startswith("📈 <b>За день</b>: +2 новых (1 с сайта) · всего в боте 2")
-    assert stats.evening_text({"new_day": 0}, 0, 0) is None
+    assert chat == 999 and text.startswith("📈 <b>За сутки</b>: +2 новых (1 с сайта) · всего в боте 3")
+    assert stats.evening_text(1, 0, 5, 1, 1, 0).startswith("📈 <b>За сутки</b>: +1 новый · всего в боте 5")
+    assert "ИИ: 1 вопрос" in stats.evening_text(1, 0, 5, 1, 1, 0)
+    assert stats.evening_text(0, 0, 5, 1, 9, 0) is None
+    sent.clear()                                                       # через сутки тех же не считаем
+    await stats.send_evening(Bot(), now=datetime.now(stats.TZ) + timedelta(days=1, minutes=5))
+    assert sent == []

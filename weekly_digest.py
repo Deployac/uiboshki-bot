@@ -116,10 +116,18 @@ async def send_all(bot, now: datetime | None = None):
         prefs = notify_prefs.merge(user.get("notify"))
         if not prefs.get("weekly"):
             continue
-        grades = await week_grades(uid) if prefs.get("grades") else []
-        token = HIDE.set(frozenset(s for s in OPTIONAL_SUBJECTS if not answers.get(uid, {}).get(s)))
+        hidden = frozenset(s for s in OPTIONAL_SUBJECTS if not answers.get(uid, {}).get(s))
+        token = HIDE.set(hidden)
         try:
-            text = build(raw, monday, await get_active_deadlines(uid), home, grades)
+            deadlines = await get_active_deadlines(uid)
+            text = build(raw, monday, deadlines, home)
+            # баллы — только если обзор вообще уйдёт (это запросы в СДО), и без
+            # предметов по выбору, куда человек не ходит
+            if text and prefs.get("grades"):
+                grades = [(n, d) for n, d in await week_grades(uid)
+                          if not any(s.lower() in n.lower() for s in hidden)]
+                if grades:
+                    text = build(raw, monday, deadlines, home, grades)
         finally:
             HIDE.reset(token)
         if not text:

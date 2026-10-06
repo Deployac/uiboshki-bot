@@ -34,6 +34,12 @@ async def today() -> dict[int, int]:
     return {int(k): int(v) for k, v in raw.items()}
 
 
+async def summary() -> tuple[int, int]:
+    """(вопросов сегодня всего, у самого активного) — одно на /stats и /status."""
+    counts = await today()
+    return sum(counts.values()), max(counts.values(), default=0)
+
+
 async def take(user_id: int) -> bool:
     """Записать вопрос; False — дневной лимит уже исчерпан (тогда не пишем)."""
     import config

@@ -11,6 +11,7 @@
 
 import json
 import logging
+import math
 import time
 from collections import deque
 from datetime import datetime
@@ -191,14 +192,13 @@ async def report() -> str:
         import config
         import gemini_solver
         from utils import esc
-        counts = await ai_quota.today()
+        total, top = await ai_quota.summary()
         limit = f" · лимит {config.AI_DAILY_LIMIT} на человека" if config.AI_DAILY_LIMIT else " · дневного лимита нет"
-        lines.append(f"Вопросов сегодня: {sum(counts.values())}, у самого активного — "
-                     f"{max(counts.values(), default=0)}{limit}")
-        rest = gemini_solver._primary_rest_until - time.monotonic()
+        lines.append(f"Вопросов сегодня: {total}, у самого активного — {top}{limit}")
+        rest, spare = gemini_solver.rest_status()
         if rest > 0:
-            lines.append(f"⚠️ {esc(config.GEMINI_MODEL)} упёрлась в лимит — ещё {int(rest // 60) + 1} мин отвечают "
-                         f"запасные: {esc(', '.join(config.GEMINI_FALLBACK_MODELS) or 'нет')}")
+            lines.append(f"⚠️ {esc(config.GEMINI_MODEL)} упёрлась в лимит — ещё {math.ceil(rest / 60)} мин отвечают "
+                         f"запасные: {esc(', '.join(spare))}")
     except Exception as e:
         lines.append(f"⚠️ не узнал: {type(e).__name__}")
 

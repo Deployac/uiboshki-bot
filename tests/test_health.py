@@ -114,3 +114,16 @@ async def test_report_ai_section(db, monkeypatch):
     monkeypatch.setattr(gemini_solver, "_primary_rest_until", time.monotonic() + 290)   # 4 мин 50 с → «ещё 5 мин»
     text = await health.report()
     assert "лимит 40 на человека" in text and "упёрлась в лимит — ещё 5 мин" in text
+
+
+
+@pytest.mark.asyncio
+async def test_report_no_spare_no_resting_line(db, monkeypatch):
+    """Без запасных моделей основная не «отдыхает» — и в /status про это ни слова."""
+    import time
+    import gemini_solver
+    import health
+    monkeypatch.setattr(gemini_solver, "GEMINI_FALLBACK_MODELS", [gemini_solver.GEMINI_MODEL])
+    monkeypatch.setattr(gemini_solver, "_primary_rest_until", time.monotonic() + 600)
+    assert gemini_solver.rest_status()[0] == 0
+    assert "упёрлась в лимит" not in await health.report()

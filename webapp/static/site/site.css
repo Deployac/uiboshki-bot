@@ -20,6 +20,7 @@
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation:none!important;transition:none!important}}
 .cal-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11px;color:var(--secondary)}.cal-sub{display:inline-flex;align-items:center;padding:8px 14px;border-radius:999px;background:var(--ink);color:var(--paper);font-size:12px;font-weight:550;transition:opacity .2s}.cal-sub:hover{opacity:.85}.cal-copy{background:none;padding:0;font-size:11px;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 .share-site{background:none;padding:0;margin-top:22px;font-size:12px}
+.share-site[hidden]{display:none}
 /* dark:start — tools/site_dark.py */
 @media (prefers-color-scheme:dark){
 :root{--paper:#24211a;--ink:#d3d2c8;--secondary:#a19d95;--line:#423d30;--accent:#d17e67;--peach:#373028}
