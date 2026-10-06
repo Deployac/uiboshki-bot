@@ -80,6 +80,20 @@ STAROSTA_COMMANDS = BOT_COMMANDS + [
 ]
 
 
+# Что Telegram показывает до /start: «Что умеет этот бот?» в пустом чате и
+# короткая строка в профиле бота и при пересылке ссылки. Задаём из кода —
+# описание всегда совпадает с тем, что бот умеет сейчас, без похода в BotFather.
+BOT_DESCRIPTION = (
+    "Бот и мини-приложение группы {group}, РТУ МИРЭА.\n\n"
+    "📅 Расписание — своё и любого преподавателя, группы или аудитории МИРЭА\n"
+    "🎓 Баллы и дедлайны из СДО, сдача работ прямо из Telegram\n"
+    "📂 Файлы курсов, поиск внутри лекций и конспекты\n"
+    "✨ ИИ, который отвечает по лекциям группы и показывает слайд\n"
+    "🔔 Новые задания, сроки и пары — напоминания под себя"
+)
+BOT_SHORT_DESCRIPTION = "Расписание, СДО, лекции и ИИ группы {group} — прямо в Telegram"
+
+
 async def setup_bot_menu(bot: Bot):
     """Список команд и кнопка меню слева от поля ввода. Если WebApp поднят —
     кнопка меню открывает его сразу (как у приложений-ботов), без отдельной
@@ -93,6 +107,12 @@ async def setup_bot_menu(bot: Bot):
                 await bot.set_my_commands(STAROSTA_COMMANDS, scope=BotCommandScopeChat(chat_id=sid))
             except Exception as e:      # староста ещё не писал боту — чата нет
                 logger.info(f"Команды старосты {sid}: {e}")
+        from config import GROUP_NAME
+        try:
+            await bot.set_my_description(BOT_DESCRIPTION.format(group=GROUP_NAME))
+            await bot.set_my_short_description(BOT_SHORT_DESCRIPTION.format(group=GROUP_NAME))
+        except Exception as e:          # лимит Telegram на частую смену — не страшно
+            logger.info(f"Описание бота: {e}")
         if WEBAPP_URL:
             await bot.set_chat_menu_button(
                 menu_button=MenuButtonWebApp(text="Открыть приложение", web_app=WebAppInfo(url=WEBAPP_URL))

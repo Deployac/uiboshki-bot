@@ -312,7 +312,7 @@ WebApp: `https://uiboshki-bot-production.up.railway.app`, живёт в проц
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).
 
 ## Тесты
-`python -m pytest -q` (≈460 тестов, без сети) и `ruff check .` (линтер, тоже в CI). `tests/conftest.py`: фикстура
+`python -m pytest -q` (700+ тестов, без сети) и `ruff check .` (линтер, тоже в CI). `tests/conftest.py`: фикстура
 `db` (чистая SQLite с миграциями), заглушки сети для расписания и календаря
 СДО, семестр зафиксирован на 26.09.2026. Хендлеры проверяются через настоящий
 `Dispatcher.feed_update` с фейковой сессией бота. `tests/test_webapp_static.py`
