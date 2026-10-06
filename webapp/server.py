@@ -182,7 +182,7 @@ def _digest(rel: str) -> str:
 
 @app.get("/", include_in_schema=False)
 @app.get("/index.html", include_in_schema=False)
-async def index_page():
+async def index_page(request: Request):
     """index.html со ссылками на стили и скрипты с меткой версии (?v=хэш
     содержимого): WebApp Telegram держит старые файлы в кэше, и после
     выкатки у части людей был бы новый HTML со старым JS."""
@@ -201,6 +201,11 @@ async def index_page():
                       "channel": config.CHANNEL_URL, "contact": config.CONTACT_URL,
                       "guide": await _guide_link()},
                      ensure_ascii=False).replace("</", "<\\/")
+    # превью ссылки на корень — как у сайта (гость по www.uiboshki.ru уйдёт на /about);
+    # вставляем до подстановки имени группы — в описании оно тоже есть
+    from webapp.routes.site import og_meta
+    base = (deps.WEBAPP_URL or str(request.base_url)).rstrip("/")
+    html = html.replace("</head>", og_meta(base) + "\n</head>", 1)
     html = html.replace("УИБО-03-24", escape(config.GROUP_NAME)).replace(
         '<script src="js/core.js"', f'<script>window.APP_CONFIG = {cfg};</script>\n<script src="js/core.js"', 1)
     return Response(_ASSET_RE.sub(versioned, html), media_type="text/html",
