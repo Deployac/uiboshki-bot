@@ -24,13 +24,24 @@ PRIVATE = F.chat.type == "private"
 TOO_MANY = "⏳ Много вопросов подряд — подожди минутку и спроси ещё раз."
 
 
-def _ai_block(message: Message) -> str | None:
-    """Лимит запросов к ИИ, как в WebApp (ratelimit.ai): бесплатный лимит
-    Gemini один человек сжечь не должен. Почему нельзя — текст ответа, или None."""
-    import ratelimit
-    why = ratelimit.ai(message.from_user.id)
+async def _ai_block(message: Message, day: bool = True) -> str | None:
+    """Лимит запросов к ИИ, как в WebApp (ai_quota): бесплатный лимит Gemini
+    один человек сжечь не должен. Почему нельзя — текст ответа, или None.
+    day=False — только минутный (классификатор намерений — не вопрос к ИИ)."""
+    import ai_quota
+    return _why_text(await ai_quota.gate(message.from_user.id, day=day))
+
+
+async def _ai_day(message: Message) -> str | None:
+    """Только дневной счёт — минутный уже проверен перед классификатором."""
+    import ai_quota
+    return _why_text(await ai_quota.day_only(message.from_user.id))
+
+
+def _why_text(why: str | None) -> str | None:
+    import ai_quota
     if why == "day":
-        return "⏳ " + ratelimit.day_text(capital=True) + "."
+        return "⏳ " + ai_quota.text("day", capital=True) + "."
     return TOO_MANY if why else None
 
 SUBJECT_KB = ReplyKeyboardMarkup(
@@ -182,7 +193,7 @@ async def handle_first_task(message: Message, state: FSMContext):
     data    = await state.get_data()
     subject = data.get("subject", "")
     backend = data.get("backend", "gemini")
-    if (why := _ai_block(message)):
+    if (why := await _ai_block(message)):
         await message.answer(why)
         return
     wait    = await message.answer("🧠 Решаю, секунду...")
@@ -238,7 +249,7 @@ PHOTO_FAIL = ("📝 Не смог распознать фото.\n\n"
 async def handle_first_photo(message: Message, state: FSMContext, bot: Bot):
     data    = await state.get_data()
     subject = data.get("subject", "")
-    if (why := _ai_block(message)):
+    if (why := await _ai_block(message)):
         await message.answer(why)
         return
     wait    = await message.answer("🧠 Анализирую фото...")
@@ -275,7 +286,7 @@ async def handle_dialog(message: Message, state: FSMContext):
 
     # Сохраняем ID входящего сообщения
     msg_ids.append(message.message_id)
-    if (why := _ai_block(message)):
+    if (why := await _ai_block(message)):
         msg_ids.append((await message.answer(why)).message_id)
         await state.update_data(msg_ids=msg_ids)
         return
@@ -309,7 +320,7 @@ async def handle_dialog_photo(message: Message, state: FSMContext, bot: Bot):
     history = data.get("history", [])
     msg_ids = data.get("msg_ids", [])
     msg_ids.append(message.message_id)
-    if (why := _ai_block(message)):
+    if (why := await _ai_block(message)):
         msg_ids.append((await message.answer(why)).message_id)
         await state.update_data(msg_ids=msg_ids)
         return
@@ -363,7 +374,8 @@ async def handle_plain_text(message: Message, state: FSMContext):
     if await answer_file_request(message):
         return
 
-    if len(message.text.strip()) >= 3 and (why := _ai_block(message)):   # классификатор — тоже запрос к ИИ
+    # классификатор — тоже запрос к ИИ, но не «вопрос»: только минутный лимит
+    if len(message.text.strip()) >= 3 and (why := await _ai_block(message, day=False)):
         await message.answer(why)
         return
 
@@ -386,6 +398,9 @@ async def handle_plain_text(message: Message, state: FSMContext):
 
     if len(text) < 15:
         return
+    if (why := await _ai_day(message)):          # а вот это уже вопрос к ИИ — в дневной счёт
+        await message.answer(why)
+        return
     wait = await message.answer("🤖 Похоже задание — решаю..." + (" (🐋 DeepSeek)" if backend == "deepseek" else ""))
     try:
         answer = await solve_text(text, backend=backend)
@@ -405,7 +420,7 @@ async def handle_plain_text(message: Message, state: FSMContext):
 # никто не ловил. Подпись к фото — вопрос к нему.
 @router.message(F.photo, StateFilter(None), PRIVATE)
 async def handle_plain_photo(message: Message, bot: Bot):
-    if (why := _ai_block(message)):
+    if (why := await _ai_block(message)):
         await message.answer(why)
         return
     wait = await message.answer("🧠 Анализирую фото...")
@@ -467,7 +482,7 @@ async def lecture_handle_task(message: Message, state: FSMContext):
         await state.clear()
         await message.answer("Отменено.", reply_markup=MAIN_KB)
         return
-    if (why := _ai_block(message)):
+    if (why := await _ai_block(message)):
         await message.answer(why)       # состояние не сбрасываем — можно прислать ещё раз
         return
 

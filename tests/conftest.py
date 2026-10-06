@@ -81,6 +81,8 @@ def _fresh_rate_limits():
     import ratelimit
     ratelimit.reset()
     mirea_schedule_api.reset_ical_cache()       # кэш чужих календарей — тоже в памяти процесса
+    import gemini_solver
+    gemini_solver._primary_rest_until = 0.0     # «основная модель отдыхает» после 429 — между тестами не тащим
     yield
     ratelimit.reset()
     mirea_schedule_api.reset_ical_cache()

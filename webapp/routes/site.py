@@ -98,7 +98,9 @@ async def about_target(request: Request, target_type: int, target_id: int):
     _allow("site_target", request)
     # только то, что есть в справочнике (его и показывает поиск): случайный id
     # — это поход за карточкой на официальный сайт МИРЭА (10 с впустую) и на зеркало
-    if target_type not in (1, 2, 3) or not await schedule_index.get_title(target_type, target_id):
+    # (пока справочник не собран — поиск идёт запасным официальным, тогда пускаем)
+    if target_type not in (1, 2, 3) or (await schedule_index.is_ready()
+                                        and not await schedule_index.get_title(target_type, target_id)):
         raise HTTPException(status_code=404, detail="нет такого расписания")
     data = await api_target(target_type, target_id, user={"id": 0})
     data.pop("pinned", None)

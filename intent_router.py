@@ -65,7 +65,7 @@ async def classify_intent(text: str) -> str:
         # ответ. Одно слово на выходе модель и так вернёт по промпту.
         raw = await gemini_solver.generate_text(
             [{"role": "user", "content": text}], SYSTEM_PROMPT,
-            temperature=0, max_output_tokens=None, timeout=10,
+            temperature=0, max_output_tokens=None, timeout=10, fallback=False,
         )
         raw = raw.strip().lower()
         for intent in INTENTS:

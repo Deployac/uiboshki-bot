@@ -173,16 +173,28 @@ async def test_rate_limited_model_falls_back(monkeypatch):
     monkeypatch.setattr(gemini_solver, "GEMINI_API_KEY", "k")
     monkeypatch.setattr(gemini_solver, "GEMINI_MODEL", "main")
     monkeypatch.setattr(gemini_solver, "GEMINI_FALLBACK_MODELS", ["gone", "spare"])
+    monkeypatch.setattr(gemini_solver, "_primary_rest_until", 0.0)
     text = await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}])
     assert text == "ответ запасной" and calls == ["main", "gone", "spare"]
 
+    calls.clear()                                              # основная «отдыхает» — сразу запасные
+    assert await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}]) == "ответ запасной"
+    assert calls == ["gone", "spare"]
+
+    calls.clear()                                              # классификатор — без запасных
+    with pytest.raises(gemini_solver.GeminiError, match="Лимит"):
+        await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}], fallback=False)
+    assert calls == ["main"]
+
     calls.clear()
+    monkeypatch.setattr(gemini_solver, "_primary_rest_until", 0.0)
     monkeypatch.setattr(gemini_solver, "GEMINI_FALLBACK_MODELS", ["gone"])
     with pytest.raises(gemini_solver.GeminiError, match="Лимит бесплатного тира") as e:
         await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}])
     assert e.value.transient and calls == ["main", "gone"]
 
     calls.clear()
+    monkeypatch.setattr(gemini_solver, "_primary_rest_until", 0.0)
     replies["main"] = (404, {"error": {}})                     # основная не найдена — сразу ошибка, без перебора
     with pytest.raises(gemini_solver.GeminiError, match="не найдена"):
         await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}])

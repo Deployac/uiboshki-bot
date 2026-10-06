@@ -56,3 +56,43 @@ async def test_moved_deadline_announced(db):
     both = new_tasks.build([{"subject": "Тест", "due_date": "2026-10-10", "due_time": None}],
                            [{"subject": "Практика", "due_date": "2026-10-09", "due_time": None, "was": "2026-10-09"}])
     assert both.index("🆕") < both.index("📅") and "(было" not in both     # сдвинули только время — без «было»
+
+
+@pytest.mark.asyncio
+async def test_optional_subject_skipped_unless_attends(db, monkeypatch):
+    """Задание по предмету по выбору — только тем, кто ответил «хожу»."""
+    import config
+    monkeypatch.setattr(config, "OPTIONAL_SUBJECTS", ["Военная кафедра"])
+    await db.upsert_user(1, "", "")
+    await db.upsert_user(2, "", "")
+    await db.set_optional_answer(2, "Военная кафедра", True)
+    d = await db.add_deadline("Тест 1 · Военная кафедра", "", "2026-10-09", None, 0, external_id="sdo:v")
+    bot = FakeBot()
+    assert await new_tasks.announce(bot, [d]) == 1 and bot.sent[0][0] == 2
+
+
+@pytest.mark.asyncio
+async def test_scheduler_sync_announces(monkeypatch):
+    """Синк СДО по расписанию передаёт рассылке новые id и перенесённые сроки."""
+    import health
+    import new_tasks as nt
+    import scheduler
+    import sdo_parser
+    got = []
+
+    async def sync():
+        return {"added": 1, "updated": 1, "skipped": 0, "new_ids": [7], "moved": {8: "2026-10-08"}, "expired": False}
+
+    async def announce(bot, ids, moved=None):
+        got.append((ids, moved))
+        return 1
+
+    async def note(*a, **kw):
+        pass
+
+    monkeypatch.setattr(sdo_parser, "sync_deadlines", sync)
+    monkeypatch.setattr(nt, "announce", announce)
+    monkeypatch.setattr(health, "note", note)
+    monkeypatch.setattr(scheduler, "STAROSTA_ID", 0)
+    await scheduler.sync_sdo_deadlines(FakeBot())
+    assert got == [([7], {8: "2026-10-08"})]

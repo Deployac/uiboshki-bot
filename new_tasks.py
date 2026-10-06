@@ -5,7 +5,8 @@
 Синк СДО (scheduler.sync_sdo_deadlines, раз в 6 ч) раньше писал только
 старосте «добавлено N». Теперь каждому — одно сообщение на синк со списком:
 что появилось и до когда. Показываем только то, что человек видит у себя в
-дедлайнах (get_active_deadlines: предметы по выбору, свои отметки), а
+дедлайнах (get_active_deadlines, свои отметки) и без предметов по выбору,
+куда человек не ходит (OPTIONAL_SUBJECTS без ответа «хожу»), а
 массовый завал — начало семестра, первый синк, СДО отдал всё разом — не
 рассылаем: это не «новое», а «всё».
 """
@@ -67,12 +68,18 @@ async def announce(bot, new_ids: list[int], moved: dict[int, str] | None = None)
         moved = {}
     if not new_ids and not moved:
         return 0
+    from config import OPTIONAL_SUBJECTS
+    from database import get_all_optional_answers
+    answers = await get_all_optional_answers()
     ids, sent = set(new_ids), 0
     for user in await get_reminder_users():
         uid = user["user_id"]
         if not notify_prefs.merge(user.get("notify")).get("new_tasks"):
             continue
-        visible = [d for d in await get_active_deadlines(uid) if not d.get("done")]
+        # предметы по выбору, куда человек не ходит («хожу» не отвечал), — мимо
+        skip = [s.lower() for s in OPTIONAL_SUBJECTS if not answers.get(uid, {}).get(s)]
+        visible = [d for d in await get_active_deadlines(uid) if not d.get("done")
+                   and not any(s in (d.get("subject") or "").lower() for s in skip)]
         mine = [d for d in visible if d["id"] in ids]
         shifted = [dict(d, was=moved[d["id"]]) for d in visible if d["id"] in moved]
         if not mine and not shifted:

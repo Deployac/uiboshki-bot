@@ -138,8 +138,9 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     import sdo_grades
     sdo_grades.forget(user["id"])    # статусы и баллы — заново
     try:
-        import sdo_done              # дедлайн этого задания — у себя сданным
-        await sdo_done.mark(user["id"], [cmid])
+        import sdo_done              # ушло на проверку — дедлайн у себя сданным (черновик — нет)
+        if sdo_done.is_submitted(result.get("status")):
+            await sdo_done.mark(user["id"], [cmid])
     except Exception as e:
         logger.info(f"отметка «сдал» после сдачи: {e}")
     return result

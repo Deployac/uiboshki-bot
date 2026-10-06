@@ -12,18 +12,24 @@
 """
 
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
-# ссылка на задание или тест в описании дедлайна из СДО
-CMID_RE = re.compile(r"/mod/(?:assign|quiz)/view\.php\?(?:[^#\s\"']*&)?id=(\d+)")
 DONE_STATUSES = ("ok", "wait")
 
 
 def cmid_of(text: str) -> int | None:
-    m = CMID_RE.search(text or "")
-    return int(m.group(1)) if m else None
+    """Задание или тест из описания дедлайна СДО (разбор — sdo_submit.cmid_of)."""
+    from sdo_submit import cmid_of as _cmid
+    return _cmid(text, quiz=True)
+
+
+def is_submitted(status: str | None) -> bool:
+    """Статус ответа после сдачи: ушло на проверку — да; черновик — нет."""
+    low = (status or "").lower()
+    if "черновик" in low or "draft" in low or "не отправ" in low or "not submitted" in low:
+        return False
+    return "для оценивания" in low or "отправлен" in low or "submitted" in low
 
 
 async def mark(user_id: int, cmids) -> int:

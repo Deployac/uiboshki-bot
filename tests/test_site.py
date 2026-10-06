@@ -119,6 +119,13 @@ async def test_public_search_and_target(db, monkeypatch):
     # случайный id — не в справочнике: 404 без похода в МИРЭА
     ratelimit.reset()
     assert c.get("/about/api/target/1/99999").status_code == 404
+    # справочник ещё не собран — поиск шёл запасным официальным: его результат открывается
+
+    async def not_ready():
+        return False
+
+    monkeypatch.setattr(schedule_index, "is_ready", not_ready)
+    assert c.get("/about/api/target/1/99999").status_code == 200
     ratelimit.reset()
 
 

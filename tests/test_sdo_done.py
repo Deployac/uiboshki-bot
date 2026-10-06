@@ -52,3 +52,13 @@ async def test_course_detail_marks_finished_works(db, monkeypatch):
     c, h = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
     assert c.get("/api/sdo/grades/18672", headers=h).status_code == 200
     assert await db.is_deadline_done(did, 222)
+
+
+def test_is_submitted_and_shared_cmid_parser():
+    import sdo_submit
+    assert sdo_done.is_submitted("Отправлено для оценивания") and sdo_done.is_submitted("Submitted for grading")
+    assert not sdo_done.is_submitted("Черновик (не отправлено)") and not sdo_done.is_submitted("Нет ответа")
+    assert not sdo_done.is_submitted(None)
+    quiz = URL.format(m="quiz", i=77)
+    assert sdo_submit.cmid_of(quiz) is None and sdo_submit.cmid_of(quiz, quiz=True) == 77   # сдать файлом тест нельзя
+    assert sdo_submit.cmid_of(quiz + " и " + URL.format(m="assign", i=5)) == 5

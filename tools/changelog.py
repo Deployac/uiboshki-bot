@@ -85,8 +85,6 @@ def main(argv: list[str]) -> int:
         ver, name = argv[2], argv[3]
         if why := check(text, name, temp):
             sys.exit(f"{name}: {why}")
-        if temp and _norm(name) in {_norm(n) for _, n in versions(text)}:
-            sys.exit(f"{name}: занято")
         if ver in {v for v, _ in versions(text)}:
             sys.exit(f"версия {ver} уже есть")
         body = sys.stdin.read().strip()

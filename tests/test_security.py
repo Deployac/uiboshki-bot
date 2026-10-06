@@ -1,4 +1,6 @@
 """Безопасность: ключ из секретной фразы с переходом без потерь, лимиты частоты."""
+import pytest
+
 import ratelimit
 import sdo_accounts
 
@@ -38,28 +40,28 @@ def test_ratelimit_forgets_stale_keys(monkeypatch):
     ratelimit.reset()
 
 
-def test_ai_daily_limit_switch(monkeypatch):
-    """AI_DAILY_LIMIT: 0 — без дневного лимита; задан — после N вопросов за
-    сутки «day»; старосте не действует."""
+@pytest.mark.asyncio
+async def test_ai_daily_limit_switch(db, monkeypatch):
+    """AI_DAILY_LIMIT: 0 — без дневного лимита (но счёт идёт — для /stats);
+    задан — после N вопросов за календарный день МСК «day»; старосте не
+    действует; счёт в базе — деплой его не обнуляет; новый день — заново."""
+    import ai_quota
     import config
+    import database.homework
+    from datetime import date
     from tests.conftest import STAROSTA_ID
-    ratelimit.reset()
-    clock = [1000.0]
-    monkeypatch.setattr(ratelimit.time, "monotonic", lambda: clock[0])
-    for _ in range(30):                                   # по умолчанию выключен
-        clock[0] += 61
-        assert ratelimit.ai(555) is None
-    monkeypatch.setattr(config, "AI_DAILY_LIMIT", 3)
-    ratelimit.reset()
-    got = []
-    for _ in range(4):
-        clock[0] += 61
-        got.append(ratelimit.ai(555))
-    assert got == [None, None, None, "day"] and "3 в сутки" in ratelimit.day_text()
-    assert ratelimit.day_text(capital=True).startswith("На сегодня")
+    day = [date(2026, 10, 6)]
+    monkeypatch.setattr("utils.today_msk", lambda: day[0])
+    monkeypatch.setattr(ratelimit, "allow", lambda action, uid: True)      # минутный — не о том
     for _ in range(5):
-        clock[0] += 61
-        assert ratelimit.ai(STAROSTA_ID) is None
-    clock[0] += 86400
-    assert ratelimit.ai(555) is None                      # через сутки — снова можно
-    ratelimit.reset()
+        assert await ai_quota.gate(555) is None                            # по умолчанию выключен
+    assert (await ai_quota.today())[555] == 5
+    monkeypatch.setattr(config, "AI_DAILY_LIMIT", 6)
+    assert await ai_quota.gate(555) is None and await ai_quota.gate(555) == "day"
+    assert "6 в сутки" in ai_quota.text("day") and ai_quota.text("day", capital=True).startswith("На сегодня")
+    assert await ai_quota.gate(555, day=False) is None                     # классификатор — не в счёт
+    for _ in range(8):
+        assert await ai_quota.gate(STAROSTA_ID) is None
+    assert database.homework                                               # счёт в settings, не в памяти
+    day[0] = date(2026, 10, 7)
+    assert await ai_quota.gate(555) is None                                # новый день — заново
