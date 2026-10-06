@@ -114,6 +114,12 @@ async def security_headers(request: Request, call_next):
     resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     if request.url.path.startswith(("/api/", "/dl/", "/sdl/")):
         resp.headers["Cache-Control"] = "no-store"
+    elif "v" in request.query_params and request.url.path.endswith((".js", ".css")) and resp.status_code == 200:
+        # js/… и app.css со ссылкой ?v=<хэш содержимого> (index_page): новое
+        # содержимое — новая ссылка, так что старую можно не перепроверять.
+        # Иначе каждое открытие приложения — дюжина запросов «не изменилось?»
+        # до сервера в США.
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return resp
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -142,18 +148,31 @@ for _module in (schedule, account, deadlines, files, chat, sdo, channel, site):
 _ASSET_RE = re.compile(r'(src|href)="((?:js/[\w-]+\.js)|app\.css)"')
 
 
+_DIGESTS: dict[str, tuple[float, str]] = {}
+
+
+def _digest(rel: str) -> str:
+    """Хэш содержимого файла статики — пересчитывается, только если файл
+    поменялся (раньше — дюжина sha1 на каждое открытие приложения)."""
+    import hashlib
+    f = STATIC_DIR / rel
+    mtime = f.stat().st_mtime
+    hit = _DIGESTS.get(rel)
+    if not hit or hit[0] != mtime:
+        hit = _DIGESTS[rel] = (mtime, hashlib.sha1(f.read_bytes()).hexdigest()[:10])
+    return hit[1]
+
+
 @app.get("/", include_in_schema=False)
 @app.get("/index.html", include_in_schema=False)
 async def index_page():
     """index.html со ссылками на стили и скрипты с меткой версии (?v=хэш
     содержимого): WebApp Telegram держит старые файлы в кэше, и после
     выкатки у части людей был бы новый HTML со старым JS."""
-    import hashlib
     html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     def versioned(m):
-        digest = hashlib.sha1((STATIC_DIR / m.group(2)).read_bytes()).hexdigest()[:10]
-        return f'{m.group(1)}="{m.group(2)}?v={digest}"'
+        return f'{m.group(1)}="{m.group(2)}?v={_digest(m.group(2))}"'
 
     # имя группы и бота — из переменных (config.py): одна и та же вёрстка
     # годится для копии бота у другой группы
