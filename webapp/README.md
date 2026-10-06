@@ -10,7 +10,7 @@ HTTP-бэкенд (FastAPI) + статический фронтенд для б�
 
 1. **Домен.** Railway → сервис бота → **Settings → Networking → Generate
    Domain**, порт — `8080`. Получится адрес вида
-   `https://uiboshki-bot-production.up.railway.app`.
+   `https://www.uiboshki.ru` (старый адрес `https://uiboshki-bot-production.up.railway.app` тоже работает).
 2. **Переменные.** Railway → **Variables**: `WEBAPP_URL` = этот адрес (с
    `https://`, без `/` в конце) и `PORT` = `8080` (явно — чтобы порт сервера
    точно совпал с портом домена). Railway перезапустит бота; в Deploy Logs

@@ -95,3 +95,35 @@ async def test_home_opens_without_js_errors(db, monkeypatch):
         assert "НЕ ЗАГРУЗИЛОСЬ" in hero.upper() and "Повторить" in hero     # МИРЭА лежит — так и пишем
     finally:
         await bot.stop_webapp(server, task)
+
+
+def _landing(url: str) -> str:
+    """Корень в обычном браузере (initData пустой) → адрес, где оказались."""
+    import json
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page()
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script(TG_STUB % json.dumps(""))
+        page.goto(url)
+        page.wait_for_url("**/about")
+        final = page.url
+        browser.close()
+    return final
+
+
+@pytest.mark.asyncio
+async def test_root_in_plain_browser_goes_to_site(db, monkeypatch):
+    """www.uiboshki.ru вне Telegram — сайт /about, а не приложение без входа."""
+    import bot
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        final = await asyncio.to_thread(_landing, f"http://127.0.0.1:{port}/")
+        assert final.endswith("/about")
+    finally:
+        await bot.stop_webapp(server, task)

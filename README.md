@@ -13,11 +13,11 @@
 показывает слайд, откуда взял ответ. Бот [@UiboshkiBot](https://t.me/UiboshkiBot)
 группы УИБО-03-24, РТУ МИРЭА.
 
-**[Сайт с живым демо](https://uiboshki-bot-production.up.railway.app/about)** ·
+**[Сайт с живым демо](https://www.uiboshki.ru)** ·
 **[Бот в Telegram](https://t.me/UiboshkiBot)** ·
 **[Канал о разработке](https://t.me/uiboshki_dev)**
 
-<p align="center"><a href="https://uiboshki-bot-production.up.railway.app/about">
+<p align="center"><a href="https://www.uiboshki.ru">
 <img src="webapp/static/site/og.jpg" width="720" alt="Сайт бота: живое приложение и поиск расписания"></a></p>
 
 > **In English.** A Telegram bot and Mini App for a university group
