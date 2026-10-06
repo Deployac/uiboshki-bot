@@ -92,7 +92,7 @@ def _msk(at: str) -> datetime:
 
 
 async def collect(days: int = 30) -> dict:
-    from database import count_sdo_connected, count_users, events_since
+    from database import count_sdo_connected, count_users, events_since, get_all_users
     rows = await events_since(max(days, 30))
     now = datetime.now(TZ)
     today = now.date()
@@ -119,9 +119,11 @@ async def collect(days: int = 30) -> dict:
         heat[t.weekday()][t.hour] += 1
         if kind in dict(ACTIONS):
             actions[kind] += 1
+    joined = [_msk(u["joined_at"]).date() for u in await get_all_users() if u.get("joined_at")]
     return {
         "days": days, "since": since, "today": today,
         "total": await count_users(), "sdo": await count_sdo_connected(),
+        "new_day": sum(d == today for d in joined), "new_week": sum((today - d).days < 7 for d in joined),
         "day": len(active_day), "week": len(active_week), "month": len(active_month),
         "period": len(active_period),
         "daily": [(since + timedelta(i), len(users_by_day.get(since + timedelta(i), ()))) for i in range(days)],
@@ -162,7 +164,8 @@ async def people(days: int = 30) -> dict:
 
     def who(uid: int) -> dict:
         u = users.get(uid) or {}
-        return {"id": uid, "name": (u.get("full_name") or "").strip(), "username": u.get("username") or ""}
+        new = bool(u.get("joined_at")) and _msk(u["joined_at"]).date() == today
+        return {"id": uid, "name": (u.get("full_name") or "").strip(), "username": u.get("username") or "", "new": new}
 
     active = [{**who(uid), "last": p["last"], "days": len(p["days"]),
                "uses": [label for label, _ in p["uses"].most_common(4)]}
@@ -183,7 +186,7 @@ def _person(p: dict) -> str:
     from utils import esc
     name = esc(p["name"] or (f"@{p['username']}" if p["username"] else f"id {p['id']}"))
     nick = f" @{esc(p['username'])}" if p["username"] and p["name"] else ""
-    return f'<a href="tg://user?id={p["id"]}">{name}</a>{nick}'
+    return ("🆕 " if p.get("new") else "") + f'<a href="tg://user?id={p["id"]}">{name}</a>{nick}'
 
 
 def people_text(p: dict) -> str:
@@ -205,6 +208,7 @@ def summary(s: dict) -> str:
     acts = " · ".join(f"{n} {label}" for label, n in s["actions"])
     return (f"📊 <b>Статистика за {s['days']} дн.</b>\n"
             f"Всего в боте: <b>{s['total']}</b> · СДО подключили: <b>{s['sdo']}</b>\n"
+            f"Новые: сегодня <b>{s['new_day']}</b> · неделя <b>{s['new_week']}</b>\n"
             f"Активны: сегодня <b>{s['day']}</b> · неделя <b>{s['week']}</b> · месяц <b>{s['month']}</b>\n"
             f"{acts}")
 

@@ -23,3 +23,16 @@ def test_rate_limit():
     assert not ratelimit.allow("submit", 1)
     assert ratelimit.allow("submit", 2)                            # у каждого свой счётчик
     ratelimit.reset()
+
+
+def test_ratelimit_forgets_stale_keys(monkeypatch):
+    """Ключи-IP с сайта не копятся вечно: при переполнении отжившие выкидываются."""
+    ratelimit.reset()
+    monkeypatch.setattr(ratelimit, "MAX_KEYS", 10)
+    clock = [1000.0]
+    monkeypatch.setattr(ratelimit.time, "monotonic", lambda: clock[0])
+    for i in range(11):
+        assert ratelimit.allow("site_search", -i - 1)
+    clock[0] += 61
+    assert ratelimit.allow("site_search", -100) and len(ratelimit._hits) == 1
+    ratelimit.reset()

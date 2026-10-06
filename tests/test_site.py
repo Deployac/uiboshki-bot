@@ -79,4 +79,14 @@ async def test_public_search_and_target(db, monkeypatch):
     codes = [c.get("/about/api/target/1/4928", headers={"X-Forwarded-For": "1.2.3.4"}).status_code for _ in range(16)]
     assert codes[:15] == [200] * 15 and codes[15] == 429                       # по IP
     assert c.get("/about/api/target/1/4928", headers={"X-Forwarded-For": "5.6.7.8"}).status_code == 200
+    # начало X-Forwarded-For подставляет посетитель — лимит по адресу, который дописал прокси
+    ratelimit.reset()
+    codes = [c.get("/about/api/target/1/4928", headers={"X-Forwarded-For": f"8.8.{i}.1, 1.2.3.4, 10.0.0.7"}).status_code
+             for i in range(16)]
+    assert codes[15] == 429
+    # и на всех посетителей вместе — потолок
+    ratelimit.reset()
+    monkeypatch.setitem(ratelimit.LIMITS, "site_all", (3, 60))
+    codes = [c.get("/about/api/search?q=УИБО", headers={"X-Forwarded-For": f"9.9.9.{i}"}).status_code for i in range(4)]
+    assert codes == [200, 200, 200, 429]
     ratelimit.reset()

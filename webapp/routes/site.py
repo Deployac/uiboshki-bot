@@ -12,6 +12,7 @@ Telegram). На ней два живых места:
 """
 
 import hashlib
+import ipaddress
 import zlib
 
 from fastapi import APIRouter, HTTPException, Request
@@ -24,10 +25,27 @@ def _site_dir():
     return STATIC_DIR / "site"
 
 
+def _allow(action: str, request: Request):
+    import ratelimit
+    if not (ratelimit.allow("site_all", 0) and ratelimit.allow(action, _client_key(request))):
+        raise HTTPException(status_code=429, detail="слишком часто — подожди минуту")
+
+
+def _public(ip: str) -> bool:
+    try:
+        return ipaddress.ip_address(ip).is_global
+    except ValueError:
+        return False
+
+
 def _client_key(request: Request) -> int:
-    """Ключ для ratelimit: IP посетителя (за прокси Railway — первый из
-    X-Forwarded-For). Отрицательный — не пересечётся с id пользователей."""
-    ip = (request.headers.get("x-forwarded-for") or "").split(",")[0].strip()
+    """Ключ для ratelimit: IP посетителя — самый правый публичный адрес
+    X-Forwarded-For: его дописывает прокси Railway (свои внутренние адреса
+    пропускаем). Начало строки присылает сам посетитель и может подставить
+    что угодно — проверено на боевом 05.10: 45 запросов с разными адресами
+    прошли мимо лимита 40/мин. Отрицательный — не пересечётся с id."""
+    hops = [h.strip() for h in (request.headers.get("x-forwarded-for") or "").split(",") if h.strip()]
+    ip = next((h for h in reversed(hops) if _public(h)), "")      # внутренние адреса прокси — мимо
     ip = ip or (request.client.host if request.client else "?")
     return -(zlib.crc32(ip.encode()) + 1)
 
@@ -57,19 +75,15 @@ async def about_demo():
 
 @router.get("/about/api/search", include_in_schema=False)
 async def about_search(request: Request, q: str = "", type: int = 0):
-    import ratelimit
     from webapp.routes.schedule import api_search
-    if not ratelimit.allow("site_search", _client_key(request)):
-        raise HTTPException(status_code=429, detail="слишком часто — подожди минуту")
+    _allow("site_search", request)
     return await api_search(q=q[:60], type=type, user={"id": 0})
 
 
 @router.get("/about/api/target/{target_type}/{target_id}", include_in_schema=False)
 async def about_target(request: Request, target_type: int, target_id: int):
-    import ratelimit
     from webapp.routes.schedule import api_target
-    if not ratelimit.allow("site_target", _client_key(request)):
-        raise HTTPException(status_code=429, detail="слишком часто — подожди минуту")
+    _allow("site_target", request)
     data = await api_target(target_type, target_id, user={"id": 0})
     data.pop("pinned", None)
     data["weeks"] = data["weeks"][:2]          # сайту хватит этой и следующей недели
