@@ -256,7 +256,7 @@ setInterval(refreshStatuses, 30000);
 
 // ── Плитка «Баллы СДО» (дизайн-ревью, п. 12) ──────────────────────────────
 // Вместо плитки «Поиск» (он и так во вкладке внизу): сколько предметов уже
-// закрыто на «3»/зачёт и какой ближе всего — те же цифры, что в hero экрана
+// идут на автомат (зачёт/«3» и ≥ 75 % работ) и какой ближе всего — те же цифры, что в hero экрана
 // СДО (sdo.js: sdoSummary). Журнал грузится после главной и не держит её;
 // последнее значение запоминается и показывается сразу при следующем входе.
 const SDO_TILE_KEY = "home.sdoTile";
@@ -264,7 +264,8 @@ const SDO_TILE_KEY = "home.sdoTile";
 function tileFromGrades(data) {
   const s = sdoSummary((data && data.courses) || []);
   return { state: "ok", closed: s.closed, total: s.total,
-    near: s.near ? shortCourse(s.near.title) : "", need: s.near ? s.near.need : 0 };
+    near: s.near ? shortCourse(s.near.title) : "",
+    left: s.near ? autoWorksText(s.near) || "ещё&nbsp;" + fmtNum(s.near.need) : "" };
 }
 
 function renderSdoTile(t) {
@@ -278,8 +279,11 @@ function renderSdoTile(t) {
   } else if (!t.total) {
     big.textContent = "—"; sub.textContent = "журналов с баллами пока нет";
   } else {
+    // «2 из 9» без подписи было непонятно (владелец, 06.10): это предметы, которые уже идут на автомат
     big.textContent = t.closed + " из " + t.total;
-    sub.innerHTML = t.near ? "ближе всего: " + escapeHtml(t.near) + ", ещё&nbsp;" + fmtNum(t.need) : "все закрыты " + icon("party", "mood");
+    const what = plural(t.total, "предмета", "предметов", "предметов") + " на автомат";
+    const left = t.left || (t.need != null ? "ещё&nbsp;" + fmtNum(t.need) : "");   // t.need — плитка из старого кэша
+    sub.innerHTML = what + (t.near ? " · ближе всего: " + escapeHtml(t.near) + " — " + left : " " + icon("party", "mood"));   // left — уже готовый HTML
   }
 }
 

@@ -414,6 +414,8 @@ def test_home_sdo_tile_renders_states():
         {"title": "Физическая культура и спорт", "closed": True, "need": 0},
         {"title": "Основы предпринимательской деятельности [II.25-26]", "closed": False, "need": 4.5},
         {"title": "Анализ данных", "closed": False, "need": 12},
+        # баллов на «3» хватает, но зачтено меньше 75 % работ — не автомат (владелец, 06.10)
+        {"title": "Экономика", "closed": True, "auto": False, "works_need": 1, "need": 15},
     ]
     code = (
         "const els = {'home-sdo-big': {}, 'home-sdo-sub': {}};"
@@ -422,8 +424,8 @@ def test_home_sdo_tile_renders_states():
         "const icon = n => '<svg ' + n + '>'; const escapeHtml = s => String(s);"
         "let sdoData = null; let api = () => Promise.reject(new Error('подключи СДО, чтобы видеть свои баллы'));"
         'const SDO_TILE_KEY = "home.sdoTile"; let sdoGradesReq = null;'
-        + "".join(_js_fn(sdo, n) for n in ("fmtNum", "sdoSummary", "shortCourse", "fetchSdoGrades"))
-        + "".join(_js_fn(home, n) for n in ("tileFromGrades", "renderSdoTile", "updateSdoTile", "readSdoTile", "loadSdoTile"))
+        + "".join(_js_fn(sdo, n) for n in ("fmtNum", "sdoSummary", "autoWorksText", "shortCourse", "fetchSdoGrades"))
+        + "".join(_js_fn(home, n) for n in ("plural", "tileFromGrades", "renderSdoTile", "updateSdoTile", "readSdoTile", "loadSdoTile"))
         + "const out = [];"
         + "updateSdoTile({courses: %s});" % json.dumps(courses, ensure_ascii=False)
         + "out.push(els['home-sdo-big'].textContent, els['home-sdo-sub'].innerHTML, readSdoTile().closed);"
@@ -434,8 +436,9 @@ def test_home_sdo_tile_renders_states():
     res = subprocess.run(["node", "-e", code], capture_output=True, text=True)
     assert res.returncode == 0, res.stderr
     big, sub, closed, off_sub, off_state, err_sub = json.loads(res.stdout)
-    assert big == "1 из 3" and closed == 1                   # как «Закрыто … 1 из 3» на экране СДО
-    assert sub == "ближе всего: Основы предпринимательской…, ещё&nbsp;4,5"
+    assert big == "1 из 4" and closed == 1                   # как «На автомат … 1 из 4» на экране СДО
+    # подпись — что это за число: «2 из 9» без неё было непонятно (владелец, 06.10)
+    assert sub == "предметов на автомат · ближе всего: Экономика — зачесть ещё 1 работу"
     assert off_sub == "Подключи СДО — увидишь баллы и сколько до зачёта" and off_state == "off"
     assert err_sub == "нажми, чтобы открыть"                 # сеть упала, сохранённого нет
 
