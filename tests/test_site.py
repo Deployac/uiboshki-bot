@@ -143,3 +143,15 @@ def test_site_dark_theme_is_fresh():
     assert sd.build(light) in css, "запусти python tools/site_dark.py"
     assert "white-space" not in sd.build(light)                  # не цвет
     assert sd.flip("#f8f6f0") < "#3" and sd.flip("#282720") > "#c"   # бумага темнеет, чернила светлеют
+
+
+def test_root_has_site_link_preview(monkeypatch):
+    """Ссылка www.uiboshki.ru в Telegram — превью сайта, а не пустое приложение:
+    бот превью не выполняет JS-переход на /about, теги нужны на самом корне."""
+    import webapp.deps as deps
+    monkeypatch.setattr(deps, "WEBAPP_URL", "https://www.uiboshki.ru")
+    r = _client().get("/")
+    assert r.status_code == 200 and "js/core.js" in r.text                    # это всё ещё приложение
+    assert '<meta property="og:image" content="https://www.uiboshki.ru/site/og.jpg">' in r.text
+    assert '<meta property="og:url" content="https://www.uiboshki.ru/about">' in r.text
+    assert "__BASE__" not in r.text and r.text.index("og:title") < r.text.index("</head>")
