@@ -312,3 +312,45 @@ button{font:600 14px Onest;border:0;border-radius:14px;padding:10px 14px;backgro
 .agday.picked h3{color:var(--text)}
 .agl.empty{border-radius:var(--r)!important;padding:16px}
 .agl.empty b{font-size:15px}
+
+/* ── нижнее меню: четыре вида плашки ── */
+.tbrow{margin-bottom:34px}.tbrow h2{font:500 18px Onest;color:#3d3b35;margin-bottom:12px}
+.tbpair{display:grid;grid-template-columns:repeat(2,390px);gap:40px}
+.phone.bottomcut{height:240px;border-radius:0 0 54px 54px;box-shadow:0 0 0 10px #111,0 20px 40px rgba(0,0,0,.25)}
+.behind{position:absolute;left:18px;right:18px;top:14px;display:flex;flex-direction:column}
+.behind .agl:first-child{border-radius:var(--r) var(--r) 0 0}.behind .agl:last-child{border-radius:0 0 var(--r) var(--r);border-bottom:0}
+.tb{position:absolute;z-index:5;display:flex;align-items:center}
+.tb a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;font-weight:600;color:var(--muted)}
+.tb .ic{width:23px;height:23px}
+.db .tb a.on{color:#b75438}.da .tb a.on{color:#fff}
+/* 1 капсула */
+.tb.v1{left:14px;right:14px;bottom:26px;height:64px;border-radius:32px;padding:0 8px;justify-content:space-between;
+  background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(22px);box-shadow:0 10px 30px -8px rgba(0,0,0,.35),inset 0 0 0 1px var(--line)}
+.tb.v1 a{flex-direction:row;gap:7px;padding:11px 13px;border-radius:24px}
+.tb.v1 a span{display:none}
+.tb.v1 a.on{padding:11px 18px;font-size:14px}.tb.v1 a.on span{display:inline}
+.da .tb.v1 a.on{background:rgba(255,255,255,.14);color:#fff}
+.db .tb.v1 a.on{background:#b75438;color:#fff}
+/* 2 стекло */
+.tb.v2{left:14px;right:14px;bottom:26px;height:66px;border-radius:33px;justify-content:space-around;padding:0 6px;
+  background:linear-gradient(180deg,rgba(70,76,100,.62),rgba(40,44,62,.55));-webkit-backdrop-filter:blur(30px) saturate(1.8);backdrop-filter:blur(30px) saturate(1.8);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.35),inset 0 -1px 0 rgba(255,255,255,.08),0 12px 30px -10px rgba(0,0,0,.45)}
+.db .tb.v2{background:linear-gradient(180deg,rgba(255,252,246,.78),rgba(250,244,234,.62));box-shadow:inset 0 1px 0 #fff,0 12px 30px -10px rgba(80,60,30,.35)}
+.tb.v2 a{width:64px;height:54px;justify-content:center;border-radius:27px}
+.da .tb.v2 a.on{background:radial-gradient(circle at 50% 30%,rgba(255,255,255,.28),rgba(255,255,255,.08));box-shadow:inset 0 1px 0 rgba(255,255,255,.4)}
+.db .tb.v2 a.on{background:radial-gradient(circle at 50% 30%,#fff,rgba(255,255,255,.55));box-shadow:0 2px 8px rgba(120,90,50,.18)}
+/* 3 островок */
+.tb.v3{left:50%;transform:translateX(-50%);bottom:34px;height:58px;padding:0 10px;gap:4px;border-radius:29px;
+  background:color-mix(in srgb,var(--text) 92%,transparent);box-shadow:0 14px 34px -10px rgba(0,0,0,.5)}
+.tb.v3 a{width:52px;height:46px;justify-content:center;color:color-mix(in srgb,var(--bg) 55%,var(--text))}
+.tb.v3 a span{display:none}
+.tb.v3 a.on{color:var(--bg)}.tb.v3 a.on .ic{fill:currentColor;fill-opacity:.25}
+.tb.v3 a.on::after{content:"";width:5px;height:5px;border-radius:50%;background:currentColor;margin-top:2px}
+.db .tb.v3{background:#2a2721}.db .tb.v3 a{color:#9b9488}.db .tb.v3 a.on{color:#f0e3cf}
+.da .tb.v3{background:#eef0f6}.da .tb.v3 a{color:#7c8193}.da .tb.v3 a.on{color:#141823}
+/* 4 прилипшая */
+.tb.v4{left:0;right:0;bottom:0;height:86px;padding:8px 10px 26px;justify-content:space-around;
+  background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(24px);border-top:1px solid var(--line)}
+.tb.v4 a{width:66px}
+.tb.v4 a.on .ic{fill:currentColor;fill-opacity:.18}
+.phone.bottomcut .home{z-index:7}
