@@ -77,6 +77,23 @@ def _blank(text: str) -> bool:
 _SCALE = ("зачт", "удовл", "хорош", "отлич", "неуд")
 
 
+def _activity_dates(soup) -> dict:
+    """{подпись без двоеточия, строчными: дата} из [data-region="activity-dates"].
+    «Закрыто c:» у МИРЭА пишут латинской «c» — подпись режем до «закрыт…»."""
+    out = {}
+    box = soup.find(attrs={"data-region": "activity-dates"})
+    for div in (box.find_all("div") if box else []):
+        strong = div.find("strong")
+        if not strong:
+            continue
+        label = _clean(strong.get_text(" ")).rstrip(":").strip().lower()
+        value = _clean(div.get_text(" "))[len(_clean(strong.get_text(" "))):].strip()
+        if label.startswith("закрыто"):
+            label = "закрыто"
+        out.setdefault(label, value)
+    return out
+
+
 def is_tk(name: str) -> bool:
     return "текущ" in (name or "").lower()
 
@@ -218,6 +235,13 @@ def parse_assign_page(html: str) -> dict:
     m = re.search(r"Открыва\w+\s*:?\s*([^.]*?\d{4},\s*\d{1,2}:\d{2})", text)
     if m:
         opens = m.group(1)
+    # блок дат Moodle 4 («Открыто с:», «Открывается:», «Срок сдачи:», «Закрывается:»,
+    # «Закрыто c:» — у МИРЭА с латинской «c») — точнее поиска по всему тексту
+    dates = _activity_dates(soup)
+    due = dates.get("срок сдачи") or dates.get("закрывается") or due
+    opens = dates.get("открывается") or opens
+    closed = dates.get("закрыто", "")
+    unavailable = "этот тест недоступен" in text.lower()      # тест ещё не открыт
     # «Ограничение по времени: 30 мин.» (у тестов) — показываем в списке работ
     tl = re.search(r"Ограничение по времени\s*:?\s*(\d+(?:[.,]\d+)?)\s*(мин|час|ч)", text, re.I)
     time_limit = None
@@ -226,6 +250,9 @@ def parse_assign_page(html: str) -> dict:
         time_limit = int(round(n * (60 if tl.group(2).lower().startswith("ч") else 1)))
     low = status.lower()
     draft = "черновик" in low or "draft" in low
+    # «Оценено» / «Оценено в» в блоке «Отзыв» — кто и когда поставил оценку
+    graded_by = next((v for k, v in rows.items() if k == "оценено"), "")
+    graded_at = next((v for k, v in rows.items() if k == "оценено в"), "")
     # «Отзыв в виде комментария» в блоке оценки — что написал преподаватель
     feedback = ""
     for tr in soup.find_all("tr"):
@@ -247,13 +274,29 @@ def parse_assign_page(html: str) -> dict:
         "draft": draft,
         "offline": "вне сайта" in low,
         "remaining": next((v for k, v in rows.items() if k.startswith("оставшееся время")), ""),
-        "due": due, "opens": opens, "time_limit": time_limit, "feedback": feedback[:3000],
+        "due": due, "opens": opens, "closed": closed, "unavailable": unavailable,
+        "time_limit": time_limit, "feedback": feedback[:3000],
+        "graded_by": graded_by, "graded_at": graded_at,
         "can_submit": bool(soup.find(attrs={"name": "action", "value": "editsubmission"})
                            or "action=editsubmission" in html),
     }
 
 
 GRACE_DAYS = 15     # срок прошёл, оценки нет — столько дней ждём (могли сдать на паре)
+STALE_DAYS = 180    # дата закрытия старше полугода — осталась от копии курса прошлого года
+
+
+def feedback_verdict(text: str) -> str:
+    """У части заданий оценка не предусмотрена («Не оценено» навсегда), вердикт —
+    комментарием преподавателя: «зачет» → ok, «не принято» → low (разведка 07.10)."""
+    t = (text or "").lower().replace("ё", "е")
+    if not t:
+        return ""
+    if re.search(r"не\s*(принят|зач|засчит)|незач|доработ|передела|исправ", t):
+        return "low"
+    if re.search(r"зач[её]?т|принят|засчит", t):
+        return "ok"
+    return ""
 _MONTHS = ("января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа",
            "сентября", "октября", "ноября", "декабря")
 
@@ -278,13 +321,24 @@ def work_status(w: dict, page: dict | None, now: datetime | None = None) -> str:
     late — срок прошёл, оценки нет, ждём GRACE_DAYS (могли сдать на паре);
     miss — срок прошёл давно, ответа и оценки нет."""
     page = page or {}
-    closed_quiz = w.get("module") == "quiz" and page.get("opens") and not page.get("submitted")
+    now = now or _now_msk()
+    quiz = w.get("module") == "quiz"
+    closed_quiz = quiz and (page.get("opens") or page.get("unavailable")) and not page.get("submitted")
     if (w["grade"] is not None or w.get("graded")) and not closed_quiz:
         return "ok" if w["passed"] else "low"
+    verdict = feedback_verdict(page.get("feedback", ""))
+    if verdict:
+        return verdict          # оценки у задания нет вовсе, вердикт — комментарием («зачет» / «не принято»)
     if page.get("submitted"):
         return "wait"
+    if quiz and page.get("unavailable"):
+        return "soon"           # «В настоящее время этот тест недоступен» — ещё не открыт
+    closed = parse_due(page.get("closed", ""))
+    if quiz and closed and closed < now:
+        # «Закрыто c: 25 декабря 2024» в курсе 2026 года — даты остались от копии
+        # курса: тест ещё не настроен, а не пропущен
+        return "soon" if now - closed > timedelta(days=STALE_DAYS) else "miss"
     due = parse_due(page.get("due", ""))
-    now = now or _now_msk()
     overdue = (due is not None and due < now) or "просроч" in (page.get("remaining") or "").lower()
     if not overdue:
         if page.get("offline"):
