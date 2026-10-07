@@ -104,6 +104,28 @@ async def init_db():
                 PRIMARY KEY (file_id, group_id)
             )
         """)
+        # Вход в приложение без Telegram (этап 2): коды входа через бота и сессии
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS auth_logins (
+                code       TEXT PRIMARY KEY,
+                device     TEXT,
+                status     TEXT NOT NULL DEFAULT 'wait',
+                user_id    INTEGER,
+                expires_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                device     TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                last_seen  TEXT,
+                expires_at TEXT NOT NULL,
+                revoked    INTEGER DEFAULT 0
+            )
+        """)
         # Подписка (ИИ сверх базы): до какой даты; source — откуда (вручную
         # старостой, оплата — потом)
         await db.execute("""

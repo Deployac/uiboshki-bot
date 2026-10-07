@@ -364,6 +364,15 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
   недели — по календарю группы каждого (`scheduler._group_raws`: календарь
   каждой группы — один раз на рассылку), между сообщениями — пауза
   `scheduler.pace()` (`PACE_SECONDS`, лимит Telegram ~30/с).
+- **Вход без Telegram (этап 2)**: `/app` — приложение вне Telegram (PWA,
+  потом своё приложение). Вход: `/api/auth/start` → код и ссылка
+  `t.me/<бот>?start=login_<код>` → в боте «Войти на Chrome · Android? Да,
+  это я» (`handlers/start.ask_login`) → `/api/auth/poll` выдаёт токен сессии
+  устройства (`database/sessions.py`, в базе только хэш, 90 дней с
+  продлением). Запросы — `Authorization: Bearer` (`webapp/deps.
+  _session_user`), фронт хранит токен в localStorage (`core.js`: `APP_TOKEN`,
+  экран «Войти» — `showLogin`). Устройства и «выйти везде» — в листе
+  «Безопасность». Корень `/` вне Telegram без токена — по-прежнему сайт.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

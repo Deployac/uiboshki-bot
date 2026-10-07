@@ -84,10 +84,42 @@ async def cmd_start_deeplink(message: Message, command: CommandObject, state: FS
         except Exception:
             pass
         return
+    if payload.startswith("login_"):            # вход в приложение без Telegram (webapp/routes/auth.py)
+        await ask_login(message, payload[6:])
+        return
     if payload == "site":                       # кнопка «Открыть бота» на сайте /about — для /stats
         import stats
         await stats.track(user.id, "from_site")
     await cmd_start(message, state)
+
+
+async def ask_login(message: Message, code: str):
+    """«Войти в приложение на Chrome · Android?» — подтверждение входа по коду."""
+    from database.sessions import get_login
+    login = await get_login(code)
+    if not login or login["status"] != "wait":
+        await message.answer("Ссылка для входа устарела — нажми «Войти через Telegram» в приложении ещё раз.")
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Да, это я", callback_data=f"login:ok:{code}"),
+        InlineKeyboardButton(text="Нет", callback_data=f"login:no:{code}"),
+    ]])
+    await message.answer(f"🔐 Войти в приложение УИБО-бота на устройстве <b>{esc(login['device'] or 'браузер')}</b>?\n\n"
+                         "Если это не ты нажал «Войти» — жми «Нет».", parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("login:"))
+async def login_decision(callback: CallbackQuery):
+    from database.sessions import decide_login
+    _, verdict, code = callback.data.split(":", 2)
+    ok = await decide_login(code, callback.from_user.id, verdict == "ok")
+    await callback.answer()
+    text = ("✅ Готово — возвращайся в приложение." if verdict == "ok" else "Вход отклонён.") if ok \
+        else "Ссылка для входа устарела."
+    try:
+        await callback.message.edit_text(text)
+    except Exception:
+        await callback.message.answer(text)
 
 
 @router.message(CommandStart())

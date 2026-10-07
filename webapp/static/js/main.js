@@ -1,12 +1,15 @@
 // Запуск — последним, когда все части уже загружены — часть WebApp (раньше всё жило в одном index.html на 1945 строк).
 // Файлы подключаются по порядку и делят глобальную область видимости.
 
-renderSdoTile(readSdoTile());     // плитка «Баллы СДО»: сразу последнее сохранённое,
-loadToday().then(loadSdoTile);    // а свежее — после главной, не задерживая её
-initHomeAdd();
-initOptional();
-renderChat();
-loadChatSubjects();
+if (NEED_LOGIN) showLogin();       // вне Telegram и без входа — сначала «Войти через Telegram»
+else {
+  renderSdoTile(readSdoTile());     // плитка «Баллы СДО»: сразу последнее сохранённое,
+  loadToday().then(loadSdoTile);    // а свежее — после главной, не задерживая её
+  initHomeAdd();
+  initOptional();
+  renderChat();
+  loadChatSubjects();
+}
 
 (function () {
   const q = new URLSearchParams(location.search).get("file");
@@ -20,6 +23,7 @@ loadChatSubjects();
 (function () {
   const tab = new URLSearchParams(location.search).get("tab");
   const deepLink = tab || new URLSearchParams(location.search).get("file");
+  if (NEED_LOGIN) return;
   if (!deepLink) maybeOnboard();      // из уведомления — сразу к делу, знакомство потом
   if (tab === "sdo") openSdo();
   else if (tab === "notify") openNotify();

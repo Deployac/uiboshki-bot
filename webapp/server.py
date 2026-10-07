@@ -32,7 +32,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from webapp import deps
-from webapp.routes import account, aitest, channel, chat, deadlines, files, schedule, sdo, site
+from webapp.routes import account, aitest, auth, channel, chat, deadlines, files, schedule, sdo, site
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 # httpx на INFO пишет полный адрес каждого запроса — с sesskey СДО в query.
@@ -139,7 +139,7 @@ async def health():
 # ── Обработчики по темам (webapp/routes/*) ──────────────────────────────────
 # Пути у них не пересекаются, так что порядок не важен; важно только, что
 # статика ниже — последней.
-for _module in (schedule, account, deadlines, files, chat, sdo, channel, site, aitest):
+for _module in (schedule, account, deadlines, files, chat, sdo, channel, site, aitest, auth):
     app.include_router(_module.router)
 
 
@@ -182,6 +182,7 @@ def _digest(rel: str) -> str:
 
 @app.get("/", include_in_schema=False)
 @app.get("/index.html", include_in_schema=False)
+@app.get("/app", include_in_schema=False)       # PWA: приложение вне Telegram (вход — экран «Войти»)
 async def index_page(request: Request):
     """index.html со ссылками на стили и скрипты с меткой версии (?v=хэш
     содержимого): WebApp Telegram держит старые файлы в кэше, и после

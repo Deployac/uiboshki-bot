@@ -2,11 +2,18 @@
 // Файлы подключаются по порядку и делят глобальную область видимости.
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
-// Корень открыли в обычном браузере (не из Telegram) — это гость по ссылке
+// Вне Telegram (PWA, браузер, будущее приложение — этап 2) вход — токеном
+// сессии устройства: «Войти через Telegram» → подтвердить в боте (webapp/routes/auth.py).
+const IN_TG = !!(tg && tg.initData);
+function readToken() { try { return localStorage.getItem("uib_token") || ""; } catch (e) { return ""; } }
+function saveToken(t) { try { if (t) localStorage.setItem("uib_token", t); else localStorage.removeItem("uib_token"); } catch (e) {} }
+const APP_TOKEN = IN_TG ? "" : readToken();
+// Корень открыли в обычном браузере без входа — это гость по ссылке
 // www.uiboshki.ru: ему нужен сайт-презентация, а не приложение без входа.
-if (!(tg && tg.initData) && (location.pathname === "/" || location.pathname === "/index.html")) {
+if (!IN_TG && !APP_TOKEN && (location.pathname === "/" || location.pathname === "/index.html")) {
   location.replace("/about");
 }
+const NEED_LOGIN = !IN_TG && !APP_TOKEN;      // /app без входа — экран «Войти»
 // Имя бота и группы сервер подставляет в страницу (config.py: BOT_USERNAME,
 // GROUP_NAME); без него (файл открыт напрямую) — как у УИБО-03-24.
 const APP_CONFIG = window.APP_CONFIG || {};
@@ -96,8 +103,12 @@ async function api(path, opts) {
   opts.headers = Object.assign({
     "X-Telegram-Init-Data": initData(),
     "Content-Type": "application/json",
-  }, opts.headers || {});
+  }, APP_TOKEN ? { "Authorization": "Bearer " + APP_TOKEN } : {}, opts.headers || {});
   const resp = await fetch(path, opts);
+  if (resp.status === 401 && APP_TOKEN) {        // сессию отозвали («выйти везде») — заново войти
+    saveToken("");
+    location.replace("/app");
+  }
   if (!resp.ok) {
     const body = await resp.text();
     let detail = "";
@@ -269,3 +280,57 @@ async function sendToChat(path, deeplink, btn) {
   }
 }
 
+
+// ── Вход вне Telegram (этап 2: PWA и своё приложение) ───────────────────────
+// Код входа → ссылка в бота → «Да, это я» → токен. Ждём подтверждения до 10 минут.
+let loginCode = null, loginTimer = null;
+
+function showLogin() {
+  const box = document.getElementById("login");
+  box.classList.add("open");
+  box.innerHTML = '<div class="login-card"><svg class="login-capy" aria-hidden="true"><use href="#i-capy"/></svg>' +
+    '<h2>УИБО-бот</h2><p>Расписание, дедлайны, баллы СДО и лекции твоей группы.</p>' +
+    '<button class="primary" id="login-btn" onclick="startLogin()">Войти через Telegram</button>' +
+    '<p class="hint" id="login-hint">Бот спросит «Это ты?» — нажми «Да». Один раз на этом устройстве.</p></div>';
+}
+
+async function startLogin() {
+  const btn = document.getElementById("login-btn"), hint = document.getElementById("login-hint");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/auth/start", { method: "POST" }).then(r => r.ok ? r.json() : Promise.reject(r));
+    loginCode = res.code;
+    window.open(res.link, "_blank");
+    hint.textContent = "Открыл бота — нажми там «Да, это я», а потом вернись сюда.";
+    btn.textContent = "Открыть бота ещё раз";
+    btn.disabled = false;
+    btn.onclick = () => window.open(res.link, "_blank");
+    clearInterval(loginTimer);
+    loginTimer = setInterval(pollLogin, 2000);
+  } catch (e) {
+    btn.disabled = false;
+    hint.textContent = "Не получилось начать вход — попробуй через минуту.";
+  }
+}
+
+async function pollLogin() {
+  if (!loginCode) return;
+  let res;
+  try {
+    res = await fetch("/api/auth/poll", { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ code: loginCode }) }).then(r => r.json());
+  } catch (e) { return; }
+  if (res.status === "ok") {
+    clearInterval(loginTimer);
+    saveToken(res.token);
+    location.replace("/app");
+  } else if (res.status !== "wait") {
+    clearInterval(loginTimer);
+    loginCode = null;
+    document.getElementById("login-hint").textContent =
+      res.status === "denied" ? "Вход отклонён в боте." : "Ссылка устарела — нажми «Войти» ещё раз.";
+    const btn = document.getElementById("login-btn");
+    btn.textContent = "Войти через Telegram";
+    btn.onclick = startLogin;
+  }
+}

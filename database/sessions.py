@@ -1,0 +1,115 @@
+"""Вход в приложение без Telegram (этап 2): одноразовые коды входа через
+бота и долгие сессии устройств (токен хранится только хэшем)."""
+
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
+
+import aiosqlite
+
+from database._conn import connect
+
+LOGIN_TTL = timedelta(minutes=10)
+SESSION_TTL = timedelta(days=90)          # продлевается при каждом заходе
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _ts(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def token_hash(token: str) -> str:
+    return hashlib.sha256(("uiboshki-session:" + token).encode()).hexdigest()
+
+
+async def create_login(device: str) -> str:
+    code = secrets.token_urlsafe(18)
+    async with connect() as db:
+        await db.execute("DELETE FROM auth_logins WHERE expires_at < ?", (_ts(_now()),))
+        await db.execute("INSERT INTO auth_logins (code, device, expires_at) VALUES (?, ?, ?)",
+                         (code, device[:120], _ts(_now() + LOGIN_TTL)))
+        await db.commit()
+    return code
+
+
+async def get_login(code: str) -> dict | None:
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        row = await (await db.execute("SELECT * FROM auth_logins WHERE code = ?", (code,))).fetchone()
+    if not row or row["expires_at"] < _ts(_now()):
+        return None
+    return dict(row)
+
+
+async def decide_login(code: str, user_id: int, ok: bool) -> bool:
+    """Человек в боте подтвердил («Да, это я») или отклонил вход. → был ли код."""
+    async with connect() as db:
+        cur = await db.execute("UPDATE auth_logins SET user_id = ?, status = ? WHERE code = ? AND status = 'wait' "
+                               "AND expires_at >= ?", (user_id, "ok" if ok else "no", code, _ts(_now())))
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def redeem_login(code: str) -> tuple[str, int] | None:
+    """Подтверждённый код → (токен, user_id) один раз; код сгорает."""
+    login = await get_login(code)
+    if not login or login["status"] != "ok" or not login["user_id"]:
+        return None
+    async with connect() as db:
+        cur = await db.execute("DELETE FROM auth_logins WHERE code = ? AND status = 'ok'", (code,))
+        await db.commit()
+        if cur.rowcount == 0:
+            return None                       # кто-то успел раньше — второй раз не выдаём
+    return await create_session(login["user_id"], login["device"]), login["user_id"]
+
+
+async def create_session(user_id: int, device: str) -> str:
+    token = secrets.token_urlsafe(32)
+    async with connect() as db:
+        await db.execute("INSERT INTO sessions (user_id, token_hash, device, last_seen, expires_at) "
+                         "VALUES (?, ?, ?, ?, ?)",
+                         (user_id, token_hash(token), device[:120], _ts(_now()), _ts(_now() + SESSION_TTL)))
+        await db.commit()
+    return token
+
+
+async def session_user(token: str) -> int | None:
+    """Чей токен (и продлить сессию); None — нет, отозван или истёк."""
+    if not token:
+        return None
+    h = token_hash(token)
+    async with connect() as db:
+        row = await (await db.execute("SELECT id, user_id, expires_at, last_seen FROM sessions "
+                                      "WHERE token_hash = ? AND revoked = 0", (h,))).fetchone()
+        if not row or row[2] < _ts(_now()):
+            return None
+        if row[3] < _ts(_now() - timedelta(minutes=10)):          # продлеваем не чаще раза в 10 минут
+            await db.execute("UPDATE sessions SET last_seen = ?, expires_at = ? WHERE id = ?",
+                             (_ts(_now()), _ts(_now() + SESSION_TTL), row[0]))
+            await db.commit()
+        return row[1]
+
+
+async def list_sessions(user_id: int) -> list[dict]:
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute(
+            "SELECT id, device, created_at, last_seen FROM sessions WHERE user_id = ? AND revoked = 0 "
+            "AND expires_at >= ? ORDER BY last_seen DESC", (user_id, _ts(_now())))).fetchall()
+        return [dict(r) for r in rows]
+
+
+async def revoke_session(user_id: int, session_id: int | None = None, token: str | None = None) -> int:
+    """Выйти: одно устройство (по id или токену) или все (оба None)."""
+    sql, args = "UPDATE sessions SET revoked = 1 WHERE user_id = ?", [user_id]
+    if session_id is not None:
+        sql, args = sql + " AND id = ?", args + [session_id]
+    elif token is not None:
+        sql, args = sql + " AND token_hash = ?", args + [token_hash(token)]
+    async with connect() as db:
+        cur = await db.execute(sql, args)
+        await db.commit()
+        return cur.rowcount

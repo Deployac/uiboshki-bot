@@ -130,3 +130,47 @@ async def test_root_in_plain_browser_goes_to_site(db, monkeypatch):
         assert final.endswith("/about")
     finally:
         await bot.stop_webapp(server, task)
+
+
+def _pwa(url: str, token: str) -> tuple[bool, bool, list]:
+    """/app вне Telegram: (экран «Войти» открыт, главная загрузилась, ошибки JS)."""
+    import json
+    errors = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": 390, "height": 844})
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script(TG_STUB % json.dumps(""))
+        if token:
+            page.add_init_script(f"localStorage.setItem('uib_token', {json.dumps(token)})")
+        page.goto(url)
+        page.wait_for_timeout(800)
+        login = page.evaluate("document.getElementById('login').classList.contains('open')")
+        home = page.evaluate("document.getElementById('greeting') ? document.getElementById('greeting').textContent : ''")
+        browser.close()
+    return login, bool(home), errors
+
+
+@pytest.mark.asyncio
+async def test_pwa_login_screen_and_token(db, monkeypatch):
+    """Этап 2: /app вне Telegram — без входа «Войти через Telegram», с токеном — приложение."""
+    import bot
+    import webapp.deps as deps
+    from database.sessions import create_session
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    await db.upsert_user(222, "", "Alice")
+    token = await create_session(222, "test")
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        login, _, errors = await asyncio.to_thread(_pwa, f"http://127.0.0.1:{port}/app", "")
+        assert login and not errors, errors
+        login, _, errors = await asyncio.to_thread(_pwa, f"http://127.0.0.1:{port}/app", token)
+        assert not login and not errors, errors
+    finally:
+        await bot.stop_webapp(server, task)

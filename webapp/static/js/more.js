@@ -390,7 +390,32 @@ async function openSecurity() {
       " сдач за " + ((lim.submit || {}).minutes || 10) + " минут с одного человека — чтобы никто не сжёг общий лимит и не долбил СДО.") +
     secItem("gear", "Ключи и пароли — только на сервере",
       "Токен бота, ключи ИИ и шифрования — в закрытых настройках сервера, в коде и базе их нет. Копия базы каждую ночь уходит только старосте.") +
+    '<div id="devices"></div>' +
     '<button class="ghost" onclick="closeSheet(\'security-sheet\')">Понятно</button>';
+  loadDevices();
+}
+
+// Устройства, где вошли в приложение без Telegram (этап 2): выйти на одном или везде
+async function loadDevices() {
+  let res;
+  try { res = await api("/api/auth/sessions"); } catch (e) { return; }
+  const box = document.getElementById("devices");
+  if (!box || !res.items.length) return;
+  box.innerHTML = '<h3 style="margin-top:16px">Устройства</h3>' + res.items.map(d =>
+    '<div class="dev-row"><div><b>' + escapeHtml(d.device || "Браузер") + (d.current ? " · это" : "") + '</b><span>заходил ' +
+    escapeHtml(humanDate((d.last_seen || "").slice(0, 10))) + '</span></div>' +
+    '<button class="ghost danger" onclick="revokeDevice(' + d.id + ', ' + !!d.current + ')">Выйти</button></div>').join("") +
+    (res.items.length > 1 ? '<button class="ghost danger" onclick="revokeDevice(0, true)">Выйти везде</button>' : '');
+}
+
+async function revokeDevice(id, current) {
+  haptic();
+  try {
+    if (id) await api("/api/auth/sessions/" + id, { method: "DELETE" });
+    else await api("/api/auth/logout?everywhere=true", { method: "POST" });
+  } catch (e) { showToast(e.message); return; }
+  if (current && !IN_TG) { saveToken(""); location.replace("/app"); return; }
+  loadDevices();
 }
 
 // ── Уведомления: конструктор (что присылать и в какие дни) ───────────────
