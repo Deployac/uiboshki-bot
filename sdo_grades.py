@@ -67,7 +67,14 @@ def _blank(text: str) -> bool:
     оценки». Закрытый тест показывал «—», бот считал его оценённым и красил
     «ниже порога» (владелец, 06.10)."""
     t = (text or "").strip().lower()
-    return not t or not t.strip("-–—‒ ") or t.startswith(("не оцен", "нет оцен", "без оцен"))
+    if not t or not t.strip("-–—‒ "):
+        return True
+    # не число и не слово шкалы («Зачтено», «Отлично»…) — служебная надпись журнала
+    # у закрытого теста; раньше она шла за «зачтено» и «Зачтено работ» было 3 вместо 2
+    return _num(t) is None and not any(w in t for w in _SCALE)
+
+
+_SCALE = ("зачт", "удовл", "хорош", "отлич", "неуд")
 
 
 def is_tk(name: str) -> bool:
@@ -120,7 +127,7 @@ def parse_report(html: str) -> dict:
         elif grade is None and passed is None:
             # оценка шкалой: «Зачтено» / «Не зачтено» — числа нет, но работа оценена
             low = text.lower()
-            passed = False if low.startswith(("не ", "неуд")) else True
+            passed = not low.startswith(("не ", "неуд"))
         m = _MOD.search(link["href"]) if link else None
         items.append({
             "name": name, "kind": kind.capitalize(),
