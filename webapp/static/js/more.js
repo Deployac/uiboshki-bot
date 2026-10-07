@@ -440,6 +440,48 @@ async function openNotify() {
     return;
   }
   renderNotify();
+  renderPushRow();
+}
+
+// Пуши на это устройство — только в установленном приложении вне Telegram (PWA)
+function pushSupported() {
+  return !IN_TG && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+async function renderPushRow() {
+  if (!pushSupported()) return;
+  const box = document.getElementById("notify-body");
+  let on = false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    on = !!(await reg.pushManager.getSubscription()) && Notification.permission === "granted";
+  } catch (e) {}
+  const row = document.createElement("div");
+  row.className = "share-row";
+  row.innerHTML = '<div><b>Уведомления на этом устройстве</b><span>Утро, пары, дедлайны и новые задания — ' +
+    'пушем, как у обычного приложения.</span></div>' + ntSwitch(on, "togglePush(" + on + ")");
+  box.prepend(row);
+}
+
+async function togglePush(on) {
+  haptic();
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (on) {
+      if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); }
+      showToast("Пуши на этом устройстве выключены");
+    } else {
+      if (await Notification.requestPermission() !== "granted") { showToast("Разреши уведомления в настройках браузера"); return; }
+      const { key } = await api("/api/push/key");
+      const pad = "=".repeat((4 - key.length % 4) % 4);
+      const raw = Uint8Array.from(atob((key + pad).replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+      const fresh = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw });
+      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(fresh.toJSON()) });
+      showToast("Готово — пуши будут приходить сюда");
+    }
+  } catch (e) { showToast("Не получилось: " + e.message); }
+  openNotify();
 }
 
 function ntSwitch(on, action) {

@@ -69,6 +69,12 @@ async def _group_raws(fetch_home=None):
     return get
 
 
+async def deliver(bot, user_id: int, html: str, **kw):
+    """Рассылка через слой доставки (delivery.py): Telegram + пуш PWA."""
+    import delivery
+    return await delivery.deliver(bot, user_id, html, **kw)
+
+
 async def pace():
     """Пауза между сообщениями рассылки: Telegram пускает ~30 в секунду, а
     групп и людей станет много (этап 1 (г))."""
@@ -117,8 +123,8 @@ async def send_morning_schedule(bot: Bot):
                 if note:
                     head += f"\n{note}"
             body = format_day(events, now.date(), now=now) if events is not None else await get_today_schedule(gid)
-            await bot.send_message(uid, f"{head}\n\n{body}", parse_mode="HTML",
-                                   reply_markup=app_button("📅 Открыть расписание", "today"))
+            await deliver(bot, uid, f"{head}\n\n{body}", kind="morning", tab="today",
+                          reply_markup=app_button("📅 Открыть расписание", "today"))
             await pace()
         except Exception as e:
             logger.warning(f"Не смог отправить {uid}: {e}")
@@ -184,8 +190,8 @@ async def send_deadline_reminders(bot: Bot):
             deadlines = await get_deadlines_soon(days=3, viewer_id=uid)
             if not deadlines:
                 continue
-            await bot.send_message(uid, _format_deadline_reminders(deadlines), parse_mode="HTML",
-                                   reply_markup=app_button("📋 Открыть дедлайны", "deadlines"))
+            await deliver(bot, uid, _format_deadline_reminders(deadlines), kind="deadlines", tab="deadlines",
+                          reply_markup=app_button("📋 Открыть дедлайны", "deadlines"))
             await pace()
         except Exception as e:
             logger.warning(f"Не смог отправить {uid}: {e}")
@@ -281,11 +287,11 @@ async def check_lesson_reminders(bot: Bot):
                 _sent_reminders.add(key)
                 label = "первая пара" if kind == "remind_first" else "пара"
                 try:
-                    await bot.send_message(
-                        uid,
+                    await deliver(
+                        bot, uid,
                         f"⏰ <b>Через {notify_prefs.minutes_text(remind_mins)} {label}</b>\n\n"
                         + format_lesson(e),
-                        parse_mode="HTML",
+                        kind="lesson", tab="today",
                         reply_markup=app_button("📅 Расписание", "today"),
                     )
                 except Exception as ex:

@@ -50,3 +50,23 @@ self.addEventListener("fetch", e => {
     e.respondWith(networkFirst(req, DATA, 5000));
   }
 });
+
+// Пуши (этап 2 (г), delivery.py → webpush.py): уведомление на экране и
+// переход в нужное место приложения по нажатию.
+self.addEventListener("push", e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (err) { d = { body: e.data ? e.data.text() : "" }; }
+  e.waitUntil(self.registration.showNotification(d.title || "УИБО-бот", {
+    body: d.body || "", tag: d.tag || "uib", icon: "/pwa/icon-192.png", badge: "/pwa/icon-192.png",
+    data: { url: d.url || "/app" },
+  }));
+});
+
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || "/app";
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+    const open = list.find(c => new URL(c.url).pathname === "/app");
+    return open ? open.navigate(url).then(c => c && c.focus()) : self.clients.openWindow(url);
+  }));
+});

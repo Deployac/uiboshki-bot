@@ -85,7 +85,8 @@ async def announce(bot, new_ids: list[int], moved: dict[int, str] | None = None)
         if not mine and not shifted:
             continue
         try:
-            await bot.send_message(uid, build(mine, shifted), parse_mode="HTML",
+            import delivery
+            await delivery.deliver(bot, uid, build(mine, shifted), kind="new_tasks", tab="deadlines",
                                    reply_markup=app_button("📋 Открыть дедлайны", "deadlines"))
             sent += 1
         except Exception as e:

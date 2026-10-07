@@ -384,6 +384,13 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
   приложения (`APP_MIN_WEB/ANDROID/IOS`); снимок путей —
   `tests/api_contract.json`: убрал путь — CI красный, добавил — обнови
   `python tools/api_snapshot.py`.
+  **Доставка (2 (г))**: все рассылки (утро, пары, дедлайны, новые задания,
+  обзор недели, новые баллы) — через `delivery.deliver(bot, uid, html, kind=,
+  tab=)`: Telegram + веб-пуш на устройства, где включены уведомления
+  (`push_subs`, `/api/push/*`, тумблер в «Уведомлениях» в PWA). Пуши —
+  `webpush.py` без внешних библиотек (RFC 8291 aes128gcm + VAPID на
+  `cryptography`), ключ VAPID — `VAPID_PRIVATE_KEY` или производный от
+  `BOT_TOKEN`. Пуши своего приложения (FCM/APNs/RuStore) — сюда же.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

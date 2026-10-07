@@ -133,7 +133,9 @@ async def send_all(bot, now: datetime | None = None):
         if not text:
             continue
         try:
-            await bot.send_message(uid, text, parse_mode="HTML", reply_markup=app_button("📅 Открыть неделю", "today"))
+            import delivery
+            await delivery.deliver(bot, uid, text, kind="weekly", tab="today",
+                                   reply_markup=app_button("📅 Открыть неделю", "today"))
             await pace()
         except Exception as e:
             logger.info(f"обзор недели {uid}: {e}")

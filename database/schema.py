@@ -126,6 +126,17 @@ async def init_db():
                 revoked    INTEGER DEFAULT 0
             )
         """)
+        # Веб-пуши PWA (этап 2 (г), delivery.py): устройство = endpoint
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS push_subs (
+                endpoint   TEXT PRIMARY KEY,
+                user_id    INTEGER NOT NULL,
+                p256dh     TEXT NOT NULL,
+                auth       TEXT NOT NULL,
+                device     TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
         # Подписка (ИИ сверх базы): до какой даты; source — откуда (вручную
         # старостой, оплата — потом)
         await db.execute("""
