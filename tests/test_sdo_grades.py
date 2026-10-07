@@ -238,3 +238,17 @@ def test_auto_needs_75_percent_of_works():
     assert s["closed"] and not s["auto"] and s["works_need"] == 1      # 45 баллов, но зачтено 2 из 4
     rep["items"][3].update(grade=10, graded=True, passed=True)
     assert sdo_grades.summarize(rep, "Экономика")["auto"]
+
+
+def test_unknown_grade_text_is_not_credited():
+    """Служебная надпись журнала у закрытого теста (не число и не «Зачтено») —
+    не оценка: «Зачтено работ 3 из 6» при двух зачтённых (владелец, 06.10)."""
+    for text in ("Скрыто", "Не доступно", "Недоступно", "Ограничено"):
+        assert sdo_grades._blank(text), text
+    for text in ("Зачтено", "Не зачтено", "Отлично", "5,00"):
+        assert not sdo_grades._blank(text), text
+    html = ('<table class="user-grade"><tr><th class="column-itemname level2">'
+            '<a href="https://x/mod/quiz/view.php?id=7">Тест</a></th>'
+            '<td class="column-grade">Скрыто</td><td class="column-range">0–5</td></tr></table>')
+    (it,) = sdo_grades.parse_report(html)["items"]
+    assert not it["graded"] and it["passed"] is None
