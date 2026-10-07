@@ -61,6 +61,29 @@ async def cmd_status(message: Message):
     await message.answer(await health.report(), parse_mode="HTML")
 
 
+@router.message(Command("aitest"))
+async def cmd_aitest(message: Message):
+    """Слепое сравнение моделей ИИ на вопросах и лекциях группы (ai_bench.py) —
+    только староста; ответы приходят ссылкой на страницу голосования."""
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
+        return
+    from config import OPENROUTER_API_KEY
+    if not OPENROUTER_API_KEY:
+        await message.answer("Нужен ключ OpenRouter: openrouter.ai → Keys, пополнить на $5 и "
+                             "задать OPENROUTER_API_KEY в переменных Railway.")
+        return
+    import ai_bench
+    from webapp.routes.aitest import link
+    await message.answer("🧪 Гоняю модели на вопросах и лекциях группы — пара минут…")
+    try:
+        html, summary = await ai_bench.run(OPENROUTER_API_KEY)
+    except Exception as e:
+        await message.answer(f"Не вышло: {e}")
+        return
+    await ai_bench.save(html)
+    await message.answer(f"{summary}\n\nОткрой и в каждом блоке выбери лучший ответ, модели — в конце:\n{link()}")
+
+
 @router.message(Command("pulsecheck"))
 async def cmd_pulsecheck(message: Message):
     """Пускает ли pulse.mirea.ru сервер бота (pulse_check.py) — только староста."""
