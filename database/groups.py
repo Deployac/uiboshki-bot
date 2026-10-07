@@ -1,8 +1,17 @@
 """Группы института (этап 1): группа человека, справочник групп, подписки."""
 
+from contextvars import ContextVar
+
 import aiosqlite
 
 from database._conn import connect
+
+# Группа того, чей запрос сейчас обрабатывается (WebApp — get_current_user,
+# бот — GroupContextMiddleware). Функции базы без явного group_id берут её:
+# так «Файлы», «ДЗ», заметки и контекст ИИ у человека из другой группы — его
+# группы, без протаскивания group_id через каждый вызов. Нет запроса
+# (рассылки, синк) — своя группа бота.
+current_group: ContextVar[int | None] = ContextVar("current_group", default=None)
 
 
 async def upsert_group(group_id: int, name: str, own: bool = False):
@@ -60,3 +69,81 @@ async def set_subscription_until(user_id: int, until: str | None, source: str = 
                 "ON CONFLICT(user_id) DO UPDATE SET until = excluded.until, source = excluded.source",
                 (user_id, until, source))
         await db.commit()
+
+
+# ── Видимость общих данных по группе (этап 1 (б)) ────────────────────────────
+# Строки общих таблиц с group_id NULL — своей группы (всё, что было до этапа
+# 1). Чужая группа видит только свои строки; копия бота на одну группу
+# (HOME_GROUP_ID = 0) — всё, как раньше.
+
+def home() -> int:
+    from config import HOME_GROUP_ID
+    return HOME_GROUP_ID
+
+
+def scope_sql(alias: str = "") -> str:
+    """Условие «строка этой группы» с одним параметром — группой зрителя."""
+    col = f"{alias}." if alias else ""
+    return f"COALESCE({col}group_id, {int(home())}) = ?"
+
+
+def file_scope_sql(alias: str = "f") -> str:
+    """Файл виден группе: свой или общий с ней (file_groups) — два параметра."""
+    return (f"(COALESCE({alias}.group_id, {int(home())}) = ? OR EXISTS "
+            f"(SELECT 1 FROM file_groups fg WHERE fg.file_id = {alias}.id AND fg.group_id = ?))")
+
+
+async def viewer_group(user_id: int | None) -> int:
+    """Группа, чьи общие данные видит человек. Не выбрал (только что пришёл —
+    приложение и бот тут же спрашивают группу) — своя, как было до этапа 1."""
+    if not home():
+        return 0
+    gid = await get_user_group(user_id) if user_id else None
+    return gid or home()
+
+
+async def add_group_admin(group_id: int, user_id: int, added_by: int):
+    async with connect() as db:
+        await db.execute("INSERT OR IGNORE INTO group_admins (group_id, user_id, added_by) VALUES (?, ?, ?)",
+                         (group_id, user_id, added_by))
+        await db.commit()
+
+
+async def remove_group_admin(group_id: int, user_id: int):
+    async with connect() as db:
+        await db.execute("DELETE FROM group_admins WHERE group_id = ? AND user_id = ?", (group_id, user_id))
+        await db.commit()
+
+
+async def get_group_admins(group_id: int) -> list[int]:
+    async with connect() as db:
+        rows = await (await db.execute("SELECT user_id FROM group_admins WHERE group_id = ?", (group_id,))).fetchall()
+        return [r[0] for r in rows]
+
+
+async def is_group_admin(user_id: int, group_id: int) -> bool:
+    async with connect() as db:
+        row = await (await db.execute("SELECT 1 FROM group_admins WHERE group_id = ? AND user_id = ?",
+                                      (group_id, user_id))).fetchone()
+        return row is not None
+
+
+def g_or_home(group_id: int | None) -> int:
+    """Группа для запроса: явная; иначе — того, чей запрос (current_group);
+    иначе своя (рассылки и синк своей группы)."""
+    if group_id is not None:
+        return group_id
+    cur = current_group.get()
+    return home() if cur is None else cur
+
+
+async def enter(user_id: int) -> int:
+    """Запомнить группу человека на время его запроса."""
+    gid = await viewer_group(user_id)
+    current_group.set(gid)
+    return gid
+
+
+def stored(group_id: int | None) -> int | None:
+    """Что писать в group_id: своя — NULL (как всё до этапа 1), чужая — id."""
+    return None if group_id in (None, home()) else group_id

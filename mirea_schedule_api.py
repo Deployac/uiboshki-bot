@@ -166,6 +166,8 @@ async def fetch_ical(target_id: int, target_type: int) -> bytes | None:
             _ical_cache[key] = (time.monotonic(), data)
     if key not in _ical_cache:
         _ical_locks.pop(key, None)          # сбой — замок не копим (id с сайта бывают любые)
+    if data is None and hit:
+        return hit[1]                       # зеркало лежит — последний удачный календарь
     return data
 
 

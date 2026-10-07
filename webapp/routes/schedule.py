@@ -66,32 +66,37 @@ def _card_response(data: bytes, thumb: int) -> Response:
 
 # ── Расписание ───────────────────────────────────────────────────────────────
 
+async def _user_gid(user: dict) -> int | None:
+    from database import get_user_group
+    return await get_user_group(user["id"])
+
+
 @router.get("/api/schedule/today")
 async def api_schedule_today(user: dict = CurrentUser):
     from schedule_parser import get_today_schedule
     from handlers.schedule import _notes_block
     from utils import today_msk
-    html = await get_today_schedule()
-    html += await _notes_block(today_msk().isoformat())
+    html = await get_today_schedule(await _user_gid(user))
+    html += await _notes_block(today_msk().isoformat(), await _user_gid(user))
     return {"html": html}
 
 
 @router.get("/api/schedule/tomorrow")
 async def api_schedule_tomorrow(user: dict = CurrentUser):
     from schedule_parser import get_tomorrow_schedule
-    return {"html": await get_tomorrow_schedule()}
+    return {"html": await get_tomorrow_schedule(await _user_gid(user))}
 
 
 @router.get("/api/schedule/week")
 async def api_schedule_week(user: dict = CurrentUser):
     from schedule_parser import get_week_schedule
-    return {"html": await get_week_schedule()}
+    return {"html": await get_week_schedule(await _user_gid(user))}
 
 
 @router.get("/api/schedule/next")
 async def api_schedule_next(user: dict = CurrentUser):
     from schedule_parser import get_next_lesson
-    return {"html": await get_next_lesson()}
+    return {"html": await get_next_lesson(await _user_gid(user))}
 
 
 # ── Главная WebApp: структурой, а не готовым HTML ───────────────────────────
@@ -115,7 +120,7 @@ async def api_today(user: dict = CurrentUser):
     from database import get_active_deadlines, get_lesson_notes
     from handlers.schedule import _clip
     from handlers.weather import get_weather_for_morning
-    from schedule_parser import fetch_schedule_raw, lessons_for_date
+    from schedule_parser import lessons_for_date, raw_for_user
     from utils import TZ
 
     # погода (кэш 20 мин, а без него — внешний запрос) — параллельно с расписанием
@@ -124,7 +129,7 @@ async def api_today(user: dict = CurrentUser):
     today = now.date()
     lessons, tomorrow_first, schedule_ok, campus = [], None, True, ""
     try:
-        raw = await fetch_schedule_raw()
+        raw = await raw_for_user(user["id"])
         lessons = lessons_for_date(raw, today, now=now)
         tomorrow = lessons_for_date(raw, today + timedelta(days=1))
         tomorrow_first = tomorrow[0] if tomorrow else None
@@ -147,11 +152,12 @@ async def api_today(user: dict = CurrentUser):
         days = (date_cls.fromisoformat(d["due_date"]) - today).days
         soon.append({"id": d["id"], "subject": d["subject"], "due_date": d["due_date"],
                      "due_time": d.get("due_time") or "", "days": days})
-    notes = await get_lesson_notes(today.isoformat())
+    from database.groups import viewer_group
+    notes = await get_lesson_notes(today.isoformat(), await viewer_group(user["id"]))
     return {
         **_day_label(today), "now": now.isoformat(), "hour": now.hour,
         "lessons": lessons, "tomorrow_first": tomorrow_first, "schedule_ok": schedule_ok,
-        "weather": weather, "campus": campus, "stale": _stale_label(),
+        "weather": weather, "campus": campus, "stale": await _stale_for(user["id"]),
         "deadlines": {"active": len(items), "soon": soon},
         "notes": [{"subject": n.get("subject") or "", "text": _clip(n["text"])} for n in notes],
     }
@@ -160,6 +166,14 @@ async def api_today(user: dict = CurrentUser):
 def _stale_label() -> str | None:
     from schedule_parser import stale_label
     return stale_label()
+
+
+async def _stale_for(user_id: int) -> str | None:
+    """«Данные от 14:20» — только у своей группы (у неё запасная копия в базе)."""
+    import groups
+    from database import get_user_group
+    gid = await get_user_group(user_id)
+    return None if gid and gid != groups.home_id() else _stale_label()
 
 
 class OptionalAnswer(BaseModel):
@@ -192,14 +206,14 @@ async def api_optional_set(body: OptionalAnswer, user: dict = CurrentUser):
 async def api_day(date: str, user: dict = CurrentUser):
     """Пары любого дня (для выбора дня недели на главной)."""
     from datetime import date as date_cls, datetime
-    from schedule_parser import fetch_schedule_raw, lessons_for_date
+    from schedule_parser import lessons_for_date, raw_for_user
     from utils import TZ
     try:
         d = date_cls.fromisoformat(date)
     except ValueError:
         raise HTTPException(status_code=400, detail="дата в формате ГГГГ-ММ-ДД")
     try:
-        raw = await fetch_schedule_raw()
+        raw = await raw_for_user(user["id"])
     except Exception:
         raise HTTPException(status_code=502, detail="расписание сейчас недоступно")
     now = datetime.now(TZ)
@@ -210,13 +224,13 @@ async def api_day(date: str, user: dict = CurrentUser):
 async def api_week(start: str, user: dict = CurrentUser):
     """Номер учебной недели и точки пар под днями (пн–сб от start)."""
     from datetime import date as date_cls
-    from schedule_parser import fetch_schedule_raw, week_overview
+    from schedule_parser import raw_for_user, week_overview
     try:
         monday = date_cls.fromisoformat(start)
     except ValueError:
         raise HTTPException(status_code=400, detail="дата в формате ГГГГ-ММ-ДД")
     try:
-        raw = await fetch_schedule_raw()
+        raw = await raw_for_user(user["id"])
     except Exception:
         raise HTTPException(status_code=502, detail="расписание сейчас недоступно")
     return week_overview(raw, monday)
@@ -342,6 +356,7 @@ async def api_unpin(target_type: int, target_id: int, user: dict = CurrentUser):
 async def api_notes(date: str = "", user: dict = CurrentUser):
     from database import get_lesson_notes
     from utils import today_msk
+    from database.groups import viewer_group
     date_str = date or today_msk().isoformat()
-    items = await get_lesson_notes(date_str)
+    items = await get_lesson_notes(date_str, await viewer_group(user["id"]))
     return {"date": date_str, "items": items}

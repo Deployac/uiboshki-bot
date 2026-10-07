@@ -69,3 +69,65 @@ async def group_chosen(callback: CallbackQuery, state: FSMContext):
     if g["own"]:
         from handlers.start import ask_optional
         await ask_optional(callback.message, callback.from_user.id)
+
+
+# ── Старосты групп (этап 1 (б)): общие дедлайны, ДЗ и заметки группы правят
+# старосты бота и старосты своей группы (group_admins). Стать старостой —
+# по запросу: «Я староста» → владельцу бота кнопки «Одобрить / Отклонить».
+
+async def request_admin(bot, user, group: dict) -> str:
+    """Запрос «я староста группы» владельцу бота. → текст ответа человеку."""
+    from config import STAROSTA_ID
+    from database import is_group_admin
+    if await is_group_admin(user.id, group["id"]):
+        return f"Ты уже староста группы {group['name']}."
+    if not STAROSTA_ID:
+        return "Некому одобрить — у бота не задан владелец."
+    name = esc(user.full_name or "") + (f" (@{esc(user.username)})" if getattr(user, "username", None) else "")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Одобрить", callback_data=f"gadm:ok:{group['id']}:{user.id}"),
+        InlineKeyboardButton(text="Отклонить", callback_data=f"gadm:no:{group['id']}:{user.id}"),
+    ]])
+    await bot.send_message(STAROSTA_ID, f"🎓 <a href=\"tg://user?id={user.id}\">{name}</a> пишет, что он староста "
+                                        f"группы <b>{esc(group['name'])}</b>.", parse_mode="HTML", reply_markup=kb)
+    return "Отправил запрос владельцу бота — как одобрит, бот напишет."
+
+
+@router.message(Command("iamstarosta"))
+async def cmd_iam_starosta(message: Message):
+    import groups
+    g = await groups.of_user(message.from_user.id)
+    if not g:
+        await message.answer("Сначала выбери группу — /group")
+        return
+    if g["own"]:
+        await message.answer("В этой группе старосту назначает владелец бота.")
+        return
+    await message.answer(await request_admin(message.bot, message.from_user, g))
+
+
+@router.callback_query(F.data.startswith("gadm:"))
+async def admin_decision(callback: CallbackQuery):
+    from config import is_starosta
+    from database import add_group_admin
+    import groups
+    if not is_starosta(callback.from_user.id):
+        await callback.answer("Только владелец бота", show_alert=True)
+        return
+    _, verdict, gid, uid = callback.data.split(":")
+    name = await groups.name_of(int(gid))
+    if verdict == "ok":
+        await add_group_admin(int(gid), int(uid), callback.from_user.id)
+        note = f"Теперь ты староста группы <b>{esc(name)}</b>: можешь добавлять общие дедлайны (/add), ДЗ (/addhw) и заметки к парам для всей группы."
+    else:
+        note = f"Запрос «староста группы {esc(name)}» отклонён."
+    try:
+        await callback.bot.send_message(int(uid), note, parse_mode="HTML")
+    except Exception:
+        pass
+    await callback.answer("Готово")
+    try:
+        await callback.message.edit_text(callback.message.html_text + ("\n\n✅ Одобрено" if verdict == "ok" else "\n\n✖️ Отклонено"),
+                                         parse_mode="HTML")
+    except Exception:
+        pass

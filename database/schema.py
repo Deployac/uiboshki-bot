@@ -80,6 +80,30 @@ async def init_db():
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Общие данные — по группам (этап 1 (б)): NULL — своя группа (всё,
+        # что было до этапа 1). Старосты чужих групп — group_admins.
+        for table in ("deadlines", "files", "lesson_notes"):
+            try:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN group_id INTEGER")
+            except Exception:
+                pass  # колонка уже есть (или таблица создаётся ниже — тогда добавит второй заход)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS group_admins (
+                group_id   INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                added_by   INTEGER,
+                added_at   TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (group_id, user_id)
+            )
+        """)
+        # Файл, общий для нескольких групп (один курс СДО у потока, этап 1 (в))
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS file_groups (
+                file_id  INTEGER NOT NULL,
+                group_id INTEGER NOT NULL,
+                PRIMARY KEY (file_id, group_id)
+            )
+        """)
         # Подписка (ИИ сверх базы): до какой даты; source — откуда (вручную
         # старостой, оплата — потом)
         await db.execute("""
@@ -401,4 +425,9 @@ async def init_db():
             import logging
             logging.getLogger(__name__).warning(f"FTS5 недоступен, поиск по файлам работать не будет: {e}")
 
+        for table in ("deadlines", "files", "lesson_notes"):
+            try:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN group_id INTEGER")
+            except Exception:
+                pass  # уже есть
         await db.commit()

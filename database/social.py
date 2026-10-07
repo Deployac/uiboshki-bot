@@ -142,21 +142,24 @@ async def get_feed_reaction_counts(post_id: int) -> dict:
 
 # ── Заметки на день/пару ─────────────────────────────────────────────────────
 
-async def add_lesson_note(date_str: str, subject: str, text: str, created_by: int) -> int:
+async def add_lesson_note(date_str: str, subject: str, text: str, created_by: int,
+                          group_id: int | None = None) -> int:
+    from database.groups import stored
     async with connect() as db:
         cursor = await db.execute("""
-            INSERT INTO lesson_notes (date, subject, text, created_by) VALUES (?, ?, ?, ?)
-        """, (date_str, subject, text, created_by))
+            INSERT INTO lesson_notes (date, subject, text, created_by, group_id) VALUES (?, ?, ?, ?, ?)
+        """, (date_str, subject, text, created_by, stored(group_id)))
         await db.commit()
         return cursor.lastrowid
 
 
-async def get_lesson_notes(date_str: str) -> list[dict]:
+async def get_lesson_notes(date_str: str, group_id: int | None = None) -> list[dict]:
+    from database.groups import g_or_home, scope_sql
     async with connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("""
-            SELECT * FROM lesson_notes WHERE date=? ORDER BY created_at
-        """, (date_str,))
+        cursor = await db.execute(f"""
+            SELECT * FROM lesson_notes WHERE date=? AND {scope_sql()} ORDER BY created_at
+        """, (date_str, g_or_home(group_id)))
         return [dict(r) for r in await cursor.fetchall()]
 
 

@@ -39,10 +39,16 @@ class HWAdd(StatesGroup):
     lesson_date = State()
 
 
+async def _g(user_id: int) -> int:
+    """Группа человека — доска ДЗ у каждой своя (этап 1 (б))."""
+    from database.groups import viewer_group
+    return await viewer_group(user_id)
+
+
 @router.message(Command("hw"))
 async def cmd_hw(message: Message):
     await init_hw_table()
-    subjects = await get_hw_subjects()
+    subjects = await get_hw_subjects(await _g(message.from_user.id))
     if not subjects:
         can_edit = await is_editor(message.from_user.id)
         text = "📝 <b>Доска ДЗ</b>\n\nПока пусто."
@@ -86,12 +92,12 @@ def _subject_view(subject: str, items: list[dict], can_edit: bool) -> tuple[str,
 @router.callback_query(F.data.startswith("hw:"))
 async def hw_subject(callback: CallbackQuery):
     idx = int(callback.data.split(":")[1])
-    subjects = await get_hw_subjects()
+    subjects = await get_hw_subjects(await _g(callback.from_user.id))
     if idx >= len(subjects):
         await callback.answer("Ошибка")
         return
     subject = subjects[idx]
-    items = await get_hw_by_subject(subject)
+    items = await get_hw_by_subject(subject, await _g(callback.from_user.id))
 
     text, kb = _subject_view(subject, items, await is_editor(callback.from_user.id))
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -112,32 +118,34 @@ async def hw_subject(callback: CallbackQuery):
 
 @router.callback_query(F.data == "hw_back")
 async def hw_back(callback: CallbackQuery):
-    text, kb = _board_view(await get_hw_subjects())
+    text, kb = _board_view(await get_hw_subjects(await _g(callback.from_user.id)))
     await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
 
 
 @router.callback_query(F.data.startswith("hwdel:"))
 async def hw_del_last(callback: CallbackQuery):
-    if not await is_editor(callback.from_user.id):
-        await callback.answer("Нет прав")
-        return
     key = callback.data.split(":", 1)[1]
     item = await get_hw(int(key)) if key.isdigit() else None
     if not item:
         # Старая кнопка (уже удалено или сообщение до обновления) — ничего не трогаем
         await callback.answer("Уже удалено")
         return
+    from database.groups import g_or_home
+    if not await is_editor(callback.from_user.id, g_or_home(item.get("group_id"))):
+        await callback.answer("Нет прав")
+        return
     await delete_hw(item["id"])
     await callback.answer("✅ Удалено!")
     # Перерисовываем: иначе кнопка оставалась прежней, и повторное нажатие
     # удаляло ещё одно ДЗ.
     subject = item["subject"]
-    items = await get_hw_by_subject(subject)
+    gid = await _g(callback.from_user.id)
+    items = await get_hw_by_subject(subject, gid)
     if items:
         text, kb = _subject_view(subject, items, True)
     else:
-        text, kb = _board_view(await get_hw_subjects())
+        text, kb = _board_view(await get_hw_subjects(gid))
     try:
         await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     except Exception as e:
@@ -203,7 +211,7 @@ async def hw_lesson_date_input(message: Message, state: FSMContext):
     await state.clear()
 
     await add_hw(data["subject"], data["content"], data["file_id"], data["file_type"],
-                 message.from_user.id, lesson_date)
+                 message.from_user.id, lesson_date, group_id=await _g(message.from_user.id))
     date_note = ""
     if lesson_date:
         from datetime import date as date_cls

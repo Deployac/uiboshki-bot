@@ -33,6 +33,8 @@ async def get_current_user(request: Request, x_telegram_init_data: str = Header(
     await upsert_user(user["id"], user.get("username", ""), full_name)
     from optional_subjects import apply_for
     await apply_for(user["id"])   # пары предметов по выбору, на которые не ходит — скрыть
+    from database.groups import enter
+    await enter(user["id"])       # его группа — для файлов, ДЗ, заметок, контекста ИИ (этап 1 (б))
     import stats                  # «кто, что, когда» для /stats старосты (без содержимого)
     await stats.track(user["id"], stats.kind_for(request.method, request.url.path))
     return user

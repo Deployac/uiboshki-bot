@@ -139,7 +139,24 @@ def _start_refresh() -> asyncio.Task:
     return _inflight
 
 
-async def fetch_schedule_raw(force: bool = False) -> bytes:
+def _other_group(group_id: int | None) -> bool:
+    """Чужая группа (этап 1: любая группа института) — не своя из ICAL_URL."""
+    if not group_id:
+        return False
+    import groups
+    return group_id != groups.home_id()
+
+
+async def fetch_schedule_raw(force: bool = False, group_id: int | None = None) -> bytes:
+    """Календарь группы: своей (ICAL_URL) — с кэшем, запасной копией в базе и
+    single-flight ниже; другой — через общий кэш календарей МИРЭА
+    (mirea_schedule_api.fetch_ical, 10 минут, при сбое — последний удачный)."""
+    if _other_group(group_id):
+        from mirea_schedule_api import fetch_ical
+        raw = await fetch_ical(int(group_id), 1)
+        if raw is None:
+            raise RuntimeError("расписание группы не загрузилось")
+        return raw
     now = time.monotonic()
     if not force and _cache_data is not None:
         if now - _cache_time >= SCHEDULE_CACHE_TTL_SECONDS:
@@ -150,21 +167,28 @@ async def fetch_schedule_raw(force: bool = False) -> bytes:
     return await asyncio.shield(_start_refresh())
 
 
-async def get_today_schedule() -> str:
+async def _raw(group_id: int | None = None, force: bool = False) -> bytes:
+    """Календарь группы; своя — прежним вызовом (его подменяют тесты и он с кэшем)."""
+    if _other_group(group_id):
+        return await fetch_schedule_raw(force, group_id=group_id)
+    return await fetch_schedule_raw(force) if force else await fetch_schedule_raw()
+
+
+async def get_today_schedule(group_id: int | None = None) -> str:
     try:
-        raw   = await fetch_schedule_raw()
+        raw   = await _raw(group_id)
         now   = datetime.now(TZ)
-        return format_day(parse_events_for_date(raw, now.date()), now.date(), now=now) + stale_note()
+        return format_day(parse_events_for_date(raw, now.date()), now.date(), now=now) + ("" if _other_group(group_id) else stale_note())
     except Exception as e:
         logger.error(f"Ошибка расписания: {e}")
         return "⚠️ Не удалось загрузить расписание."
 
 
-async def get_tomorrow_schedule() -> str:
+async def get_tomorrow_schedule(group_id: int | None = None) -> str:
     try:
-        raw      = await fetch_schedule_raw()
+        raw      = await _raw(group_id)
         tomorrow = datetime.now(TZ).date() + timedelta(days=1)
-        return format_day(parse_events_for_date(raw, tomorrow), tomorrow) + stale_note()
+        return format_day(parse_events_for_date(raw, tomorrow), tomorrow) + ("" if _other_group(group_id) else stale_note())
     except Exception as e:
         logger.error(f"Ошибка расписания: {e}")
         return "⚠️ Не удалось загрузить расписание."
@@ -173,14 +197,14 @@ async def get_tomorrow_schedule() -> str:
 _subjects_cache: dict[tuple, list[str]] = {}
 
 
-async def get_group_subjects(days_back: int = 14, days_ahead: int = 28) -> list[str]:
+async def get_group_subjects(days_back: int = 14, days_ahead: int = 28, group_id: int | None = None) -> list[str]:
     """Настоящие названия предметов группы (без «ЛК/ПР») из её расписания —
     для кнопок выбора предмета при загрузке файлов и в решалке, чтобы файлы
     лекций и решалка говорили на одном языке, а не «Математика» против
     «Основы бизнес-анализа в ИТ-сфере». Пустой список, если расписание
     не загрузилось."""
     try:
-        raw = await fetch_schedule_raw()
+        raw = await _raw(group_id)
     except Exception as e:
         logger.warning(f"get_group_subjects: {e}")
         return []
@@ -231,9 +255,9 @@ def _format_week(raw: bytes, monday: date, label: str) -> str:
     return f"📆 <b>{label}</b> · {span}\n\n" + "\n\n".join(days)
 
 
-async def get_week_schedule() -> str:
+async def get_week_schedule(group_id: int | None = None) -> str:
     try:
-        raw   = await fetch_schedule_raw()
+        raw   = await _raw(group_id)
         today = datetime.now(TZ).date()
         monday = today - timedelta(days=today.weekday())
 
@@ -243,9 +267,15 @@ async def get_week_schedule() -> str:
         return "⚠️ Не удалось загрузить расписание."
 
 
-async def get_next_week_schedule() -> str:
+async def raw_for_user(user_id: int, force: bool = False) -> bytes:
+    """Календарь группы человека (его группа или своя, если ещё не выбрал)."""
+    from database import get_user_group
+    return await _raw(await get_user_group(user_id), force)
+
+
+async def get_next_week_schedule(group_id: int | None = None) -> str:
     try:
-        raw   = await fetch_schedule_raw()
+        raw   = await _raw(group_id)
         today = datetime.now(TZ).date()
         days_until_monday = (7 - today.weekday()) % 7 or 7
         next_monday = today + timedelta(days=days_until_monday)
@@ -262,9 +292,9 @@ def _pair_num(e: dict, pos: int) -> int:
     return PAIR_SLOTS.get((e.get("time") or "").split("–")[0], pos)
 
 
-async def get_next_lesson() -> str:
+async def get_next_lesson(group_id: int | None = None) -> str:
     try:
-        raw  = await fetch_schedule_raw()
+        raw  = await _raw(group_id)
         now  = datetime.now(TZ)
         today = now.date()
         events = parse_events_for_date(raw, today)
@@ -297,9 +327,9 @@ async def get_next_lesson() -> str:
         return "⚠️ Не удалось получить расписание."
 
 
-async def get_first_lesson_today() -> dict | None:
+async def get_first_lesson_today(group_id: int | None = None) -> dict | None:
     try:
-        raw    = await fetch_schedule_raw()
+        raw    = await _raw(group_id)
         today  = datetime.now(TZ).date()
         events = parse_events_for_date(raw, today)
         for e in events:

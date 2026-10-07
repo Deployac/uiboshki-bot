@@ -214,7 +214,8 @@ async def handle_action(callback: CallbackQuery):
     elif action == "nextweek":
         from schedule_parser import get_next_week_schedule
         wait = await callback.bot.send_message(uid, "⏳ Загружаю следующую неделю...")
-        text = await get_next_week_schedule()
+        from database import get_user_group
+        text = await get_next_week_schedule(await get_user_group(uid))
         await callback.bot.delete_message(uid, wait.message_id)
         for chunk in split_by_lines(text):
             await callback.bot.send_message(uid, chunk, parse_mode="HTML")

@@ -11,7 +11,7 @@ from database import init_db
 import health
 from handlers import register_handlers
 from scheduler import start_scheduler
-from middleware import MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
+from middleware import GroupContextMiddleware, MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 health.install()   # ошибки из логов за сутки — в /status у старосты
@@ -169,6 +169,7 @@ async def main():
     # проглатывалось как обычный текстовый ввод. См. middleware.py.
     dp.message.outer_middleware(MenuInterruptMiddleware())
     dp.update.outer_middleware(OptionalSubjectsMiddleware())
+    dp.update.outer_middleware(GroupContextMiddleware())
     dp.message.outer_middleware(StatsMiddleware())
     dp.error.register(notify_starosta_on_error)
 

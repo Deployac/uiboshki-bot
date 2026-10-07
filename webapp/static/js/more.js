@@ -668,7 +668,8 @@ function openGroup(force) {
   document.getElementById("group-sheet").classList.add("open");
   document.getElementById("group-body").innerHTML =
     '<h3>' + icon("users", "inl acc") + (myGroup ? " Твоя группа" : " Из какой ты группы?") + '</h3>' +
-    (myGroup ? '<p class="hint">Сейчас: <b>' + escapeHtml(myGroup.name) + '</b>. Сменить — найди другую.</p>'
+    (myGroup ? '<p class="hint">Сейчас: <b>' + escapeHtml(myGroup.name) + '</b>. Сменить — найди другую.' +
+               (myGroup.own ? '' : ' <a href="#" onclick="requestGroupAdmin(); return false">Я староста этой группы</a>') + '</p>'
              : '<p class="hint">Найди свою — покажу её расписание, дедлайны и файлы.</p>') +
     '<input class="searchbox" id="group-search" enterkeyhint="search" placeholder="Например: УИБО-03-24" autocomplete="off" oninput="groupInput()">' +
     '<div id="group-results"></div>';
@@ -703,5 +704,13 @@ async function pickGroup(id) {
     closeSheet("group-sheet");
     showToast("Твоя группа — " + res.group.name);
     if (changed) { todayData = null; loadToday(); }
+  } catch (e) { showToast(e.message); }
+}
+
+async function requestGroupAdmin() {
+  haptic();
+  try {
+    const res = await api("/api/me/group/admin", { method: "POST" });
+    showToast(res.message);
   } catch (e) { showToast(e.message); }
 }

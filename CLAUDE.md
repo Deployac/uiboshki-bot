@@ -343,6 +343,16 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
   зависит только ИИ: `ai_quota` (проба `AI_TRIAL_DAILY`/`AI_TRIAL_DAY_TOTAL`,
   конспекты `SUMMARY_WEEKLY` в неделю, подписка `AI_SUB_DAILY`). Ночные
   вопросы и решения — `docs/questions-morning.md`.
+  **Данные по группам (1 (б))**: расписание — `schedule_parser.raw_for_user`
+  / `fetch_schedule_raw(group_id=…)` (чужая — через `mirea_schedule_api.
+  fetch_ical`); общие дедлайны, ДЗ, заметки, файлы — колонка `group_id`
+  (NULL — своя группа, всё до этапа 1), видимость — `database/groups.py`
+  (`scope_sql`, `file_scope_sql`, `file_groups` — файл общий с группой).
+  Группа запроса — `database.groups.current_group` (ContextVar: WebApp —
+  `get_current_user`, бот — `GroupContextMiddleware`), функции базы без
+  явного `group_id` берут её, рассылки и синк — своя группа. Старосты групп
+  — `group_admins`, `is_editor(uid, group_id)`; стать — `/iamstarosta` или
+  «Я староста этой группы» в листе группы → владельцу «Одобрить/Отклонить».
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

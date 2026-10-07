@@ -52,14 +52,17 @@ def _event_uid(token: str, ev: dict) -> str:
     return f"{digest}@uiboshkibot"
 
 
-async def build_ics_for_user(token: str) -> bytes:
-    raw = await fetch_schedule_raw()
+async def build_ics_for_user(token: str, group_id: int | None = None) -> bytes:
+    import groups
+    other = bool(group_id) and group_id != groups.home_id()
+    raw = await (fetch_schedule_raw(group_id=group_id) if other else fetch_schedule_raw())
     events = list_upcoming_events(raw, days_ahead=DAYS_AHEAD)
 
     cal = Calendar()
     cal.add("prodid", "-//uiboshkibot//calendar//ru")
     cal.add("version", "2.0")
-    cal.add("x-wr-calname", f"{GROUP_NAME} — расписание")
+    name = (await groups.name_of(group_id)) if other else GROUP_NAME
+    cal.add("x-wr-calname", f"{name} — расписание")
     cal.add("method", "PUBLISH")
 
     hw_cache: dict[str, list[dict]] = {}
@@ -71,9 +74,9 @@ async def build_ics_for_user(token: str) -> bytes:
         date_str = ev["date"].isoformat()
 
         if date_str not in hw_cache:
-            hw_cache[date_str] = await get_hw_for_date(date_str)
+            hw_cache[date_str] = await get_hw_for_date(date_str, group_id)
         if date_str not in notes_cache:
-            notes_cache[date_str] = await get_lesson_notes(date_str)
+            notes_cache[date_str] = await get_lesson_notes(date_str, group_id)
 
         desc_lines = []
         if ev.get("teacher"):

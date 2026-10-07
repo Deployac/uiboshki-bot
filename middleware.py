@@ -80,6 +80,20 @@ class OptionalSubjectsMiddleware(BaseMiddleware):
         return await handler(event, data)
 
 
+class GroupContextMiddleware(BaseMiddleware):
+    """Группа человека на время его апдейта (database.groups.current_group):
+    файлы, ДЗ, заметки, контекст ИИ — его группы (этап 1 (б))."""
+    async def __call__(self, handler, event, data):
+        user = data.get("event_from_user")
+        if user:
+            from database.groups import enter
+            try:
+                await enter(user.id)
+            except Exception as e:
+                logger.warning(f"группа человека: {e}")
+        return await handler(event, data)
+
+
 class StatsMiddleware(BaseMiddleware):
     """Сообщение боту в личку — событие «чат с ботом» для /stats (stats.py)."""
     async def __call__(self, handler, event, data):
