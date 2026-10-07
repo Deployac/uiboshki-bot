@@ -99,6 +99,19 @@ async def alert_errors(bot):
             logging.getLogger(__name__).info(f"тревога об ошибках не ушла: {e}")
 
 
+async def _idle_timeout() -> str:
+    """Срок жизни сессии СДО без обращений (core_session_time_remaining): «2 ч», «1 ч 30 мин»."""
+    from database import get_setting
+    try:
+        sec = int(await get_setting("sdo:idle_timeout") or 0)
+    except ValueError:
+        return ""
+    if sec <= 0:
+        return ""
+    h, m = divmod(round(sec / 60), 60)
+    return " ".join(x for x in (f"{h} ч" if h else "", f"{m} мин" if m else "") if x) or "меньше минуты"
+
+
 async def note(key: str, ok: bool, detail: str = ""):
     """Запомнить, чем кончилась проверка (sdo_sync, sdo_cookie, backup)."""
     try:
@@ -166,6 +179,8 @@ async def report() -> str:
         lines.append("⚠️ Кука СДО не задана (SDO_SESSION_COOKIE) — синк дедлайнов выключен")
     else:
         lines.append(_line(await _get("sdo_cookie"), "Кука жива", now, "ещё не проверялась после запуска"))
+        if idle := await _idle_timeout():
+            lines.append(f"Сессия СДО без запросов живёт {idle} (бот заходит раз в 55 мин)")
         lines.append(_line(await _get("sdo_sync"), "Синк дедлайнов", now, "ещё не было"))
     ok, expired = len(await get_sdo_sessions("ok")), len(await get_sdo_sessions("expired"))
     lines.append(f"Входы студентов: {ok} работают" + (f" · {expired} устарели" if expired else ""))

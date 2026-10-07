@@ -266,6 +266,10 @@ async def sdo_keepalive():
         return
     ok = await keepalive()
     await health.note("sdo_cookie", ok, "" if ok else "СДО не пустил — возможно, кука протухла")
+    import sdo_parser
+    if ok and sdo_parser.IDLE_TIMEOUT:
+        from database import set_setting
+        await set_setting("sdo:idle_timeout", str(sdo_parser.IDLE_TIMEOUT))
 
 
 async def sync_sdo_deadlines(bot: Bot):

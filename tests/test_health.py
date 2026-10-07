@@ -127,3 +127,32 @@ async def test_report_no_spare_no_resting_line(db, monkeypatch):
     monkeypatch.setattr(gemini_solver, "_primary_rest_until", time.monotonic() + 600)
     assert gemini_solver.rest_status()[0] == 0
     assert "упёрлась в лимит" not in await health.report()
+
+
+@pytest.mark.asyncio
+async def test_status_shows_sdo_idle_timeout(db, monkeypatch):
+    """Срок жизни сессии СДО без запросов (core_session_time_remaining) — в /status."""
+    import health
+    from database import set_setting
+    await set_setting("sdo:idle_timeout", "5400")
+    assert await health._idle_timeout() == "1 ч 30 мин"
+    await set_setting("sdo:idle_timeout", "7200")
+    assert await health._idle_timeout() == "2 ч"
+
+
+@pytest.mark.asyncio
+async def test_keepalive_learns_idle_timeout(monkeypatch):
+    import httpx
+    import sdo_parser
+
+    def moodle(request):
+        if "service.php" in str(request.url):
+            assert "core_session_time_remaining" in str(request.url)
+            return httpx.Response(200, json=[{"error": False, "data": {"userid": 1, "timeremaining": 7140}}])
+        return httpx.Response(200, text='<script>M.cfg = {"sesskey":"abc"}</script>')
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: real(*a, transport=httpx.MockTransport(moodle), **kw))
+    monkeypatch.setattr(sdo_parser, "SDO_SESSION_COOKIE", "x" * 26)
+    monkeypatch.setattr(sdo_parser, "IDLE_TIMEOUT", None)
+    assert await sdo_parser.keepalive() and sdo_parser.IDLE_TIMEOUT == 7140

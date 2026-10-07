@@ -151,3 +151,48 @@ def test_teacher_feedback_comment():
     p = sdo_grades.parse_task_page(html)
     assert p["feedback"] == "Хорошо, но SWOT\nбез выводов."
     assert sdo_grades.parse_assign_page("<table><tr><th>Оценка</th><td>-</td></tr></table>")["feedback"] == ""
+
+
+QUIZ_DONE = ('<div id="region-main"><h2>Тест</h2><div class="quizinfo"><p>Разрешено попыток: 1</p>'
+             '<p>Ограничение по времени: 30 мин.</p><p>Проходная оценка: 10,00 из 30,00</p></div>'
+             '<h3>Ваши попытки</h3><div class="card"><h4 class="card-title">Попытка 1</h4><table class="quizreviewsummary">'
+             '<tr><th>Состояние</th><td>Завершены</td></tr><tr><th>Завершен</th><td>суббота, 3 октября 2026, 16:57</td></tr>'
+             '<tr><th>Оценка</th><td>30,00 из 30,00 ( 100 %)</td></tr></table></div>'
+             '<div id="feedback"><h3>Ваша итоговая оценка за этот тест: 30,00/30,00</h3></div>'
+             '<div class="quizattempt"><p>У Вас больше нет попыток</p></div></div>')
+QUIZ_OPEN = ('<div id="region-main"><div class="quizinfo"><p>Разрешено попыток: 3</p><p>Проходная оценка: 1,00 из 3,00</p></div>'
+             '<div class="quizstartbuttondiv"><button>Попытка теста</button></div></div>')
+
+
+def test_quiz_page_attempts_best_and_open():
+    """Экран теста (разведка СДО 07.10): попытки, лучший результат, проходная, открыт ли."""
+    done = sdo_grades.parse_quiz_page(QUIZ_DONE)
+    assert done["attempts_allowed"] == 1 and len(done["attempts"]) == 1 and done["no_more"]
+    assert done["best"] == "30,00/30,00" and done["pass_text"] == "10,00 из 30,00" and not done["open_now"]
+    assert done["attempts"][0]["grade"].startswith("30,00 из 30,00")
+    opened = sdo_grades.parse_quiz_page(QUIZ_OPEN)
+    assert opened["open_now"] and opened["attempts"] == [] and opened["attempts_allowed"] == 3
+
+
+@pytest.mark.asyncio
+async def test_webapp_quiz_screen(db, monkeypatch):
+    from fastapi.testclient import TestClient
+    import sdo_accounts
+    import webapp.server as server
+    from tests.test_sdo_submit import COOKIE
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    seen = []
+
+    def moodle(request):
+        seen.append(str(request.url))
+        return httpx.Response(200, text=QUIZ_DONE)
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: real(*a, transport=httpx.MockTransport(moodle), **kw))
+    await db.save_sdo_session(222, sdo_accounts.encrypt(COOKIE))
+    c, h = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+    t = c.get("/api/sdo/task/77?module=quiz", headers=h).json()
+    assert t["quiz"] and t["best"] == "30,00/30,00" and not t["can_submit"] and t["time_limit"] == 30
+    assert any("/mod/quiz/view.php?id=77" in u for u in seen)
+    assert c.get("/api/sdo/task/77?module=forum", headers=h).status_code == 400

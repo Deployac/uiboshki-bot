@@ -321,15 +321,17 @@ def _sdl_parse(token: str) -> tuple[int, str] | None:
 
 
 @router.get("/api/sdo/task/{cmid}")
-async def api_sdo_task(cmid: int, request: Request, user: dict = CurrentUser):
+async def api_sdo_task(cmid: int, request: Request, module: str = "assign", user: dict = CurrentUser):
     import time
     from urllib.parse import quote, urlparse
     import sdo_grades
     from database import set_sdo_status
     from sdo_parser import SdoSessionExpired
+    if module not in ("assign", "quiz"):
+        raise HTTPException(status_code=400, detail="неизвестный тип работы")
     cookie = await _sdo_cookie(user["id"])
     try:
-        task = await sdo_grades.task_detail(cookie, cmid)
+        task = await sdo_grades.task_detail(cookie, cmid, module)
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
         raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
