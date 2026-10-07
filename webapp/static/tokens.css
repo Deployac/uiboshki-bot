@@ -1,0 +1,54 @@
+/* Собрано из design/tokens.json — tools/tokens.py; руками не править. */
+[data-app-theme="depth"] {
+  --t-bg: #141823;
+  --t-bg-glow-1: #2a3060;
+  --t-bg-glow-2: #1b3a3c;
+  --t-card: #FFFFFF13;
+  --t-card-solid: #1F2331;
+  --t-line: #FFFFFF1A;
+  --t-text: #F3F4F8;
+  --t-muted: #9AA0B2;
+  --t-accent: #9FA6FF;
+  --t-on-accent: #141823;
+  --t-ok: #2FBF71;
+  --t-warn: #F5A524;
+  --t-danger: #FF6B6B;
+  --t-tabbar: #202434CC;
+}
+[data-app-theme="notebook"] {
+  --t-bg: #E9E3D8;
+  --t-bg-glow-1: #EBE4D8;
+  --t-bg-glow-2: #E4DDD0;
+  --t-card: #F3EEE5;
+  --t-card-solid: #F3EEE5;
+  --t-line: #DBD3C4;
+  --t-text: #2A2721;
+  --t-muted: #7D776B;
+  --t-accent: #B75438;
+  --t-on-accent: #FFFFFF;
+  --t-ok: #5C8A4E;
+  --t-warn: #C98A1B;
+  --t-danger: #C4473A;
+  --t-tabbar: #F3EEE5DB;
+}
+:root {
+  --t-subject-0: #8B7CF6;
+  --t-subject-1: #F5A524;
+  --t-subject-2: #2EC4B6;
+  --t-subject-3: #FF6B6B;
+  --t-subject-4: #4F8CFF;
+  --t-subject-5: #E86FB0;
+  --t-subject-6: #7BC67E;
+  --t-subject-7: #F2994A;
+  --t-radius-card: 26px;
+  --t-radius-tile: 20px;
+  --t-radius-chip: 14px;
+  --t-radius-tabbar: 32px;
+  --t-radius-pill: 999px;
+  --t-space-xs: 4px;
+  --t-space-s: 8px;
+  --t-space-m: 12px;
+  --t-space-l: 18px;
+  --t-space-xl: 24px;
+  --t-space-xxl: 32px;
+}

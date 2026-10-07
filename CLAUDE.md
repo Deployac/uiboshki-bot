@@ -391,6 +391,10 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
   `webpush.py` без внешних библиотек (RFC 8291 aes128gcm + VAPID на
   `cryptography`), ключ VAPID — `VAPID_PRIVATE_KEY` или производный от
   `BOT_TOKEN`. Пуши своего приложения (FCM/APNs/RuStore) — сюда же.
+  **Дизайн-токены (2 (д))**: `design/tokens.json` — темы «Глубина» и
+  «Тетрадь», цвета предметов, шрифты («Книжный»/«Строгий»), размеры,
+  радиусы, отступы, движение, вибрация; `python tools/tokens.py` собирает
+  `webapp/static/tokens.css` (тест следит) и Dart-константы для `app/`.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).
