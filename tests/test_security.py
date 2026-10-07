@@ -53,6 +53,8 @@ async def test_ai_daily_limit_switch(db, monkeypatch):
     day = [date(2026, 10, 6)]
     monkeypatch.setattr("utils.today_msk", lambda: day[0])
     monkeypatch.setattr(ratelimit, "allow", lambda action, uid: True)      # минутный — не о том
+    await db.upsert_user(555, "u", "U")
+    await db.set_user_group(555, config.HOME_GROUP_ID)                     # своя группа — тариф own
     for _ in range(5):
         assert await ai_quota.gate(555) is None                            # по умолчанию выключен
     assert (await ai_quota.today())[555] == 5

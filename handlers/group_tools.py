@@ -84,6 +84,29 @@ async def cmd_aitest(message: Message):
     await message.answer(f"{summary}\n\nОткрой и в каждом блоке выбери лучший ответ, модели — в конце:\n{link()}")
 
 
+@router.message(Command("sub"))
+async def cmd_sub(message: Message):
+    """/sub <id> <дней> — выдать подписку вручную (0 дней — снять); без
+    аргументов — тариф и группа своего аккаунта. Только староста (plans.py)."""
+    if STAROSTA_ID and not is_starosta(message.from_user.id):
+        return
+    from datetime import timedelta
+    import groups
+    import plans
+    from database import set_subscription_until
+    from utils import today_msk
+    args = (message.text or "").split()[1:]
+    if len(args) != 2 or not all(a.lstrip("-").isdigit() for a in args):
+        g = await groups.of_user(message.from_user.id)
+        await message.answer(f"Тариф: {plans.NAMES[await plans.plan_of(message.from_user.id)]}, группа: "
+                             f"{g['name'] if g else 'не выбрана'}.\n/sub <id> <дней> — выдать подписку, 0 — снять.")
+        return
+    uid, days = int(args[0]), int(args[1])
+    until = (today_msk() + timedelta(days=days)).isoformat() if days > 0 else None
+    await set_subscription_until(uid, until)
+    await message.answer(f"Подписка {uid}: " + (f"до {until}" if until else "снята"))
+
+
 @router.message(Command("pulsecheck"))
 async def cmd_pulsecheck(message: Message):
     """Пускает ли pulse.mirea.ru сервер бота (pulse_check.py) — только староста."""

@@ -62,6 +62,34 @@ async def init_db():
             await db.execute("ALTER TABLE users ADD COLUMN notify TEXT")
         except Exception:
             pass  # колонка уже есть
+        # Группа человека (этап 1: любая группа института) — id на зеркале
+        # расписания МИРЭА. Колонка новая — всех, кто уже есть, записываем в
+        # свою группу (до этого бот был только для неё); новые выбирают сами.
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN group_id INTEGER")
+            from config import HOME_GROUP_ID
+            if HOME_GROUP_ID:
+                await db.execute("UPDATE users SET group_id = ?", (HOME_GROUP_ID,))
+        except Exception:
+            pass  # колонка уже есть
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS groups (
+                id         INTEGER PRIMARY KEY,
+                name       TEXT NOT NULL,
+                own        INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # Подписка (ИИ сверх базы): до какой даты; source — откуда (вручную
+        # старостой, оплата — потом)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                user_id    INTEGER PRIMARY KEY,
+                until      TEXT NOT NULL,
+                source     TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
         try:
             await db.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
         except Exception:

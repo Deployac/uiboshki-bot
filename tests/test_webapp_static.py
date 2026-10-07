@@ -498,13 +498,13 @@ def _more_menu():
 
 
 def test_more_menu_tiles_with_actions():
-    # 11 плиток: прежние 6 + ДЗ, «Что нового», «Канал бота», «Написать нам», «Позвать»
+    # 12 плиток: прежние 6 + ДЗ, «Что нового», «Канал бота», «Написать нам», «Группа», «Позвать»
     menu = _more_menu()
     labels = re.findall(r'<span class="lbl">([^<]+)</span>', menu)
     assert labels == ["Файлы", "Дедлайны", "ДЗ", "Календарь", "Уведомления", "Безопасность",
-                      "Ярлык", "Что нового", "Канал бота", "Написать нам", "Позвать"]
+                      "Ярлык", "Что нового", "Канал бота", "Написать нам", "Группа", "Позвать"]
     for call in ("openHomework()", "showWhatsNew()", "openConfigLink(CHANNEL_URL)", "openConfigLink(CONTACT_URL)",
-                 "shareBot()"):
+                 "shareBot()", "openGroup()"):
         assert f'toggleMore(false); {call}"' in menu, call
     assert 'href="#i-send"' in menu and 'href="#i-message"' in menu and 'href="#i-sparkle"' in menu
     # ДЗ — функцией, а не кликом по кнопке сегмента

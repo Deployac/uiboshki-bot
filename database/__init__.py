@@ -131,6 +131,15 @@ from database.service import (
     purge_events,
     get_solver_rating,
 )
+from database.groups import (
+    upsert_group,
+    get_group,
+    get_user_group,
+    set_user_group,
+    group_counts,
+    get_subscription,
+    set_subscription_until,
+)
 from database.homework import (
     init_hw_table,
     get_setting,
@@ -256,4 +265,11 @@ __all__ = ["DATABASE_PATH",
     "get_hw_subjects",
     "get_hw_by_subject",
     "delete_hw",
+    "upsert_group",
+    "get_group",
+    "get_user_group",
+    "set_user_group",
+    "group_counts",
+    "get_subscription",
+    "set_subscription_until",
 ]

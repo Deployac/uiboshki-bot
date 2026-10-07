@@ -220,7 +220,7 @@ async def api_summary_make(file_id: int, user: dict = CurrentUser):
     if not f:
         raise HTTPException(404, "Файл не найден")
     import ai_quota
-    why = None if await get_file_summary(file_id) else await ai_quota.gate(user["id"])
+    why = None if await get_file_summary(file_id) else await ai_quota.gate(user["id"], kind="summary")
     if why:
         raise HTTPException(429, ai_quota.text(why, capital=True))
     try:

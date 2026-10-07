@@ -3,6 +3,7 @@ import re
 from aiogram import Router, F
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart, Command, CommandObject
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database import upsert_user, set_subscription, get_user
@@ -63,7 +64,7 @@ async def send_hw_to(bot, user_id: int, hw_id) -> bool:
 
 
 @router.message(CommandStart(deep_link=True))
-async def cmd_start_deeplink(message: Message, command: CommandObject):
+async def cmd_start_deeplink(message: Message, command: CommandObject, state: FSMContext):
     """Диплинк t.me/bot?start=file_<id> / hw_<id> — запасной путь кнопки
     «Открыть» в WebApp (основной — /api/files/{id}/send, без «/start» в
     чате). Само «/start file_…» стираем, чтобы чат не зарастал. Просто
@@ -86,23 +87,32 @@ async def cmd_start_deeplink(message: Message, command: CommandObject):
     if payload == "site":                       # кнопка «Открыть бота» на сайте /about — для /stats
         import stats
         await stats.track(user.id, "from_site")
-    await cmd_start(message)
+    await cmd_start(message, state)
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext | None = None):
     user = message.from_user
     await upsert_user(user.id, user.username or "", user.full_name or "")
     # Одно короткое сообщение с одной кнопкой. Сначала оно уходит с
     # ReplyKeyboardRemove (убрать старую большую клавиатуру у тех, у кого она
     # осталась), потом к нему же цепляется кнопка «Открыть приложение».
-    sent = await message.answer(start_text(user.first_name), parse_mode="HTML", reply_markup=MAIN_KB)
+    import groups
+    # новый человек (после этапа 1: любая группа) — тем же сообщением спросить группу
+    ask = state is not None and groups.home_id() and not await groups.of_user(user.id)
+    if ask:
+        from handlers.group_pick import ASK, GroupPick
+        await state.set_state(GroupPick.query)
+    text = start_text(user.first_name) + ("\n\n" + ASK if ask else "")
+    sent = await message.answer(text, parse_mode="HTML", reply_markup=MAIN_KB)
     kb = app_button()
     if kb:
         try:
             await sent.edit_reply_markup(reply_markup=kb)
         except Exception:
             await message.answer("👇", reply_markup=kb)
+    if ask:
+        return                                # предметы по выбору — после выбора группы
     await ask_optional(message, user.id)
 
 

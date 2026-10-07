@@ -81,6 +81,9 @@ async def test_home_opens_without_js_errors(db, monkeypatch):
         return ""
 
     monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    import config
+    await db.upsert_user(222, "", "Alice")
+    await db.set_user_group(222, config.HOME_GROUP_ID)          # группа уже выбрана — лист выбора не мешает
     monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", mirea_down)
     monkeypatch.setattr(handlers.weather, "get_weather_for_morning", no_weather)
     port = _free_port()

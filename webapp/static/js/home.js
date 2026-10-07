@@ -219,7 +219,12 @@ async function loadToday() {
       shown = true;
     }
   }
-  const me = api("/api/me").then(m => { setGreeting(m.first_name); return true; }, () => false);
+  const me = api("/api/me").then(m => {
+    setGreeting(m.first_name);
+    myGroup = m.group; myPlan = m.plan;
+    if (!m.group && typeof openGroup === "function") openGroup(true);   // новый — сначала группа (этап 1)
+    return true;
+  }, () => false);
   try {
     todayData = await api("/api/today");
     renderToday();

@@ -1052,6 +1052,10 @@
   .more-grid .sq.t-channel { background: linear-gradient(145deg, #3bb2f0, #2481cc); }
   .more-grid .sq.t-contact { background: linear-gradient(145deg, #2bb3a3, #12877c); }
   .more-grid .sq.t-share { background: linear-gradient(145deg, #f59e0b, #e8590c); }
+  .more-grid .sq.t-group { background: linear-gradient(145deg, #34d399, #0f9d74); }
+  #group-results { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .group-row { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 13px 14px;
+    border: 0; border-radius: var(--radius-sm); background: var(--bg-raised); color: var(--text); font: inherit; font-weight: 600; text-align: left; }
   /* открытие: лист мягко выезжает снизу, плитки — каскадом (--i ставит toggleMore);
      display: none → flex перезапускает анимацию при каждом открытии */
   .more-backdrop.open .more-pop { animation: moreSheetIn .28s cubic-bezier(.2, .8, .2, 1) both; }

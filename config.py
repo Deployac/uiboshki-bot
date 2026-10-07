@@ -106,6 +106,17 @@ GEMINI_FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS",
 # дневного лимита. Бесплатный лимит Gemini — один на всю группу: если его
 # начнут выжигать за день — задать, например, 40. Старосты — без лимита.
 AI_DAILY_LIMIT = int(os.getenv("AI_DAILY_LIMIT", "0") or 0)
+# Любая группа института (этап 1, PLAN.md «Своё приложение»). «Своя» группа
+# (id на зеркале — из ICAL_URL) пользуется ИИ как раньше; другие группы —
+# база: проба ИИ (AI_TRIAL_DAILY вопросов в день на человека и не больше
+# AI_TRIAL_DAY_TOTAL на всех за день — потолок пробы ~5 тыс. ₽ в месяц) и
+# SUMMARY_WEEKLY новых конспектов в неделю; подписка — до AI_SUB_DAILY в день.
+_home = __import__("re").search(r"/ical/1/(\d+)", ICAL_URL)
+HOME_GROUP_ID = int(_home.group(1)) if _home else 0
+AI_TRIAL_DAILY = int(os.getenv("AI_TRIAL_DAILY", "3") or 0)
+AI_TRIAL_DAY_TOTAL = int(os.getenv("AI_TRIAL_DAY_TOTAL", "1500") or 0)
+AI_SUB_DAILY = int(os.getenv("AI_SUB_DAILY", "100") or 0)
+SUMMARY_WEEKLY = int(os.getenv("SUMMARY_WEEKLY", "3") or 0)
 # Поиск по смыслу (semantic_search.py): модель эмбеддингов и длина вектора
 # (Matryoshka — урезается без переобучения; 768 — баланс точности и размера).
 GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "gemini-embedding-001")

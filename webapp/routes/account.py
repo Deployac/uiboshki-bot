@@ -13,7 +13,30 @@ router = APIRouter()
 
 @router.get("/api/me")
 async def api_me(user: dict = CurrentUser):
-    return {"id": user["id"], "first_name": user.get("first_name", ""), "username": user.get("username", "")}
+    import groups
+    import plans
+    return {"id": user["id"], "first_name": user.get("first_name", ""), "username": user.get("username", ""),
+            "group": await groups.of_user(user["id"]), "plan": await plans.plan_of(user["id"])}
+
+
+@router.get("/api/groups/search")
+async def api_groups_search(q: str = "", user: dict = CurrentUser):
+    """Группы по названию — для выбора своей (этап 1: любая группа института)."""
+    import groups
+    return {"items": await groups.search(q[:40])}
+
+
+class GroupBody(BaseModel):
+    id: int
+
+
+@router.post("/api/me/group")
+async def api_set_group(body: GroupBody, user: dict = CurrentUser):
+    import groups
+    g = await groups.choose(user["id"], body.id)
+    if not g:
+        raise HTTPException(404, "Такой группы нет")
+    return {"group": g}
 
 
 @router.get("/api/security")

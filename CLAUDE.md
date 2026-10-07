@@ -332,6 +332,17 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
   `tools/site_og.py` со стенда. Кнопки сайта ведут на `?start=site` —
   в `/stats` «с сайта». Чужие календари МИРЭА кэшируются на 10 минут
   (`mirea_schedule_api.fetch_ical`).
+- **Любая группа института (этап 1)**: группа человека — `users.group_id`
+  (id группы на зеркале расписания; справочник — `schedule_index`), своя
+  группа — `config.HOME_GROUP_ID` из `ICAL_URL`; кто был до этапа 1 — в своей
+  группе (миграция), новые выбирают при `/start` (тем же сообщением) или в
+  листе «Из какой ты группы?» WebApp, сменить — `/group`, «Ещё → Группа»
+  (`groups.py`, `handlers/group_pick.py`, `/api/me`, `/api/groups/search`,
+  `/api/me/group`). Тариф — `plans.py` (own — своя группа и старосты, sub —
+  подписка `subscriptions`, `/sub <id> <дней>`, base — остальные); от него
+  зависит только ИИ: `ai_quota` (проба `AI_TRIAL_DAILY`/`AI_TRIAL_DAY_TOTAL`,
+  конспекты `SUMMARY_WEEKLY` в неделю, подписка `AI_SUB_DAILY`). Ночные
+  вопросы и решения — `docs/questions-morning.md`.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

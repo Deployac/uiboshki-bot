@@ -656,3 +656,52 @@ function finishOnboard(actionIndex) {
 }
 
 loadSdoStatus();
+
+// ── Своя группа (этап 1: любая группа института) ─────────────────────────────
+// /api/me → myGroup; нет группы — лист открывается сам и без группы не
+// закрывается. Поиск — /api/groups/search (справочник расписания МИРЭА).
+
+let myGroup = null, myPlan = "own", groupTimer = null, groupSeq = 0;
+
+function openGroup(force) {
+  if (!force) haptic();
+  document.getElementById("group-sheet").classList.add("open");
+  document.getElementById("group-body").innerHTML =
+    '<h3>' + icon("users", "inl acc") + (myGroup ? " Твоя группа" : " Из какой ты группы?") + '</h3>' +
+    (myGroup ? '<p class="hint">Сейчас: <b>' + escapeHtml(myGroup.name) + '</b>. Сменить — найди другую.</p>'
+             : '<p class="hint">Найди свою — покажу её расписание, дедлайны и файлы.</p>') +
+    '<input class="searchbox" id="group-search" enterkeyhint="search" placeholder="Например: УИБО-03-24" autocomplete="off" oninput="groupInput()">' +
+    '<div id="group-results"></div>';
+}
+
+function groupInput() {
+  clearTimeout(groupTimer);
+  groupTimer = setTimeout(searchGroups, 250);
+}
+
+async function searchGroups() {
+  const q = document.getElementById("group-search").value.trim(), my = ++groupSeq;
+  const box = document.getElementById("group-results");
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  try {
+    const res = await api("/api/groups/search?q=" + encodeURIComponent(q));
+    if (my !== groupSeq) return;
+    box.innerHTML = res.items.length ? res.items.map(g =>
+      '<button class="group-row" onclick="pickGroup(' + g.id + ')">' + escapeHtml(g.name) + icon("chevron", "inl") + '</button>').join("")
+      : '<p class="hint">Не нашёл. Напиши, как в расписании: УИБО-03-24</p>';
+  } catch (e) {
+    if (my === groupSeq) box.innerHTML = '<p class="hint">Не удалось найти: ' + escapeHtml(e.message) + '</p>';
+  }
+}
+
+async function pickGroup(id) {
+  haptic("success");
+  try {
+    const res = await api("/api/me/group", { method: "POST", body: JSON.stringify({ id }) });
+    const changed = !myGroup || myGroup.id !== res.group.id;
+    myGroup = res.group;
+    closeSheet("group-sheet");
+    showToast("Твоя группа — " + res.group.name);
+    if (changed) { todayData = null; loadToday(); }
+  } catch (e) { showToast(e.message); }
+}
