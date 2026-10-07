@@ -258,7 +258,18 @@ def summary(s: dict) -> str:
             f"Активны: сегодня <b>{s['day']}</b> · неделя <b>{s['week']}</b> · месяц <b>{s['month']}</b>\n"
             f"{acts}"
             + (f"\nИИ сегодня: <b>{s['ai_today']}</b> вопросов, у самого активного — <b>{s['ai_top']}</b>"
-               if s["ai_today"] else ""))
+               if s["ai_today"] else "")
+            + groups_line(s.get("groups") or []))
+
+
+def groups_line(rows: list[dict], top: int = 6) -> str:
+    """«Группы: УИБО-03-24 — 25 · УИБО-01-24 — 3 · без группы — 2» (этап 1)."""
+    from utils import esc
+    if len(rows) < 2:
+        return ""
+    parts = [f"{esc(r['name'] or ('без группы' if not r['id'] else str(r['id'])))} — {r['users']}" for r in rows[:top]]
+    rest = sum(r["users"] for r in rows[top:])
+    return "\nГруппы: " + " · ".join(parts) + (f" · ещё {rest}" if rest else "")
 
 
 # ── картинка ─────────────────────────────────────────────────────────────────
@@ -363,6 +374,11 @@ def _mix(a: str, b: str, t: float) -> str:
 
 
 async def report(days: int = 30) -> tuple[bytes, str]:
+    from database import group_counts
     s = await collect(days)
+    try:
+        s["groups"] = await group_counts()
+    except Exception as e:
+        logger.info(f"/stats: группы: {e}")
     png = await asyncio.to_thread(render, s)
     return png, summary(s)

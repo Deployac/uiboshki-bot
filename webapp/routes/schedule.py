@@ -46,6 +46,14 @@ async def schedule_card_image(key: str, sig: str = "", thumb: int = 0):
             raise HTTPException(502, "Расписание не загрузилось")
         title = await schedule_index.get_title(target_type, target_id) or "Расписание"
         data = await asyncio.to_thread(schedule_card.build_target, raw, title, now, BOT_USERNAME)
+    elif target_id:                       # «сегодня/завтра/неделя» другой группы (inline, этап 1)
+        import schedule_index
+        from mirea_schedule_api import fetch_ical
+        raw = await fetch_ical(target_id, 1)
+        if raw is None:
+            raise HTTPException(502, "Расписание не загрузилось")
+        name = await schedule_index.get_title(1, target_id) or "Группа"
+        data = await asyncio.to_thread(schedule_card.build_own, raw, kind, now, name, BOT_USERNAME)
     else:
         from schedule_parser import fetch_schedule_raw
         raw = await fetch_schedule_raw()
