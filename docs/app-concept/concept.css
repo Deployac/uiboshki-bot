@@ -307,3 +307,8 @@ button{font:600 14px Onest;border:0;border-radius:14px;padding:10px 14px;backgro
 .dcard li span{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dcard li em{font-style:normal;color:var(--muted);font-size:11px}
 .dcdl{margin-top:6px;font-size:12px;font-weight:600;color:var(--c)}
+/* неделя v3: полоска дней над повесткой */
+.strip.sticky{margin:0 -18px 14px;padding:6px 14px 8px;border-bottom:1px solid var(--line)}
+.agday.picked h3{color:var(--text)}
+.agl.empty{border-radius:var(--r)!important;padding:16px}
+.agl.empty b{font-size:15px}
