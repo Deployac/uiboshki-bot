@@ -414,7 +414,12 @@ async function revokeDevice(id, current) {
     if (id) await api("/api/auth/sessions/" + id, { method: "DELETE" });
     else await api("/api/auth/logout?everywhere=true", { method: "POST" });
   } catch (e) { showToast(e.message); return; }
-  if (current && !IN_TG) { saveToken(""); location.replace("/app"); return; }
+  if (current && !IN_TG) {
+    saveToken("");
+    try { navigator.serviceWorker.controller.postMessage("logout"); } catch (e) {}
+    location.replace("/app");
+    return;
+  }
   loadDevices();
 }
 

@@ -728,7 +728,7 @@ function submitFromTask() {
 // Файлы», на Android — в Загрузки. Файл бот берёт из СДО входом студента.
 function sdoDownload(f) {
   return new Promise(resolve => {
-    if (!(tg && tg.downloadFile && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) { openLink(f.dl); return resolve(false); }
+    if (!IN_TG || !(tg && tg.downloadFile && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) { openLink(f.dl); return resolve(false); }
     try { tg.downloadFile({ url: f.dl, file_name: f.name }, ok => resolve(!!ok)); }
     catch (e) { openLink(f.dl); resolve(false); }
   });

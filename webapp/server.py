@@ -213,4 +213,17 @@ async def index_page(request: Request):
                     headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    """Service worker PWA (этап 2): без кэша — обновление приложения доходит сразу."""
+    return Response((STATIC_DIR / "sw.js").read_bytes(), media_type="text/javascript",
+                    headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+async def web_manifest():
+    return Response((STATIC_DIR / "manifest.webmanifest").read_bytes(), media_type="application/manifest+json",
+                    headers={"Cache-Control": "no-cache"})
+
+
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

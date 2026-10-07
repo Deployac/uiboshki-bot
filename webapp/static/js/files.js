@@ -296,7 +296,8 @@ function openFile(id, btn) {
 // WebApp и пересылки из чата. Старый Telegram (до 8.0) или файл больше 20 МБ —
 // шлём в чат, как «В чат».
 async function downloadFile(id, btn) {
-  if (!(tg && tg.downloadFile && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) {
+  const browser = !IN_TG;          // вне Telegram (PWA) — обычная загрузка по подписанной ссылке
+  if (!browser && !(tg && tg.downloadFile && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) {
     showToast("Telegram старый для скачивания — отправляю в чат");
     return openFile(id, btn);
   }
@@ -310,6 +311,7 @@ async function downloadFile(id, btn) {
     return openFile(id, btn);
   }
   btn.disabled = false; btn.classList.remove("sending");
+  if (browser) { window.open(link.url, "_blank"); return; }
   try {
     tg.downloadFile({ url: link.url, file_name: link.file_name }, ok => { if (ok) haptic("success"); });
   } catch (e) {

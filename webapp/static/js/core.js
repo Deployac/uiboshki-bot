@@ -14,6 +14,24 @@ if (!IN_TG && !APP_TOKEN && (location.pathname === "/" || location.pathname === 
   location.replace("/about");
 }
 const NEED_LOGIN = !IN_TG && !APP_TOKEN;      // /app без входа — экран «Войти»
+// PWA: service worker (sw.js — оболочка и последние данные без сети) — только вне Telegram
+if (!IN_TG && "serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+// Тема вне Telegram — системная (тёмная/светлая), как у остальных приложений телефона
+if (!tg || !tg.initData) {
+  const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+  const sys = () => {
+    const light = !!(mq && mq.matches), root = document.documentElement.style;
+    document.documentElement.dataset.theme = light ? "light" : "dark";
+    const pal = light ? { "--bg": "#f5f6f8", "--bg-card": "#ffffff", "--text": "#15171c", "--hint": "#6b7280",
+      "--border": "#e4e6ea", "--bg-raised": "#eceef1", "--shadow": "0 2px 10px rgba(0,0,0,0.06)" } : {};
+    ["--bg", "--bg-card", "--text", "--hint", "--border", "--bg-raised", "--shadow"].forEach(k =>
+      pal[k] ? root.setProperty(k, pal[k]) : root.removeProperty(k));
+  };
+  sys();
+  if (mq && mq.addEventListener) mq.addEventListener("change", sys);
+}
 // Имя бота и группы сервер подставляет в страницу (config.py: BOT_USERNAME,
 // GROUP_NAME); без него (файл открыт напрямую) — как у УИБО-03-24.
 const APP_CONFIG = window.APP_CONFIG || {};
@@ -40,6 +58,7 @@ if (tg) {
 // Цвета приложения — из темы Telegram (тёмная/светлая, свой акцент).
 // data-theme на <html> — для мест, где светлой теме нужен свой цвет (app.css).
 function applyTheme() {
+  if (!IN_TG) return;                  // вне Telegram — системная тема (выше)
   const tp = tg.themeParams || {};
   const root = document.documentElement.style;
   const light = tg.colorScheme === "light";

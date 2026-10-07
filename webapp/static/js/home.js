@@ -493,8 +493,19 @@ function initHomeAdd() {
   } catch (e) {}
 }
 
+// PWA вне Telegram: на Android браузер даёт «Установить» (beforeinstallprompt),
+// на iPhone — только через «Поделиться → На экран „Домой“»
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installPrompt = e; });
+
 function addToHome() {
   haptic();
+  if (!IN_TG) {
+    if (installPrompt) { installPrompt.prompt(); installPrompt = null; return; }
+    showToast(/iPhone|iPad/.test(navigator.userAgent) ? "Нажми «Поделиться» → «На экран „Домой“»"
+                                                       : "Меню браузера → «Установить приложение»");
+    return;
+  }
   try { tg.addToHomeScreen(); } catch (e) { showToast("Telegram не дал добавить — обнови приложение"); }
 }
 
