@@ -44,19 +44,50 @@ def progress_bar(delta: int, max_days: int = 14) -> str:
     return f"{bar} {pct}%"
 
 
+async def _group_raws(fetch_home=None):
+    """Календари групп для рассылки: {группа: (raw, свой корпус)} — каждый
+    качается один раз на рассылку; своя группа — прежним вызовом (с кэшем и
+    запасной копией), чужие — через общий кэш календарей МИРЭА."""
+    import notify_prefs
+    cache: dict = {}
+
+    async def get(gid):
+        import groups
+        key = None if not gid or gid == groups.home_id() else gid
+        if key not in cache:
+            try:
+                if key is None:
+                    raw = await (fetch_home or fetch_schedule_raw)()
+                else:
+                    import schedule_parser
+                    raw = await schedule_parser.fetch_schedule_raw(group_id=key)
+                cache[key] = (raw, notify_prefs.home_campus(raw))
+            except Exception as e:
+                logger.error(f"Рассылка: расписание группы {key or 'своей'} не загрузилось: {e}")
+                cache[key] = (None, None)
+        return cache[key]
+    return get
+
+
+async def pace():
+    """Пауза между сообщениями рассылки: Telegram пускает ~30 в секунду, а
+    групп и людей станет много (этап 1 (г))."""
+    import asyncio
+    await asyncio.sleep(PACE_SECONDS)
+
+
+PACE_SECONDS = 0.05
+
+
 async def send_morning_schedule(bot: Bot):
     import notify_prefs
+    from database import get_user_group
     from optional_subjects import apply_for
     from schedule_parser import format_day
 
     now = datetime.now(TZ)
     weather_text = None          # погоду берём один раз и только если кому-то нужна
-    try:
-        raw = await fetch_schedule_raw()
-        home = notify_prefs.home_campus(raw)
-    except Exception as e:
-        logger.error(f"Утренняя рассылка: расписание не загрузилось: {e}")
-        raw, home = None, None
+    raw_of = await _group_raws()
 
     users = await get_all_subscribed_users()
     for uid in users:
@@ -64,6 +95,8 @@ async def send_morning_schedule(bot: Bot):
             prefs = await notify_prefs.get(uid)
             if not notify_prefs.allowed(prefs, "morning", now.weekday()):
                 continue
+            gid = await get_user_group(uid)
+            raw, home = await raw_of(gid)            # у каждого — расписание его группы
             await apply_for(uid)   # у каждого своё: предметы по выбору
             events = parse_events_for_date(raw, now.date()) if raw is not None else None
             if prefs["skip_empty"] and events is not None and not events:
@@ -83,9 +116,10 @@ async def send_morning_schedule(bot: Bot):
                 note = notify_prefs.campus_note(events, home)
                 if note:
                     head += f"\n{note}"
-            body = format_day(events, now.date(), now=now) if events is not None else await get_today_schedule()
+            body = format_day(events, now.date(), now=now) if events is not None else await get_today_schedule(gid)
             await bot.send_message(uid, f"{head}\n\n{body}", parse_mode="HTML",
                                    reply_markup=app_button("📅 Открыть расписание", "today"))
+            await pace()
         except Exception as e:
             logger.warning(f"Не смог отправить {uid}: {e}")
 
@@ -152,6 +186,7 @@ async def send_deadline_reminders(bot: Bot):
                 continue
             await bot.send_message(uid, _format_deadline_reminders(deadlines), parse_mode="HTML",
                                    reply_markup=app_button("📋 Открыть дедлайны", "deadlines"))
+            await pace()
         except Exception as e:
             logger.warning(f"Не смог отправить {uid}: {e}")
 
@@ -172,6 +207,13 @@ async def send_deadline_reminders(bot: Bot):
             logger.warning(f"Не смог отправить старосте запрос на публикацию дедлайнов: {e}")
 
 
+async def _any_other_group() -> bool:
+    """Есть ли люди из других групп (этап 1) — тогда напоминания смотрят и их календари."""
+    import groups
+    from database import group_counts
+    return any(g["id"] and g["id"] != groups.home_id() for g in await group_counts())
+
+
 async def check_lesson_reminders(bot: Bot):
     """Раз в минуту: кому пора напомнить о паре. Если в ближайшие часы пар нет
     — выходим, не трогая базу; иначе пользователи и их ответы про предметы
@@ -187,29 +229,44 @@ async def check_lesson_reminders(bot: Bot):
         today = now.date()
         _sent_reminders = {k for k in _sent_reminders if k[0] == today}
 
-        raw = await fetch_schedule_raw()
         horizon = max(spec["max"] for spec in notify_prefs.REMIND.values()) * 60 + 120
-        with no_filter():
-            upcoming = [e for e in parse_events_for_date(raw, today)
-                        if e["time_start"] and 0 <= (e["time_start"] - now).total_seconds() <= horizon]
-        if not upcoming:
-            return
+        raw_of = await _group_raws()
+        upcoming_of: dict = {}
+
+        async def upcoming_for(gid):
+            """Есть ли у группы пары в ближайшие часы (иначе её людей не трогаем)."""
+            if gid not in upcoming_of:
+                raw, _ = await raw_of(gid)
+                with no_filter():
+                    upcoming_of[gid] = raw is not None and any(
+                        e["time_start"] and 0 <= (e["time_start"] - now).total_seconds() <= horizon
+                        for e in parse_events_for_date(raw, today))
+            return upcoming_of[gid]
+
+        if not await upcoming_for(None) and not await _any_other_group():
+            return                       # своя группа без пар и других групп нет — база не нужна
 
         answers = await get_all_optional_answers()
-        by_hide: dict[frozenset, list] = {}
+        by_hide: dict[tuple, list] = {}
         for user in await get_reminder_users():
             uid = user["user_id"]
             prefs = notify_prefs.merge(user.get("notify"))
             if not notify_prefs.allowed(prefs, "lessons", today.weekday()):
                 continue
+            gid = user.get("group_id")
+            if not await upcoming_for(gid):
+                continue
+            raw, _ = await raw_of(gid)
             mine = answers.get(uid, {})
             hide = frozenset(s for s in OPTIONAL_SUBJECTS if not mine.get(s))
-            if hide not in by_hide:
+            key_h = (gid, hide)
+            if key_h not in by_hide:
                 token = HIDE.set(hide)
                 try:
-                    by_hide[hide] = parse_events_for_date(raw, today)
+                    by_hide[key_h] = parse_events_for_date(raw, today)
                 finally:
                     HIDE.reset(token)
+            hide = key_h
 
             # У каждой пары свой сценарий: первая за день, после короткой
             # перемены или после большого перерыва — и своё «за сколько».

@@ -101,20 +101,20 @@ async def send_all(bot, now: datetime | None = None):
     from database import get_active_deadlines, get_all_optional_answers, get_reminder_users
     from keyboards import app_button
     from optional_subjects import HIDE
-    from schedule_parser import fetch_schedule_raw
+    from scheduler import _group_raws, pace
     now = now or datetime.now(TZ)
     monday = next_monday(now.date())
-    try:
-        raw = await fetch_schedule_raw()
-    except Exception as e:
-        logger.warning(f"обзор недели: нет расписания: {e}")
-        return
-    home = notify_prefs.home_campus(raw)
+    import schedule_parser
+    # у каждого — неделя его группы (этап 1 (г)); своя — schedule_parser.fetch_schedule_raw
+    raw_of = await _group_raws(lambda: schedule_parser.fetch_schedule_raw())
     answers = await get_all_optional_answers()
     for user in await get_reminder_users():
         uid = user["user_id"]
         prefs = notify_prefs.merge(user.get("notify"))
         if not prefs.get("weekly"):
+            continue
+        raw, home = await raw_of(user.get("group_id"))
+        if raw is None:
             continue
         hidden = frozenset(s for s in OPTIONAL_SUBJECTS if not answers.get(uid, {}).get(s))
         token = HIDE.set(hidden)
@@ -134,5 +134,6 @@ async def send_all(bot, now: datetime | None = None):
             continue
         try:
             await bot.send_message(uid, text, parse_mode="HTML", reply_markup=app_button("📅 Открыть неделю", "today"))
+            await pace()
         except Exception as e:
             logger.info(f"обзор недели {uid}: {e}")
