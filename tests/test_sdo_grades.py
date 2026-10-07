@@ -252,3 +252,49 @@ def test_unknown_grade_text_is_not_credited():
             '<td class="column-grade">Скрыто</td><td class="column-range">0–5</td></tr></table>')
     (it,) = sdo_grades.parse_report(html)["items"]
     assert not it["graded"] and it["passed"] is None
+
+
+# Разметка — как на настоящих страницах СДО МИРЭА (разведка 07.10, Moodle 4.5)
+QUIZ_CLOSED_OLD = ('<div data-region="activity-dates"><div><strong>Закрыто c:</strong> среда, 25 декабря 2024, 18:00</div></div>'
+                   '<div class="quizinfo"><p>Проходная оценка: 10,00 из 30,00</p></div>')
+QUIZ_NOT_YET = ('<div data-region="activity-dates"><div><strong>Открывается:</strong> вторник, 1 декабря 2026, 09:11</div>'
+                '<div><strong>Закрывается:</strong> воскресенье, 20 декабря 2026, 23:59</div></div>'
+                '<div class="quizattempt"><p>В настоящее время этот тест недоступен</p></div>')
+ASSIGN_COMMENT = ('<div data-region="activity-dates"><div><strong>Открыто с:</strong> пятница, 4 сентября 2026, 12:30</div>'
+                  '<div><strong>Срок сдачи:</strong> четверг, 10 сентября 2026, 14:00</div></div><table>'
+                  '<tr><th>Состояние ответа на задание</th><td class="submissionstatussubmitted">Отправлено для оценивания</td></tr>'
+                  '<tr><th>Состояние оценивания</th><td class="submissionnotgraded">Не оценено</td></tr>'
+                  '<tr><th>Отзыв в виде комментария</th><td><p>%s</p></td></tr></table>')
+
+
+def test_real_sdo_dates_and_closed_quiz():
+    """«Закрыто c:» (латинская c) с датой от копии прошлогоднего курса — тест ещё
+    не настроен, а не пропущен; «тест недоступен» — ещё не открыт."""
+    from datetime import datetime
+    now = datetime(2026, 10, 7, 12)
+    q = {"grade": None, "passed": None, "module": "quiz"}
+    old = sdo_grades.parse_assign_page(QUIZ_CLOSED_OLD)
+    assert old["closed"] == "среда, 25 декабря 2024, 18:00" and old["pass"] == 10
+    assert sdo_grades.work_status(q, old, now) == "soon"
+    recent = sdo_grades.parse_assign_page(QUIZ_CLOSED_OLD.replace("2024", "2026").replace("декабря", "сентября"))
+    assert sdo_grades.work_status(q, recent, now) == "miss"          # закрылся недавно, попыток нет
+    nyet = sdo_grades.parse_assign_page(QUIZ_NOT_YET)
+    assert nyet["unavailable"] and nyet["opens"].startswith("вторник, 1 декабря")
+    assert nyet["due"] == "воскресенье, 20 декабря 2026, 23:59"
+    assert sdo_grades.work_status(q, nyet, now) == "soon"
+
+
+def test_comment_is_the_verdict_when_no_grade():
+    """Оценка у задания не предусмотрена, «Не оценено» навсегда — вердикт в
+    комментарии: «зачет» — зачтено, «не принято» — нет (а не вечное «ждёт оценки»)."""
+    w = {"grade": None, "passed": None, "module": "assign"}
+    for text, want in (("зачет", "ok"), ("не принято", "low"), ("доработать выводы", "low"), ("Смотрите файл", "wait")):
+        assert sdo_grades.work_status(w, sdo_grades.parse_assign_page(ASSIGN_COMMENT % text)) == want, text
+
+
+def test_who_graded_and_when():
+    html = ('<div class="feedback"><table><tr><th>Оценка</th><td>5,0 / 5,0</td></tr>'
+            '<tr><th>Оценено в</th><td>пятница, 25 сентября 2026, 12:07</td></tr>'
+            '<tr><th>Оценено</th><td><img alt="Иванов И. И."/>Иванов Иван Иванович</td></tr></table></div>')
+    p = sdo_grades.parse_assign_page(html)
+    assert p["graded_by"] == "Иванов Иван Иванович" and p["graded_at"] == "пятница, 25 сентября 2026, 12:07"

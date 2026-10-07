@@ -674,6 +674,8 @@ function renderTask() {
       '<div class="t-tags">' + (w.status === "ok" || w.status === "low" ? '<span class="t-tag">Оценено</span>' :
         (t.status ? '<span class="t-tag">' + escapeHtml(humanStatus(t.status)) + '</span>' : '')) +
         '<span class="t-tag">' + (w.grade != null ? "Оценка " + fmtNum(w.grade) + " / " + fmtNum(w.max) : "Не оценено") + '</span></div>' +
+      // кто и когда поставил оценку (блок «Отзыв» в СДО)
+      (t.graded_by ? '<p class="sheet-hint">Оценил(а): ' + escapeHtml(t.graded_by) + (t.graded_at ? " · " + shortDate(t.graded_at) : "") + '</p>' : '') +
       (t.description ? '<p class="t-desc">' + escapeHtml(t.description).replace(/\n/g, "<br>") + '</p>' : '') + '</div>' +
     (t.feedback ? '<h2 class="section">Комментарий преподавателя</h2><div class="card"><p class="t-desc">' +
       escapeHtml(t.feedback).replace(/\n/g, "<br>") + '</p></div>' : '') +
