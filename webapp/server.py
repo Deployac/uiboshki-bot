@@ -32,7 +32,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from webapp import deps
-from webapp.routes import account, aitest, auth, channel, chat, deadlines, files, schedule, sdo, site
+from webapp.routes import account, aitest, auth, channel, chat, deadlines, files, meta, schedule, sdo, site
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 # httpx на INFO пишет полный адрес каждого запроса — с sesskey СДО в query.
@@ -95,6 +95,25 @@ class BodyLimit:
 app.add_middleware(BodyLimit)
 
 
+class ApiV1:
+    """«/api/v1/…» — то же, что «/api/…» (этап 2: API как контракт). Своё
+    приложение и PWA ходят по /api/v1: когда понадобится ломающее изменение,
+    появится /api/v2, а старые версии приложения в магазинах продолжат
+    работать. Mini App — по-прежнему /api/…"""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/api/v1/"):
+            scope = dict(scope, path="/api/" + scope["path"][8:],
+                         raw_path=b"/api/" + scope.get("raw_path", b"")[8:])
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(ApiV1)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     """Заголовки безопасности и ограничение размера запроса.
@@ -139,7 +158,7 @@ async def health():
 # ── Обработчики по темам (webapp/routes/*) ──────────────────────────────────
 # Пути у них не пересекаются, так что порядок не важен; важно только, что
 # статика ниже — последней.
-for _module in (schedule, account, deadlines, files, chat, sdo, channel, site, aitest, auth):
+for _module in (schedule, account, deadlines, files, chat, sdo, channel, site, aitest, auth, meta):
     app.include_router(_module.router)
 
 
