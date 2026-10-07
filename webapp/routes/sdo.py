@@ -64,6 +64,29 @@ async def api_sdo_connect(body: SdoConnect, user: dict = CurrentUser):
     return await sdo_accounts.status_for(user["id"])
 
 
+class SdoShare(BaseModel):
+    share: bool
+
+
+@router.post("/api/sdo/share")
+async def api_sdo_share(body: SdoShare, user: dict = CurrentUser):
+    """Делиться дедлайнами СДО с группой (этап 1 (в), group_sync.py): по
+    этому входу бот берёт задания всей группы. Баллы и работы человека никто
+    не видит — только список заданий и сроки."""
+    from database import set_sdo_share
+    from sdo_accounts import status_for
+    if not await set_sdo_share(user["id"], body.share):
+        raise HTTPException(status_code=400, detail="сначала подключи СДО")
+    if body.share:
+        import asyncio
+        import group_sync
+        from database import get_user_group
+        gid = await get_user_group(user["id"])
+        if gid:
+            asyncio.create_task(group_sync.sync_group(gid))     # задания группы — сразу, не ждать 6 ч
+    return await status_for(user["id"])
+
+
 @router.post("/api/sdo/disconnect")
 async def api_sdo_disconnect(user: dict = CurrentUser):
     from database import delete_sdo_session

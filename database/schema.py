@@ -217,7 +217,9 @@ async def init_db():
         # Проверка входов СДО вразнобой (sdo_accounts.keepalive_due): у каждого
         # своё время следующей проверки; первые проверки — через 50–59 мин
         # случайно, чтобы входы разошлись по часу, потом ровно 55.
-        for col in ("next_check_at TEXT", "jitter_left INTEGER DEFAULT 3"):
+        # share — согласие делиться дедлайнами СДО с группой (этап 1 (в)): по
+        # такому входу бот синхронизирует задания всей группы (group_sync.py)
+        for col in ("next_check_at TEXT", "jitter_left INTEGER DEFAULT 3", "share INTEGER DEFAULT 0"):
             try:
                 await db.execute(f"ALTER TABLE sdo_sessions ADD COLUMN {col}")
             except Exception:
@@ -425,6 +427,18 @@ async def init_db():
             import logging
             logging.getLogger(__name__).warning(f"FTS5 недоступен, поиск по файлам работать не будет: {e}")
 
+        # Отпечаток текста лекции (этап 1 (в)): та же лекция у другой группы —
+        # готовый конспект без ИИ. Старым строкам — посчитать один раз.
+        try:
+            await db.execute("ALTER TABLE file_text ADD COLUMN text_hash TEXT")
+        except Exception:
+            pass  # уже есть
+        rows = await (await db.execute("SELECT file_id, content FROM file_text WHERE text_hash IS NULL")).fetchall()
+        if rows:
+            from database.files import text_hash
+            await db.executemany("UPDATE file_text SET text_hash=? WHERE file_id=?",
+                                 [(text_hash(c), fid) for fid, c in rows])
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_file_text_hash ON file_text(text_hash)")
         for table in ("deadlines", "files", "lesson_notes"):
             try:
                 await db.execute(f"ALTER TABLE {table} ADD COLUMN group_id INTEGER")

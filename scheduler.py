@@ -359,6 +359,9 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     # каждый час, чтобы сессия не гасла без обращений (sdo_parser.keepalive).
     scheduler.add_job(sync_sdo_deadlines,      "interval", hours=SDO_SYNC_INTERVAL_HOURS, args=[bot],
                       next_run_time=datetime.now(ZoneInfo(TIMEZONE)) + timedelta(minutes=1))
+    import group_sync                     # СДО других групп по входам, которыми поделились (этап 1 (в))
+    scheduler.add_job(group_sync.sync_all,     "interval", hours=SDO_SYNC_INTERVAL_HOURS, args=[bot],
+                      next_run_time=datetime.now(TZ) + timedelta(minutes=5))
     scheduler.add_job(sdo_keepalive,           "interval", minutes=55)
     # Входы студентов в СДО — вразнобой: раз в минуту проверяются те, чья
     # очередь (50–59 мин случайно, потом 55), а не все разом (sdo_accounts.py)

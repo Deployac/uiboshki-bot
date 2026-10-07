@@ -114,6 +114,9 @@ function renderSdo(connecting) {
     box.innerHTML = '<h3>' + icon("cap", "inl acc") + ' СДО</h3>' +
       statusCard("ok", "Подключено, работает", sdoState.shared ? "Вход старосты из настроек бота" : agoText(sdoState.checked_at)) +
       '<p class="sheet-hint">У дедлайнов из СДО есть кнопка «' + icon("upload", "inl") + 'Сдать»: выбираешь файл — бот загружает его в нужное задание.</p>' +
+      (sdoState.can_share ? '<div class="share-row"><div><b>Делиться заданиями с группой</b><span>Бот возьмёт из твоего СДО задания и сроки для всей ' +
+        escapeHtml(sdoState.group || "группы") + '. Баллы и работы никто не увидит.</span></div>' +
+        ntSwitch(sdoState.share, "toggleSdoShare()") + '</div>' : '') +
       (sdoState.shared ? '' : '<button class="ghost danger" onclick="disconnectSdo()">Отключить СДО</button>') + pulseBtn();
   } else if (sdoState.state === "expired") {
     box.innerHTML = '<h3>' + icon("cap", "inl acc") + ' СДО</h3>' +
@@ -712,5 +715,14 @@ async function requestGroupAdmin() {
   try {
     const res = await api("/api/me/group/admin", { method: "POST" });
     showToast(res.message);
+  } catch (e) { showToast(e.message); }
+}
+
+async function toggleSdoShare() {
+  haptic();
+  try {
+    sdoState = await api("/api/sdo/share", { method: "POST", body: JSON.stringify({ share: !sdoState.share }) });
+    renderSdo();
+    if (sdoState.share) showToast("Спасибо! Задания группы появятся в дедлайнах через минуту");
   } catch (e) { showToast(e.message); }
 }

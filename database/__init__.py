@@ -133,6 +133,11 @@ from database.service import (
     purge_events,
     get_solver_rating,
 )
+from database.sdo import (
+    set_sdo_share,
+    get_group_donors,
+    get_sharing_groups,
+)
 from database.groups import (
     add_group_admin,
     remove_group_admin,
@@ -279,6 +284,9 @@ __all__ = ["DATABASE_PATH",
     "set_user_group",
     "group_counts",
     "get_subscription",
+    "set_sdo_share",
+    "get_group_donors",
+    "get_sharing_groups",
     "add_group_admin",
     "remove_group_admin",
     "get_group_admins",

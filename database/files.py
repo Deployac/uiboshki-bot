@@ -8,17 +8,20 @@ from database._conn import connect
 # ── Files ─────────────────────────────────────────────────────────────────────
 
 async def add_file(title, subject, file_id, file_name, uploaded_by, category: str | None = None,
-                   source: str | None = None) -> int:
+                   source: str | None = None, group_id: int | None = None) -> int:
     """category — тип внутри предмета (file_categories); None — определить
-    по названию и имени файла. source — откуда файл выгружен автоматически."""
+    по названию и имени файла. source — откуда файл выгружен автоматически.
+    group_id не задан — группа того, кто загружает (current_group; синк и
+    своя группа — NULL, как раньше)."""
+    from database.groups import g_or_home, stored
     from file_categories import LABELS, detect_category
     if category not in LABELS:
         category = detect_category(title or "", file_name or "")
     async with connect() as db:
         cursor = await db.execute("""
-            INSERT INTO files (title, subject, file_id, file_name, uploaded_by, category, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (title, subject, file_id, file_name, uploaded_by, category, source))
+            INSERT INTO files (title, subject, file_id, file_name, uploaded_by, category, source, group_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (title, subject, file_id, file_name, uploaded_by, category, source, stored(g_or_home(group_id))))
         await db.commit()
         return cursor.lastrowid
 
@@ -128,11 +131,29 @@ async def get_file_text(file_id: int) -> str:
         return row[0] if row else ""
 
 
+def text_hash(text: str) -> str:
+    """Отпечаток текста лекции: та же лекция в другом курсе СДО (другая
+    группа потока, другое имя файла) — тот же отпечаток (этап 1 (в))."""
+    import hashlib
+    import re
+    norm = re.sub(r"\s+", " ", (text or "").lower()).strip()
+    return hashlib.sha256(norm.encode()).hexdigest()[:32] if norm else ""
+
+
 async def get_file_summary(file_id: int) -> dict | None:
-    """Готовый конспект лекции (общий для всех) или None."""
+    """Готовый конспект лекции (общий для всех) или None. Своего нет, но
+    есть у той же лекции в другом файле (отпечаток текста) — его: ИИ второй
+    раз не зовём."""
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         row = await (await db.execute("SELECT * FROM file_summaries WHERE file_id=?", (file_id,))).fetchone()
+        if row:
+            return dict(row)
+        row = await (await db.execute(
+            "SELECT s.* FROM file_text me JOIN file_text other ON other.text_hash = me.text_hash "
+            "AND other.file_id != me.file_id JOIN file_summaries s ON s.file_id = other.file_id "
+            "WHERE me.file_id = ? AND me.text_hash IS NOT NULL AND me.text_hash != '' LIMIT 1",
+            (file_id,))).fetchone()
         return dict(row) if row else None
 
 
@@ -144,8 +165,14 @@ async def save_file_summary(file_id: int, content: str, created_by: int):
 
 
 async def get_file_ids_with_summary() -> set[int]:
+    """Файлы с конспектом — своим или той же лекции в другом файле."""
     async with connect() as db:
-        return {r[0] for r in await (await db.execute("SELECT file_id FROM file_summaries")).fetchall()}
+        own = {r[0] for r in await (await db.execute("SELECT file_id FROM file_summaries")).fetchall()}
+        same = {r[0] for r in await (await db.execute(
+            "SELECT me.file_id FROM file_text me JOIN file_text other ON other.text_hash = me.text_hash "
+            "AND other.file_id != me.file_id JOIN file_summaries s ON s.file_id = other.file_id "
+            "WHERE me.text_hash IS NOT NULL AND me.text_hash != ''")).fetchall()}
+        return own | same
 
 
 async def save_file_text(file_id: int, text: str):
@@ -154,11 +181,12 @@ async def save_file_text(file_id: int, text: str):
     это и есть "кэш" контекста лекций, о котором шла речь в обсуждении."""
     async with connect() as db:
         await db.execute("""
-            INSERT INTO file_text (file_id, content, char_count, extracted_at)
-            VALUES (?, ?, ?, datetime('now'))
+            INSERT INTO file_text (file_id, content, char_count, extracted_at, text_hash)
+            VALUES (?, ?, ?, datetime('now'), ?)
             ON CONFLICT(file_id) DO UPDATE SET
-                content=excluded.content, char_count=excluded.char_count, extracted_at=excluded.extracted_at
-        """, (file_id, text, len(text)))
+                content=excluded.content, char_count=excluded.char_count, extracted_at=excluded.extracted_at,
+                text_hash=excluded.text_hash
+        """, (file_id, text, len(text), text_hash(text)))
         await db.commit()
 
 

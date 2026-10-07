@@ -353,6 +353,13 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
   явного `group_id` берут её, рассылки и синк — своя группа. Старосты групп
   — `group_admins`, `is_editor(uid, group_id)`; стать — `/iamstarosta` или
   «Я староста этой группы» в листе группы → владельцу «Одобрить/Отклонить».
+  **СДО других групп (1 (в))**: `group_sync.py` — задания группы по входу
+  человека, который согласился делиться (`sdo_sessions.share`, тумблер в
+  листе СДО, `/api/sdo/share`), `sdo_parser.apply_items(items, group_id)`,
+  external_id `sdo:<группа>:<id>`, раз в `SDO_SYNC_INTERVAL_HOURS`.
+  Конспект — один на одинаковую лекцию (`file_text.text_hash`,
+  `get_file_summary` берёт конспект той же лекции из другого файла). Файл,
+  загруженный человеком, — в его группу (`add_file`, current_group).
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

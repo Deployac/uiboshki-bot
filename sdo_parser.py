@@ -349,8 +349,6 @@ async def sync_deadlines() -> dict:
     expired=True, чтобы вызывающий код (scheduler/хендлер) сам решил,
     как об этом сообщить старосте, вместо падения джобы целиком.
     """
-    from database import add_deadline, get_deadline_by_external_id, is_deadline_skipped, update_deadline_due
-
     try:
         items = await fetch_deadline_items()
     except SdoSessionExpired as e:
@@ -361,11 +359,23 @@ async def sync_deadlines() -> dict:
         logger.error(f"СДО sync: не удалось получить страницу: {e}")
         return {"added": 0, "updated": 0, "skipped": 0, "expired": False, "error": str(e)}
 
+    res = await apply_items(items)
+    logger.info(f"СДО sync: добавлено {res['added']}, обновлено {res['updated']}, пропущено {res['skipped']}, "
+                f"прошлый семестр {res['old_semester']}")
+    return res
+
+
+async def apply_items(items: list[dict], group_id: int | None = None) -> dict:
+    """Задания из СДО → дедлайны группы. Своя группа (group_id None) — как
+    всегда: external_id «sdo:<id>»; чужая (этап 1 (в), group_sync.py) —
+    «sdo:<группа>:<id>» и group_id: одно задание курса потока у каждой группы
+    своим дедлайном, со своими правками и удалениями."""
+    from database import add_deadline, get_deadline_by_external_id, is_deadline_skipped, update_deadline_due
     from schedule_parser import get_group_subjects
     added = updated = skipped = 0
     new_ids: list[int] = []               # для рассылки «новые задания» (new_tasks.py)
     moved: dict[int, str] = {}            # id → прежний срок «YYYY-MM-DD»: преподаватель перенёс
-    subjects = await get_group_subjects(**SEMESTER_WINDOW)
+    subjects = await get_group_subjects(**SEMESTER_WINDOW, **({"group_id": group_id} if group_id else {}))
     old = [i for i in items if not_this_semester(i, subjects)]
     items = [i for i in items if not not_this_semester(i, subjects)]
     # понятные названия — после проверки семестра (метка «[I.26-27]» уходит)
@@ -373,6 +383,8 @@ async def sync_deadlines() -> dict:
     for i in items:
         if i.get("title"):
             i["subject"] = pretty(i["title"], i.get("course") or "", subjects)
+        if group_id:
+            i["external_id"] = i["external_id"].replace("sdo:", f"sdo:{group_id}:", 1)
 
     for item in items:
         existing = await get_deadline_by_external_id(item["external_id"])
@@ -399,12 +411,12 @@ async def sync_deadlines() -> dict:
             due_time=item["due_time"],
             created_by=0,
             external_id=item["external_id"],
+            group_id=group_id,
         )
         added += 1
         if did:
             new_ids.append(did)
 
-    logger.info(f"СДО sync: добавлено {added}, обновлено {updated}, пропущено {skipped}, прошлый семестр {len(old)}")
     return {"added": added, "updated": updated, "skipped": skipped, "old_semester": len(old), "new_ids": new_ids,
             "moved": moved,
             "old_courses": sorted({i.get("course") or course_of(i["subject"]) for i in old} - {""}),

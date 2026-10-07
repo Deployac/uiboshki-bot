@@ -128,3 +128,33 @@ async def delete_sdo_session(user_id: int):
 async def count_sdo_connected() -> int:
     async with connect() as db:
         return (await (await db.execute("SELECT COUNT(*) FROM sdo_sessions WHERE status='ok'")).fetchone())[0]
+
+
+async def set_sdo_share(user_id: int, share: bool) -> bool:
+    """Согласие делиться дедлайнами СДО с группой. → есть ли вход."""
+    async with connect() as db:
+        cur = await db.execute("UPDATE sdo_sessions SET share=? WHERE user_id=?", (1 if share else 0, user_id))
+        await db.commit()
+        return cur.rowcount > 0
+
+
+async def get_group_donors(group_id: int) -> list[dict]:
+    """Живые входы людей группы, согласных делиться (свежепроверенные — первыми)."""
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT s.* FROM sdo_sessions s JOIN users u ON u.user_id = s.user_id "
+            "WHERE u.group_id = ? AND s.status = 'ok' AND COALESCE(s.share, 0) = 1 "
+            "ORDER BY s.checked_at DESC", (group_id,))
+        return [dict(r) for r in await cursor.fetchall()]
+
+
+async def get_sharing_groups() -> list[int]:
+    """Чужие группы, где хоть кто-то делится СДО."""
+    from config import HOME_GROUP_ID
+    async with connect() as db:
+        rows = await (await db.execute(
+            "SELECT DISTINCT u.group_id FROM sdo_sessions s JOIN users u ON u.user_id = s.user_id "
+            "WHERE s.status = 'ok' AND COALESCE(s.share, 0) = 1 AND u.group_id IS NOT NULL AND u.group_id != ?",
+            (HOME_GROUP_ID,))).fetchall()
+        return [r[0] for r in rows]

@@ -150,7 +150,11 @@ async def status_for(user_id: int) -> dict:
     from database import get_sdo_session
     row = await get_sdo_session(user_id)
     if row:
-        return {"state": "ok" if row["status"] == "ok" else "expired", "checked_at": row["checked_at"]}
+        import groups
+        g = await groups.of_user(user_id)
+        return {"state": "ok" if row["status"] == "ok" else "expired", "checked_at": row["checked_at"],
+                "share": bool(row.get("share")), "can_share": bool(g and not g["own"]),
+                "group": g["name"] if g else ""}
     if is_starosta(user_id) and SDO_SESSION_COOKIE:
         return {"state": "ok", "checked_at": None, "shared": True}
     return {"state": "off"}
