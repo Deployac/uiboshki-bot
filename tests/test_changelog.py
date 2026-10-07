@@ -38,6 +38,7 @@ def test_tool():
     assert check(TEXT, "Сталин").startswith("придержано")
     assert check(TEXT, "Метель").startswith("занято")
     assert check(TEXT, "Деникин").startswith("нет в песнях")
+    assert not check(TEXT, "Ломоносов")                 # деятели — FIGURES
     assert all(not check(TEXT, n) for n in free(TEXT))
     assert re.search(r"\n## Как будет дальше", TEXT)
 
