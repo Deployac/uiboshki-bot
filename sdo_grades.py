@@ -537,14 +537,40 @@ def parse_task_page(html: str) -> dict:
     return out
 
 
-async def task_detail(cookie: str, cmid: int) -> dict:
+def parse_quiz_page(html: str) -> dict:
+    """Страница теста (разведка 07.10): попытки, лучшая оценка, проходная, открыт
+    ли сейчас. Пройти тест можно только на сайте — бот лишь показывает."""
+    soup = BeautifulSoup(html, "html.parser")
+    main = soup.find(id="region-main") or soup
+    info = [_clean(p.get_text(" ")) for p in (main.find(class_="quizinfo") or soup.new_tag("div")).find_all("p")]
+    allowed = next((int(m.group(1)) for t in info if (m := re.match(r"Разрешено попыток:\s*(\d+)", t))), None)
+    pass_text = next((t.split(":", 1)[1].strip() for t in info if t.startswith("Проходн")), "")
+    attempts = []
+    for table in main.find_all("table", class_=re.compile(r"quizreviewsummary")):
+        rows = {_clean(tr.find("th").get_text(" ")).lower(): _clean(tr.find("td").get_text(" "))
+                for tr in table.find_all("tr") if tr.find("th") and tr.find("td")}
+        attempts.append({"state": rows.get("состояние", ""), "grade": rows.get("оценка", ""),
+                         "points": rows.get("баллы", ""), "finished": rows.get("завершен", "")})
+    fb = main.find(id="feedback")
+    best = ""
+    if fb and (m := re.search(r"итоговая оценка[^:]*:\s*([\d.,]+\s*/\s*[\d.,]+)", _clean(fb.get_text(" ")))):
+        best = m.group(1).replace(" ", "")
+    text = _clean(main.get_text(" ")).lower()
+    return {"quiz": True, "attempts_allowed": allowed, "attempts": attempts, "best": best, "pass_text": pass_text,
+            "open_now": bool(main.find(class_="quizstartbuttondiv")), "no_more": "больше нет попыток" in text}
+
+
+async def task_detail(cookie: str, cmid: int, module: str = "assign") -> dict:
     from sdo_files import make_client
     from sdo_parser import get_checked
     import sdo_submit
-    url = f"{SDO_BASE_URL}/mod/assign/view.php?id={cmid}"
+    url = f"{SDO_BASE_URL}/mod/{module}/view.php?id={cmid}"
     async with make_client(cookie) as client:
-        page = parse_task_page((await get_checked(client, url)).text)
+        html = (await get_checked(client, url)).text
+        page = parse_task_page(html)
         page["maxfiles"] = 0
+        if module == "quiz":
+            page.update(parse_quiz_page(html), can_submit=False)
         if page["can_submit"]:
             try:
                 edit = sdo_submit.parse_edit_page((await get_checked(client, url + "&action=editsubmission")).text)

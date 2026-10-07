@@ -625,8 +625,8 @@ async function markLecture(day) {
 function tapWork(i) {
   const w = sdoCourse.works[i];
   if (!w) return;
-  if (w.module === "assign") openTask(w);
-  else openLink(w.url);          // тесты — на сайте СДО
+  if (w.module === "assign" || w.module === "quiz") openTask(w);   // тест — экран с попытками, пройти — на сайте
+  else openLink(w.url);
 }
 
 // ── Задание: описание, файлы преподавателя, сдача ─────────────────────────
@@ -643,7 +643,7 @@ async function openTask(w) {
   box.innerHTML = '<h2 class="section" style="margin-top:6px"><span>' + escapeHtml(w.name) + '</span></h2>' +
     '<div class="skel" style="height:120px"></div><div class="skel" style="height:160px"></div>';
   try {
-    const t = await api("/api/sdo/task/" + w.cmid);
+    const t = await api("/api/sdo/task/" + w.cmid + (w.module === "quiz" ? "?module=quiz" : ""));
     if (req !== sdoTaskReq) return;                      // уже открыли другое задание — «Сдать» не в чужой cmid
     sdoTask = Object.assign(t, { work: w, loaded: Date.now() });
     if (sdoView === "task") renderTask();
@@ -679,13 +679,34 @@ function renderTask() {
       (t.description ? '<p class="t-desc">' + escapeHtml(t.description).replace(/\n/g, "<br>") + '</p>' : '') + '</div>' +
     (t.feedback ? '<h2 class="section">Комментарий преподавателя</h2><div class="card"><p class="t-desc">' +
       escapeHtml(t.feedback).replace(/\n/g, "<br>") + '</p></div>' : '') +
+    (t.quiz ? quizCard(t, w) : '') +
     (t.files.length ? '<h2 class="section">Файлы задания' + (t.files.length > 1 ? '<button class="link-btn" onclick="downloadAllSdo(this)">' + icon("download", "inl") + ' Скачать все · ' + t.files.length + '</button>' : '') + '</h2>' +
       '<div class="card pad">' + t.files.map((f, i) => fileRow(f, i, false)).join("") + '</div>' : '') +
     (t.mine.length ? '<h2 class="section">Мой ответ</h2><div class="card pad">' + t.mine.map((f, i) => fileRow(f, i, true)).join("") + '</div>' : '') +
     (t.can_submit ? '<button class="primary t-go" onclick="submitFromTask()">' + icon("upload") + ' ' + (t.mine.length ? "Сдать ещё / заменить" : "Сдать работу") +
       (t.limit > 1 ? ' · до ' + t.limit + ' ' + plural(t.limit, "файла", "файлов", "файлов") : '') + '</button>' :
       (w.status === "offline" ? '<p class="sheet-hint" style="text-align:center">Эту работу сдают на занятии, не через СДО.</p>' : '')) +
-    '<button class="ghost" onclick="openLink(' + escapeHtml(JSON.stringify(t.url)) + ')">Открыть в СДО</button>';
+    (t.quiz && t.open_now ? '' : '<button class="ghost" onclick="openLink(' + escapeHtml(JSON.stringify(t.url)) + ')">Открыть в СДО</button>');
+}
+
+// Тест (разведка СДО 07.10): открыт ли, попытки, лучший результат, проходная.
+// Пройти можно только на сайте — кнопка ведёт туда.
+function quizCard(t, w) {
+  const used = t.attempts.length;
+  const state = t.open_now ? "Тест открыт — можно проходить"
+    : t.no_more ? "Попыток больше нет"
+    : t.unavailable || w.status === "soon" ? "Ещё не открыт" + (t.opens ? " · откроется " + shortDate(t.opens) : "")
+    : "Сейчас пройти нельзя";
+  const line = (ic, html) => '<p class="t-desc">' + icon(ic, "inl") + " " + html + '</p>';
+  return '<h2 class="section">Тест</h2><div class="card">' +
+    line(t.open_now ? "check" : "lock", "<b>" + escapeHtml(state) + "</b>") +
+    line("upload", "Попытки: " + (t.attempts_allowed ? "использовано " + used + " из " + t.attempts_allowed : used + " · без ограничения")) +
+    (t.best ? line("checkCircle", "Лучший результат: <b>" + escapeHtml(t.best.replace("/", " из ")) + "</b>") : "") +
+    (t.pass_text ? line("warning", "Проходная: " + escapeHtml(t.pass_text)) : "") +
+    (t.time_limit ? line("clock", "На попытку: " + (t.time_limit % 60 ? t.time_limit + " мин" : t.time_limit / 60 + " ч")) : "") +
+    t.attempts.map((a, i) => line("check", "Попытка " + (i + 1) + ": " + escapeHtml(a.grade || a.state) + (a.finished ? " · " + shortDate(a.finished) : ""))).join("") +
+    '</div>' +
+    (t.open_now ? '<button class="primary t-go" onclick="openLink(' + escapeHtml(JSON.stringify(t.url)) + ')">' + icon("upload") + ' Пройти тест в СДО</button>' : '');
 }
 
 // Статус ответа — по-человечески, а не сырым текстом Moodle (дизайн-ревью, п. 7)

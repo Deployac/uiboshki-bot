@@ -75,16 +75,38 @@ async def get_checked(client: httpx.AsyncClient, url: str) -> httpx.Response:
     return resp
 
 
+IDLE_TIMEOUT: int | None = None     # сек: сколько сессия живёт без запросов (для /status)
+
+
+async def _time_remaining(client: httpx.AsyncClient, html: str) -> int | None:
+    """core_session_time_remaining сразу после запроса — это и есть срок жизни
+    сессии без обращений (у МИРЭА меньше 6 ч; точное число — в /status)."""
+    m = re.search(r'"sesskey":"([^"]+)"', html or "")
+    if not m:
+        return None
+    method = "core_session_time_remaining"
+    try:
+        r = await client.post(f"{SDO_BASE_URL}/lib/ajax/service.php?sesskey={m.group(1)}&info={method}",
+                              json=[{"index": 0, "methodname": method, "args": {}}])
+        data = r.json()[0]
+        return None if data.get("error") else int(data["data"]["timeremaining"])
+    except Exception as e:
+        logger.info(f"СДО: срок сессии не узнал ({e})")
+        return None
+
+
 async def keepalive() -> bool:
     """Лёгкий запрос в СДО, чтобы сессия Moodle не истекла без обращений
     (сколько она живёт без них — не знаем; синк раз в 6 ч её не спас).
     True — сессия жива."""
     if not SDO_SESSION_COOKIE:
         return False
+    global IDLE_TIMEOUT
     try:
         async with httpx.AsyncClient(cookies={"MoodleSession": SDO_SESSION_COOKIE},
                                      follow_redirects=True, timeout=30) as client:
-            await get_checked(client, f"{SDO_BASE_URL}/my/")
+            resp = await get_checked(client, f"{SDO_BASE_URL}/my/")
+            IDLE_TIMEOUT = await _time_remaining(client, resp.text) or IDLE_TIMEOUT
         return True
     except Exception as e:
         logger.info(f"СДО keepalive: {e}")
