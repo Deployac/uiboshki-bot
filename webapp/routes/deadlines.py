@@ -4,7 +4,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from config import STAROSTA_IDS
 from webapp import deps
 from webapp.deps import CurrentUser
 
@@ -26,8 +25,11 @@ async def api_deadlines(include_done: bool = False, user: dict = CurrentUser):
     for d in items:
         d["personal"] = not is_shared_deadline(d)
         d["mine"] = d.get("created_by") == user["id"]
-        # Править/удалять: свой личный — автор, общий — староста и зам.
-        d["can_edit"] = (d["personal"] and d["mine"]) or (not d["personal"] and editor)
+        # Править/удалять может каждый (владелец 08.10): свой личный и общий
+        # у старосты — для всех, общий у остальных — только у себя.
+        d["can_edit"] = True
+        d["edit_scope"] = "all" if (d["personal"] and d["mine"]) or (not d["personal"] and editor) else "me"
+        d["mine_changed"] = bool(d.get("mine_changed"))
         d["can_submit"] = can_submit(d)
         d["reminders"] = [{"at": at, "label": dl_label(at)} for at in reminders.get(d["id"], [])]
     stats = await get_deadline_stats(user["id"])
@@ -60,10 +62,9 @@ def _validate_deadline(body: NewDeadline) -> tuple[str, str, str | None, str]:
 
 
 async def _can_edit_deadline(existing: dict, user_id: int) -> bool:
-    from database import is_shared_deadline
-    from database import is_editor
+    from database import deadline_group, is_editor, is_shared_deadline
     if is_shared_deadline(existing):
-        return await is_editor(user_id)
+        return await is_editor(user_id, await deadline_group(existing))
     return existing["created_by"] == user_id
 
 
@@ -83,29 +84,40 @@ async def api_deadline_add(body: NewDeadline, user: dict = CurrentUser):
 @router.patch("/api/deadlines/{deadline_id}")
 async def api_deadline_edit(deadline_id: int, body: NewDeadline, user: dict = CurrentUser):
     """Правка дедлайна: свой личный — автор, общий (в т.ч. из СДО) —
-    староста и зам. Отредактированный общий автосинк СДО больше не трогает."""
-    from database import edit_deadline, get_deadline
+    староста и зам для всех (автосинк СДО его больше не трогает), остальные
+    — только у себя (deadline_mine, владелец 08.10)."""
+    from database import can_see_deadline, edit_deadline, get_deadline, set_deadline_mine
     existing = await get_deadline(deadline_id)
-    if not existing:
+    if not existing or not await can_see_deadline(existing, user["id"]):
         raise HTTPException(status_code=404, detail="дедлайн не найден")
-    if not await _can_edit_deadline(existing, user["id"]):
-        raise HTTPException(status_code=403, detail="общий дедлайн правит староста, личный — автор")
     subject, due, due_time, desc = _validate_deadline(body)
-    await edit_deadline(deadline_id, subject, desc, due, due_time)
-    return {"ok": True, "id": deadline_id}
+    if await _can_edit_deadline(existing, user["id"]):
+        await edit_deadline(deadline_id, subject, desc, due, due_time)
+        return {"ok": True, "id": deadline_id, "scope": "all"}
+    await set_deadline_mine(user["id"], deadline_id, subject, desc, due, due_time)
+    return {"ok": True, "id": deadline_id, "scope": "me"}
 
 
 @router.delete("/api/deadlines/{deadline_id}")
 async def api_deadline_delete(deadline_id: int, user: dict = CurrentUser):
-    """Свой личный — автор, общий — староста и зам."""
-    from database import delete_deadline, get_deadline
+    """Свой личный — автор, общий — староста и зам для всех; остальные
+    убирают общий только у себя (у группы он остаётся)."""
+    from database import can_see_deadline, delete_deadline, get_deadline, hide_deadline_for
     existing = await get_deadline(deadline_id)
-    if not existing:
+    if not existing or not await can_see_deadline(existing, user["id"]):
         raise HTTPException(status_code=404, detail="дедлайн не найден")
-    if not await _can_edit_deadline(existing, user["id"]):
-        raise HTTPException(status_code=403, detail="общий дедлайн удаляет староста, личный — автор")
-    await delete_deadline(deadline_id)
-    return {"ok": True}
+    if await _can_edit_deadline(existing, user["id"]):
+        await delete_deadline(deadline_id)
+        return {"ok": True, "scope": "all"}
+    await hide_deadline_for(user["id"], deadline_id)
+    return {"ok": True, "scope": "me"}
+
+
+@router.delete("/api/deadlines/{deadline_id}/mine")
+async def api_deadline_reset_mine(deadline_id: int, user: dict = CurrentUser):
+    """«Вернуть как у всех»: снять свою правку общего дедлайна."""
+    from database import reset_deadline_mine
+    return {"ok": await reset_deadline_mine(user["id"], deadline_id)}
 
 
 @router.get("/api/homework")
@@ -113,7 +125,8 @@ async def api_homework(user: dict = CurrentUser):
     """Доска ДЗ (/addhw в боте): свежие сверху. Файл ДЗ WebApp открывает
     диплинком в бота (t.me/<бот>?start=hw_<id>) — file_id наружу не отдаём."""
     from group_context import list_homework
-    items = await list_homework(60)
+    from database.groups import viewer_group
+    items = await list_homework(60, await viewer_group(user["id"]))
     return {"items": [
         {"id": h["id"], "subject": h["subject"], "content": h.get("content") or "",
          "lesson_date": h.get("lesson_date") or "", "created_at": (h.get("created_at") or "")[:10],
@@ -179,9 +192,9 @@ async def api_deadline_toggle(deadline_id: int, body: ToggleBody, user: dict = C
     existing = await get_deadline(deadline_id)
     if not existing:
         raise HTTPException(status_code=404, detail="дедлайн не найден")
-    is_shared = existing["created_by"] in (0, *STAROSTA_IDS)
-    if not is_shared and existing["created_by"] != user["id"]:
-        raise HTTPException(status_code=403, detail="это чужой личный дедлайн")
+    from database import can_see_deadline
+    if not await can_see_deadline(existing, user["id"]):
+        raise HTTPException(status_code=403, detail="это чужой дедлайн")
     # Персонально для user["id"] — не трогает статус остальных по этому же дедлайну.
     await set_deadline_done(deadline_id, user["id"], body.done)
     return {"ok": True, "id": deadline_id, "done": body.done}

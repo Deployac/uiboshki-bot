@@ -121,8 +121,10 @@ async def test_add_and_delete_personal_deadline(db, client):
                   json={"subject": "x", "due_date": "2099-10-03", "due_time": "25:00"}).status_code == 400
 
     shared = await db.add_deadline("Общий", "", "2099-10-01", None, 0)
-    assert c.delete(f"/api/deadlines/{shared}", headers=headers).status_code == 403  # общий — только староста
-    assert c.delete(f"/api/deadlines/{did}", headers=headers).json() == {"ok": True}
+    # общий не старосте — убирается только у себя (владелец 08.10), у группы остаётся
+    assert c.delete(f"/api/deadlines/{shared}", headers=headers).json() == {"ok": True, "scope": "me"}
+    assert await db.get_deadline(shared) is not None
+    assert c.delete(f"/api/deadlines/{did}", headers=headers).json() == {"ok": True, "scope": "all"}
     assert await db.get_deadline(did) is None
 
 
@@ -161,13 +163,17 @@ async def test_edit_permissions_and_sdo_does_not_overwrite(db, client, monkeypat
                                    "https://sdo/x", "2099-09-30", "23:59", 0, external_id="sdo:1")
     body = {"subject": "ПР-1 Архитектура", "due_date": "2099-10-02", "due_time": "18:00", "description": ""}
 
-    assert c.patch(f"/api/deadlines/{shared}", headers=_headers_for(222), json=body).status_code == 403
+    # не староста — правка только у себя (владелец 08.10): общий не меняется
+    assert c.patch(f"/api/deadlines/{shared}", headers=_headers_for(222), json=body).json()["scope"] == "me"
+    assert (await db.get_deadline(shared))["manual_edit"] == 0
     items = {i["id"]: i for i in c.get("/api/deadlines", headers=_headers_for(222)).json()["items"]}
-    assert items[shared]["can_edit"] is False
+    assert items[shared]["edit_scope"] == "me" and items[shared]["mine_changed"]
+    assert items[shared]["subject"] == "ПР-1 Архитектура"
+    assert c.delete(f"/api/deadlines/{shared}/mine", headers=_headers_for(222)).json() == {"ok": True}
 
     st = _headers_for(STAROSTA_ID)
-    assert c.get("/api/deadlines", headers=st).json()["items"][0]["can_edit"] is True
-    assert c.patch(f"/api/deadlines/{shared}", headers=st, json=body).json()["ok"]
+    assert c.get("/api/deadlines", headers=st).json()["items"][0]["edit_scope"] == "all"
+    assert c.patch(f"/api/deadlines/{shared}", headers=st, json=body).json()["scope"] == "all"
     edited = await db.get_deadline(shared)
     assert (edited["subject"], edited["due_date"], edited["due_time"], edited["manual_edit"]) == \
            ("ПР-1 Архитектура", "2099-10-02", "18:00", 1)
@@ -186,7 +192,7 @@ async def test_edit_permissions_and_sdo_does_not_overwrite(db, client, monkeypat
     assert (await db.get_deadline(shared))["subject"] == "ПР-1 Архитектура"
 
     # староста может и удалить общий
-    assert c.delete(f"/api/deadlines/{shared}", headers=st).json() == {"ok": True}
+    assert c.delete(f"/api/deadlines/{shared}", headers=st).json() == {"ok": True, "scope": "all"}
 
 
 @pytest.mark.asyncio

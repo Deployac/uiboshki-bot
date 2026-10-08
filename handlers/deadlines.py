@@ -14,7 +14,7 @@ from database import (
     add_deadline, get_active_deadlines, mark_deadline_done, set_deadline_done,
     delete_deadline, upsert_user, get_deadline_stats, get_deadline, is_shared_deadline,
 )
-from config import STAROSTA_ID, STAROSTA_IDS, is_starosta, GROUP_CHAT_ID
+from config import STAROSTA_ID, is_starosta, GROUP_CHAT_ID
 from scheduler import DEADLINE_POST_QUESTION
 from keyboards import MAIN_KB, CANCEL_KB
 from utils import esc, parse_day_month, today_msk, esc_attr
@@ -254,7 +254,15 @@ async def add_due_time(message: Message, state: FSMContext):
         return
     data = await state.get_data()
     await state.clear()
-    did = await add_deadline(data["subject"], data.get("description", ""), data["due_date"], due_time, message.from_user.id)
+    # староста чужой группы (group_admins) добавляет общий дедлайн своей группы;
+    # староста бота — общий своей (как раньше, по created_by); остальные — личный
+    from database import is_editor
+    from database.groups import home, viewer_group
+    gid = await viewer_group(message.from_user.id)
+    shared_gid = gid if gid != home() and not is_starosta(message.from_user.id) \
+        and await is_editor(message.from_user.id, gid) else None
+    did = await add_deadline(data["subject"], data.get("description", ""), data["due_date"], due_time,
+                             message.from_user.id, group_id=shared_gid)
     tp  = f" в {due_time}" if due_time else ""
     await message.answer(
         f"✅ <b>Дедлайн добавлен!</b> (ID: {did})\n\n"
@@ -309,10 +317,11 @@ async def cmd_del(message: Message):
         await message.answer("❌ Дедлайн с таким ID не найден.")
         return
 
-    is_shared = existing["created_by"] in (0, *STAROSTA_IDS)
+    is_shared = is_shared_deadline(existing)
     is_owner  = existing["created_by"] == message.from_user.id
     if is_shared:
-        if STAROSTA_ID and not is_starosta(message.from_user.id):
+        from database import deadline_group, is_editor
+        if STAROSTA_ID and not await is_editor(message.from_user.id, await deadline_group(existing)):
             await message.answer("❌ Это общий дедлайн — удалить может только староста.")
             return
     elif not is_owner:

@@ -150,7 +150,11 @@ async def status_for(user_id: int) -> dict:
     from database import get_sdo_session
     row = await get_sdo_session(user_id)
     if row:
-        return {"state": "ok" if row["status"] == "ok" else "expired", "checked_at": row["checked_at"]}
+        import groups
+        g = await groups.of_user(user_id)
+        return {"state": "ok" if row["status"] == "ok" else "expired", "checked_at": row["checked_at"],
+                "share": bool(row.get("share")), "can_share": bool(g and not g["own"]),
+                "group": g["name"] if g else ""}
     if is_starosta(user_id) and SDO_SESSION_COOKIE:
         return {"state": "ok", "checked_at": None, "shared": True}
     return {"state": "off"}
@@ -207,11 +211,12 @@ async def _check_one(row: dict, bot=None, now: datetime | None = None):
         await set_sdo_next_check(uid, _utc(now + timedelta(minutes=next_interval(left))), max(0, left - 1))
     elif bot:
         try:
+            from delivery import deliver
             from keyboards import app_button
-            await bot.send_message(uid,
-                "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
-                "Подключи заново: приложение → СДО → Вход.",
-                reply_markup=app_button("🎓 Подключить СДО", "sdo"))
+            await deliver(bot, uid,
+                          "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
+                          "Подключи заново: приложение → СДО → Вход.",
+                          kind="sdo", tab="sdo", reply_markup=app_button("🎓 Подключить СДО", "sdo"))
         except Exception as e:
             logger.info(f"СДО: не смог сказать {uid}, что вход устарел: {e!r}")
 

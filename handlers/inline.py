@@ -67,28 +67,39 @@ def _card_base() -> str:
     return WEBAPP_URL.rstrip("/")
 
 
-async def _own_results(only: str | None) -> list:
+async def _own_results(only: str | None, user_id: int | None = None) -> list:
+    """«Сегодня/завтра/неделя» — группы того, кто пишет (этап 1): своя —
+    как раньше, чужая — её календарь (в ссылке картинки — id группы)."""
+    import groups
     from config import GROUP_NAME
+    from database.groups import viewer_group
+    try:
+        gid = await viewer_group(user_id) if user_id else groups.home_id()
+    except Exception as e:                # база недоступна — своя группа, как раньше
+        logger.info(f"inline: группа {user_id}: {e}")
+        gid = groups.home_id()
+    other = bool(gid) and gid > 0 and gid != groups.home_id()
+    name = (await groups.name_of(gid) or GROUP_NAME) if other else GROUP_NAME
     if base := _card_base():
         import schedule_card
         out = []
-        for key, title, desc in (("today", f"📅 Сегодня — {GROUP_NAME}", "пары на сегодня"),
-                                 ("tomorrow", f"🌙 Завтра — {GROUP_NAME}", "пары на завтра"),
-                                 ("week", f"🗓 Неделя — {GROUP_NAME}", "вся неделя")):
+        for key, title, desc in (("today", f"📅 Сегодня — {name}", "пары на сегодня"),
+                                 ("tomorrow", f"🌙 Завтра — {name}", "пары на завтра"),
+                                 ("week", f"🗓 Неделя — {name}", "вся неделя")):
             if only and key != only:
                 continue
-            url = schedule_card.card_url(base, key)
+            url = schedule_card.card_url(base, key, *((1, gid) if other else ()))
             out.append(_photo(f"own:{key}:{url}", url, title, desc, title))
         return out
     from schedule_parser import get_today_schedule, get_tomorrow_schedule, get_week_schedule
-    cards = [("today", f"📅 Сегодня — {GROUP_NAME}", "пары на сегодня", get_today_schedule),
-             ("tomorrow", f"🌙 Завтра — {GROUP_NAME}", "пары на завтра", get_tomorrow_schedule),
-             ("week", f"🗓 Неделя — {GROUP_NAME}", "вся неделя", get_week_schedule)]
+    cards = [("today", f"📅 Сегодня — {name}", "пары на сегодня", get_today_schedule),
+             ("tomorrow", f"🌙 Завтра — {name}", "пары на завтра", get_tomorrow_schedule),
+             ("week", f"🗓 Неделя — {name}", "вся неделя", get_week_schedule)]
     out = []
     for key, title, desc, fn in cards:
         if only and key != only:
             continue
-        text = await fn()
+        text = await (fn(gid) if other else fn())
         out.append(_article(f"own:{key}:{hash(text)}", title, desc, text))
     return out
 
@@ -124,7 +135,7 @@ async def inline_schedule(query: InlineQuery):
     only = DAY_WORDS.get(q.lower())
     try:
         if not q or only:
-            results = await _own_results(only)
+            results = await _own_results(only, query.from_user.id)
         elif len(q) >= 3:
             results = await _target_results(q)
         else:

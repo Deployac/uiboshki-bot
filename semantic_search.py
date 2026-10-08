@@ -124,6 +124,11 @@ async def search(query: str, subject: str = "", k: int = TOP) -> list[dict]:
     if not query:
         return []
     subj_sql, subj_args = (" AND f.subject = ?", [subject]) if subject else ("", [])
+    # только лекции группы того, кто спрашивает (этап 1 (б); current_group)
+    from database.groups import file_scope_sql, g_or_home
+    g = g_or_home(None)
+    subj_sql += " AND " + file_scope_sql("f")
+    subj_args = [*subj_args, g, g]
     async with open_index() as db:
         lex: list[int] = []
         q = fts_query(query)

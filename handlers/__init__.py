@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from .start    import router as start_router
+from .group_pick import router as group_router
 from .schedule import router as schedule_router
 from .deadlines import router as deadline_router
 from .files    import router as files_router
@@ -40,9 +41,16 @@ async def _anonymize_feed_on_startup():
         logging.getLogger(__name__).warning(f"Подслушано: старые авторы не обезличены: {e!r}")
 
 
+async def _ensure_home_group():
+    """Своя группа (ICAL_URL) — в справочнике групп (groups.py)."""
+    import groups
+    await groups.ensure_home()
+
+
 def register_handlers(dp: Dispatcher):
     dp.include_router(cancel_router)
     dp.include_router(start_router)
+    dp.include_router(group_router)
     dp.include_router(schedule_router)
     dp.include_router(deadline_router)
     dp.include_router(files_router)
@@ -54,3 +62,4 @@ def register_handlers(dp: Dispatcher):
     dp.include_router(channel_router)
     dp.include_router(solver_router)
     dp.startup.register(_anonymize_feed_on_startup)
+    dp.startup.register(_ensure_home_group)

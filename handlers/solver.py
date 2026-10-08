@@ -40,8 +40,8 @@ async def _ai_day(message: Message) -> str | None:
 
 def _why_text(why: str | None) -> str | None:
     import ai_quota
-    if why == "day":
-        return "⏳ " + ai_quota.text("day", capital=True) + "."
+    if why and why != "minute":
+        return "⏳ " + ai_quota.text(why, capital=True) + "."
     return TOO_MANY if why else None
 
 SUBJECT_KB = ReplyKeyboardMarkup(

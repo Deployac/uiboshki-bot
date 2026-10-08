@@ -2,10 +2,41 @@
 // Файлы подключаются по порядку и делят глобальную область видимости.
 
 const tg = window.Telegram ? window.Telegram.WebApp : null;
-// Корень открыли в обычном браузере (не из Telegram) — это гость по ссылке
+// Вне Telegram (PWA, браузер, будущее приложение — этап 2) вход — токеном
+// сессии устройства: «Войти через Telegram» → подтвердить в боте (webapp/routes/auth.py).
+const IN_TG = !!(tg && tg.initData);
+function readToken() { try { return localStorage.getItem("uib_token") || ""; } catch (e) { return ""; } }
+function saveToken(t) { try { if (t) localStorage.setItem("uib_token", t); else localStorage.removeItem("uib_token"); } catch (e) {} }
+// Вход через VK/Яндекс: сервер вернул сюда с токеном во фрагменте (/app#token=…,
+// webapp/routes/auth.py) — сохранить и убрать из адреса, чтобы не остался в истории.
+if (!IN_TG && location.hash.startsWith("#token=")) {
+  saveToken(decodeURIComponent(location.hash.slice(7)));
+  history.replaceState(null, "", location.pathname + location.search);
+}
+const APP_TOKEN = IN_TG ? "" : readToken();
+// Корень открыли в обычном браузере без входа — это гость по ссылке
 // www.uiboshki.ru: ему нужен сайт-презентация, а не приложение без входа.
-if (!(tg && tg.initData) && (location.pathname === "/" || location.pathname === "/index.html")) {
+if (!IN_TG && !APP_TOKEN && (location.pathname === "/" || location.pathname === "/index.html")) {
   location.replace("/about");
+}
+const NEED_LOGIN = !IN_TG && !APP_TOKEN;      // /app без входа — экран «Войти»
+// PWA: service worker (sw.js — оболочка и последние данные без сети) — только вне Telegram
+if (!IN_TG && "serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("/sw.js").catch(() => {});
+}
+// Тема вне Telegram — системная (тёмная/светлая), как у остальных приложений телефона
+if (!tg || !tg.initData) {
+  const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;
+  const sys = () => {
+    const light = !!(mq && mq.matches), root = document.documentElement.style;
+    document.documentElement.dataset.theme = light ? "light" : "dark";
+    const pal = light ? { "--bg": "#f5f6f8", "--bg-card": "#ffffff", "--text": "#15171c", "--hint": "#6b7280",
+      "--border": "#e4e6ea", "--bg-raised": "#eceef1", "--shadow": "0 2px 10px rgba(0,0,0,0.06)" } : {};
+    ["--bg", "--bg-card", "--text", "--hint", "--border", "--bg-raised", "--shadow"].forEach(k =>
+      pal[k] ? root.setProperty(k, pal[k]) : root.removeProperty(k));
+  };
+  sys();
+  if (mq && mq.addEventListener) mq.addEventListener("change", sys);
 }
 // Имя бота и группы сервер подставляет в страницу (config.py: BOT_USERNAME,
 // GROUP_NAME); без него (файл открыт напрямую) — как у УИБО-03-24.
@@ -33,6 +64,7 @@ if (tg) {
 // Цвета приложения — из темы Telegram (тёмная/светлая, свой акцент).
 // data-theme на <html> — для мест, где светлой теме нужен свой цвет (app.css).
 function applyTheme() {
+  if (!IN_TG) return;                  // вне Telegram — системная тема (выше)
   const tp = tg.themeParams || {};
   const root = document.documentElement.style;
   const light = tg.colorScheme === "light";
@@ -96,8 +128,12 @@ async function api(path, opts) {
   opts.headers = Object.assign({
     "X-Telegram-Init-Data": initData(),
     "Content-Type": "application/json",
-  }, opts.headers || {});
+  }, APP_TOKEN ? { "Authorization": "Bearer " + APP_TOKEN } : {}, opts.headers || {});
   const resp = await fetch(path, opts);
+  if (resp.status === 401 && APP_TOKEN) {        // сессию отозвали («выйти везде») — заново войти
+    saveToken("");
+    location.replace("/app");
+  }
   if (!resp.ok) {
     const body = await resp.text();
     let detail = "";
@@ -205,9 +241,28 @@ document.addEventListener("touchstart", (e) => {
   a.blur();
 }, { passive: true });
 
-function capyEmpty(title, sub) {
-  return '<div class="empty capy-empty">' + icon("capy", "capy") + '<b>' + title + '</b>' +
-    (sub ? '<span>' + sub + '</span>' : '') + '</div>';
+function capyEmpty(title, sub, pose) {
+  return '<div class="empty capy-empty"><span class="capy-pose capy-' + (pose || "joy") + '" aria-hidden="true"></span>' +
+    '<b>' + title + '</b>' + (sub ? '<span>' + sub + '</span>' : '') + '</div>';
+}
+
+// «Не загрузилось» — грустная капибара вместо голой строки
+function capyError(msg, extra) {
+  return '<div class="empty capy-empty err"><span class="capy-pose capy-sad" aria-hidden="true"></span>' +
+    '<b>Не загрузилось</b><span>' + escapeHtml(msg || "") + '</span>' + (extra || "") + '</div>';
+}
+
+// Капибара по времени суток: утро — кофе, день — ноутбук, вечер — книга, ночь — спит
+function capyForHour(hour) {
+  if (hour >= 5 && hour < 12) return "morning";
+  if (hour >= 12 && hour < 17) return "day";
+  if (hour >= 17 && hour < 23) return "evening";
+  return "night";
+}
+
+function hideSplash() {
+  const s = document.getElementById("splash");
+  if (s) s.classList.add("gone");
 }
 
 function escapeHtml(s) {
@@ -269,3 +324,79 @@ async function sendToChat(path, deeplink, btn) {
   }
 }
 
+
+// ── Вход вне Telegram (этап 2: PWA и своё приложение) ───────────────────────
+// Код входа → ссылка в бота → «Да, это я» → токен. Ждём подтверждения до 10 минут.
+let loginCode = null, loginTimer = null;
+
+function showLogin() {
+  const box = document.getElementById("login");
+  box.classList.add("open");
+  box.innerHTML = '<div class="login-card"><svg class="login-capy" aria-hidden="true"><use href="#i-capy"/></svg>' +
+    '<h2>УИБО-бот</h2><p>Расписание, дедлайны, баллы СДО и лекции твоей группы.</p>' +
+    '<button class="primary" id="login-btn" onclick="startLogin()">Войти через Telegram</button>' +
+    '<p class="hint" id="login-hint">Бот спросит «Это ты?» — нажми «Да». Один раз на этом устройстве.</p>' +
+    '<div id="login-more"></div></div>';
+  // VK ID и Яндекс ID — если на сервере есть их ключи (/api/auth/providers)
+  fetch("/api/auth/providers").then(r => r.json()).then(res => {
+    const box = document.getElementById("login-more");
+    if (!box || !res.items || !res.items.length) return;
+    box.innerHTML = '<p class="hint">или</p>' + res.items.map(p =>
+      '<button class="ghost" onclick="startOAuth(\'' + p.id + '\')">Войти через ' + escapeHtml(p.name) + '</button>').join("") +
+      '<p class="hint">Уже пользуешься через Telegram? Войди им, а VK или Яндекс привяжи в «Ещё → Безопасность» — ' +
+      'иначе получится второй, пустой аккаунт.</p>';
+  }).catch(() => {});
+}
+
+// VK/Яндекс: уходим к провайдеру в этом же окне, назад — /app#token=…
+async function startOAuth(provider) {
+  try {
+    const res = await fetch("/api/auth/" + provider + "/start", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                                   body: JSON.stringify({ client: "web" }) });
+    if (!res.ok) throw new Error();
+    location.href = (await res.json()).url;
+  } catch (e) {
+    document.getElementById("login-hint").textContent = "Не получилось начать вход — попробуй через минуту.";
+  }
+}
+
+async function startLogin() {
+  const btn = document.getElementById("login-btn"), hint = document.getElementById("login-hint");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/auth/start", { method: "POST" }).then(r => r.ok ? r.json() : Promise.reject(r));
+    loginCode = res.code;
+    window.open(res.link, "_blank");
+    hint.textContent = "Открыл бота — нажми там «Да, это я», а потом вернись сюда.";
+    btn.textContent = "Открыть бота ещё раз";
+    btn.disabled = false;
+    btn.onclick = () => window.open(res.link, "_blank");
+    clearInterval(loginTimer);
+    loginTimer = setInterval(pollLogin, 2000);
+  } catch (e) {
+    btn.disabled = false;
+    hint.textContent = "Не получилось начать вход — попробуй через минуту.";
+  }
+}
+
+async function pollLogin() {
+  if (!loginCode) return;
+  let res;
+  try {
+    res = await fetch("/api/auth/poll", { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ code: loginCode }) }).then(r => r.json());
+  } catch (e) { return; }
+  if (res.status === "ok") {
+    clearInterval(loginTimer);
+    saveToken(res.token);
+    location.replace("/app");
+  } else if (res.status !== "wait") {
+    clearInterval(loginTimer);
+    loginCode = null;
+    document.getElementById("login-hint").textContent =
+      res.status === "denied" ? "Вход отклонён в боте." : "Ссылка устарела — нажми «Войти» ещё раз.";
+    const btn = document.getElementById("login-btn");
+    btn.textContent = "Войти через Telegram";
+    btn.onclick = startLogin;
+  }
+}

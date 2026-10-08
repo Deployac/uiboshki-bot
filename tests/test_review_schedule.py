@@ -200,7 +200,7 @@ async def test_long_note_rejected_and_old_long_note_does_not_break_today(db, fee
     await db.add_lesson_note(today, "", "б" * 5000, 5)
     await db.add_lesson_note(today, "", "\n".join(["в" * 400] * 12), 5)
 
-    async def schedule():
+    async def schedule(*a, **k):
         return "📅 <b>Сегодня</b>\n" + "\n".join(["пара"] * 10)
 
     monkeypatch.setattr(hs, "get_today_schedule", schedule)

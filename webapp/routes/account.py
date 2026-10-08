@@ -13,7 +13,48 @@ router = APIRouter()
 
 @router.get("/api/me")
 async def api_me(user: dict = CurrentUser):
-    return {"id": user["id"], "first_name": user.get("first_name", ""), "username": user.get("username", "")}
+    import groups
+    import plans
+    return {"id": user["id"], "first_name": user.get("first_name", ""), "username": user.get("username", ""),
+            "group": await groups.of_user(user["id"]), "plan": await plans.plan_of(user["id"])}
+
+
+@router.get("/api/groups/search")
+async def api_groups_search(q: str = "", user: dict = CurrentUser):
+    """Группы по названию — для выбора своей (этап 1: любая группа института)."""
+    import groups
+    return {"items": await groups.search(q[:40])}
+
+
+class GroupBody(BaseModel):
+    id: int
+
+
+@router.post("/api/me/group/admin")
+async def api_group_admin_request(user: dict = CurrentUser):
+    """«Я староста этой группы» — запрос владельцу бота (handlers/group_pick)."""
+    from types import SimpleNamespace
+    import groups
+    import ratelimit
+    from handlers.group_pick import request_admin
+    from webapp.deps import tg_bot
+    g = await groups.of_user(user["id"])
+    if not g or g["own"]:
+        raise HTTPException(400, "Сначала выбери свою группу")
+    if not ratelimit.allow("deadline", user["id"]):
+        raise HTTPException(429, "Подожди пару минут")
+    who = SimpleNamespace(id=user["id"], username=user.get("username", ""),
+                          full_name=" ".join(p for p in (user.get("first_name", ""), user.get("last_name", "")) if p))
+    return {"message": await request_admin(tg_bot(), who, g)}
+
+
+@router.post("/api/me/group")
+async def api_set_group(body: GroupBody, user: dict = CurrentUser):
+    import groups
+    g = await groups.choose(user["id"], body.id)
+    if not g:
+        raise HTTPException(404, "Такой группы нет")
+    return {"group": g}
 
 
 @router.get("/api/security")
@@ -42,10 +83,10 @@ async def _notify_view(uid: int) -> dict:
     import notify_prefs
     from config import DEADLINE_REMINDER_HOUR, DEADLINE_REMINDER_MINUTE, SCHEDULE_HOUR, SCHEDULE_MINUTE
     from database import get_user
-    from schedule_parser import fetch_schedule_raw
+    from schedule_parser import raw_for_user
     user = await get_user(uid) or {}
     try:
-        home = notify_prefs.home_campus(await fetch_schedule_raw())
+        home = notify_prefs.home_campus(await raw_for_user(uid))
     except Exception:
         home = None
     return {"subscribed": bool(user.get("subscribed", 1)), "reminder_minutes": user.get("reminder_minutes") or 15,
@@ -112,7 +153,7 @@ async def ics_feed(token: str):
         raise HTTPException(status_code=404, detail="ссылка недействительна")
     from optional_subjects import apply_for
     await apply_for(owner["user_id"])
-    body = await build_ics_for_user(token)
+    body = await build_ics_for_user(token, owner.get("group_id"))
     return Response(
         content=body,
         media_type="text/calendar; charset=utf-8",

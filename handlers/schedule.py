@@ -45,8 +45,8 @@ def _clip(text: str, limit: int = NOTE_MAX) -> str:
     return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
-async def _notes_block(date_str: str) -> str:
-    notes = await get_lesson_notes(date_str)
+async def _notes_block(date_str: str, group_id: int | None = None) -> str:
+    notes = await get_lesson_notes(date_str, group_id)
     if not notes:
         return ""
     lines = ["\n\n📌 <b>Заметки:</b>"]
@@ -65,13 +65,19 @@ async def _edit_long(wait: Message, message: Message, text: str):
             await message.answer(chunk, parse_mode="HTML")
 
 
+async def _gid(message: Message) -> int | None:
+    """Группа человека (этап 1): её расписание, а не своей группы бота."""
+    from database import get_user_group
+    return await get_user_group(message.from_user.id)
+
+
 @router.message(Command("schedule"))
 @router.message(F.text == "📅 Сегодня")
 async def cmd_today(message: Message):
     await upsert_user(message.from_user.id, message.from_user.username or "", message.from_user.full_name or "")
     wait = await message.answer("⏳ Загружаю...")
-    text = await get_today_schedule()
-    text += await _notes_block(today_msk().isoformat())
+    text = await get_today_schedule(await _gid(message))
+    text += await _notes_block(today_msk().isoformat(), await _gid(message))
     await _edit_long(wait, message, text)
 
 
@@ -79,8 +85,8 @@ async def cmd_today(message: Message):
 @router.message(F.text == "🌅 Завтра")
 async def cmd_tomorrow(message: Message):
     wait = await message.answer("⏳ Загружаю...")
-    text = await get_tomorrow_schedule()
-    text += await _notes_block((today_msk() + timedelta(days=1)).isoformat())
+    text = await get_tomorrow_schedule(await _gid(message))
+    text += await _notes_block((today_msk() + timedelta(days=1)).isoformat(), await _gid(message))
     await _edit_long(wait, message, text)
 
 
@@ -88,7 +94,7 @@ async def cmd_tomorrow(message: Message):
 @router.message(F.text == "📆 Неделя")
 async def cmd_week(message: Message):
     wait = await message.answer("⏳ Загружаю неделю...")
-    text = await get_week_schedule()
+    text = await get_week_schedule(await _gid(message))
     await wait.delete()
     for chunk in split_by_lines(text):
         await message.answer(chunk, parse_mode="HTML")
@@ -98,7 +104,7 @@ async def cmd_week(message: Message):
 @router.message(F.text == "📆 След. неделя")
 async def cmd_next_week(message: Message):
     wait = await message.answer("⏳ Загружаю следующую неделю...")
-    text = await get_next_week_schedule()
+    text = await get_next_week_schedule(await _gid(message))
     await wait.delete()
     for chunk in split_by_lines(text):
         await message.answer(chunk, parse_mode="HTML")
@@ -108,7 +114,7 @@ async def cmd_next_week(message: Message):
 @router.message(F.text == "⏭ Следующая")
 async def cmd_next(message: Message):
     wait = await message.answer("⏳ Смотрю...")
-    await wait.edit_text(await get_next_lesson(), parse_mode="HTML")
+    await wait.edit_text(await get_next_lesson(await _gid(message)), parse_mode="HTML")
 
 
 # ── Личная ссылка на ICS-календарь (Фаза 12) ────────────────────────────────
@@ -287,7 +293,7 @@ async def cmd_note(message: Message, state: FSMContext):
         if len(note_text) > NOTE_MAX:
             await message.answer(f"✂️ Заметка длинновата — до {NOTE_MAX} символов, а тут {len(note_text)}.")
             return
-        await add_lesson_note(date_str, subject, note_text, message.from_user.id)
+        await add_lesson_note(date_str, subject, note_text, message.from_user.id, await _gid(message))
         await message.answer("✅ Заметка добавлена!", reply_markup=MAIN_KB)
         return
 
@@ -347,7 +353,7 @@ async def note_save_text(message: Message, state: FSMContext):
     if len(note_text) > NOTE_MAX:   # состояние не сбрасываем — пусть пришлёт короче
         await message.answer(f"✂️ Длинновато — до {NOTE_MAX} символов, а тут {len(note_text)}. Пришли короче.")
         return
-    await add_lesson_note(date_str, subject, note_text, message.from_user.id)
+    await add_lesson_note(date_str, subject, note_text, message.from_user.id, await _gid(message))
     await state.clear()
     await message.answer("✅ Заметка добавлена!", reply_markup=MAIN_KB)
 

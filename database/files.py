@@ -8,17 +8,20 @@ from database._conn import connect
 # ── Files ─────────────────────────────────────────────────────────────────────
 
 async def add_file(title, subject, file_id, file_name, uploaded_by, category: str | None = None,
-                   source: str | None = None) -> int:
+                   source: str | None = None, group_id: int | None = None) -> int:
     """category — тип внутри предмета (file_categories); None — определить
-    по названию и имени файла. source — откуда файл выгружен автоматически."""
+    по названию и имени файла. source — откуда файл выгружен автоматически.
+    group_id не задан — группа того, кто загружает (current_group; синк и
+    своя группа — NULL, как раньше)."""
+    from database.groups import g_or_home, stored
     from file_categories import LABELS, detect_category
     if category not in LABELS:
         category = detect_category(title or "", file_name or "")
     async with connect() as db:
         cursor = await db.execute("""
-            INSERT INTO files (title, subject, file_id, file_name, uploaded_by, category, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (title, subject, file_id, file_name, uploaded_by, category, source))
+            INSERT INTO files (title, subject, file_id, file_name, uploaded_by, category, source, group_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (title, subject, file_id, file_name, uploaded_by, category, source, stored(g_or_home(group_id))))
         await db.commit()
         return cursor.lastrowid
 
@@ -79,13 +82,22 @@ async def undo_file_renames() -> int:
         return cur.rowcount
 
 
-async def get_files(subject: str = None) -> list[dict]:
+def _fscope(group_id: int | None) -> tuple[str, tuple]:
+    """Файлы группы (свои и общие с ней — file_groups); None — своя группа бота."""
+    from database.groups import file_scope_sql, g_or_home
+    g = g_or_home(group_id)
+    return file_scope_sql("f"), (g, g)
+
+
+async def get_files(subject: str = None, group_id: int | None = None) -> list[dict]:
+    where, params = _fscope(group_id)
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         if subject:
-            cursor = await db.execute("SELECT * FROM files WHERE subject=? ORDER BY created_at DESC", (subject,))
+            cursor = await db.execute(f"SELECT * FROM files f WHERE subject=? AND {where} ORDER BY created_at DESC",
+                                      (subject, *params))
         else:
-            cursor = await db.execute("SELECT * FROM files ORDER BY created_at DESC")
+            cursor = await db.execute(f"SELECT * FROM files f WHERE {where} ORDER BY created_at DESC", params)
         return [dict(r) for r in await cursor.fetchall()]
 
 
@@ -119,11 +131,29 @@ async def get_file_text(file_id: int) -> str:
         return row[0] if row else ""
 
 
+def text_hash(text: str) -> str:
+    """Отпечаток текста лекции: та же лекция в другом курсе СДО (другая
+    группа потока, другое имя файла) — тот же отпечаток (этап 1 (в))."""
+    import hashlib
+    import re
+    norm = re.sub(r"\s+", " ", (text or "").lower()).strip()
+    return hashlib.sha256(norm.encode()).hexdigest()[:32] if norm else ""
+
+
 async def get_file_summary(file_id: int) -> dict | None:
-    """Готовый конспект лекции (общий для всех) или None."""
+    """Готовый конспект лекции (общий для всех) или None. Своего нет, но
+    есть у той же лекции в другом файле (отпечаток текста) — его: ИИ второй
+    раз не зовём."""
     async with connect() as db:
         db.row_factory = aiosqlite.Row
         row = await (await db.execute("SELECT * FROM file_summaries WHERE file_id=?", (file_id,))).fetchone()
+        if row:
+            return dict(row)
+        row = await (await db.execute(
+            "SELECT s.* FROM file_text me JOIN file_text other ON other.text_hash = me.text_hash "
+            "AND other.file_id != me.file_id JOIN file_summaries s ON s.file_id = other.file_id "
+            "WHERE me.file_id = ? AND me.text_hash IS NOT NULL AND me.text_hash != '' LIMIT 1",
+            (file_id,))).fetchone()
         return dict(row) if row else None
 
 
@@ -135,8 +165,14 @@ async def save_file_summary(file_id: int, content: str, created_by: int):
 
 
 async def get_file_ids_with_summary() -> set[int]:
+    """Файлы с конспектом — своим или той же лекции в другом файле."""
     async with connect() as db:
-        return {r[0] for r in await (await db.execute("SELECT file_id FROM file_summaries")).fetchall()}
+        own = {r[0] for r in await (await db.execute("SELECT file_id FROM file_summaries")).fetchall()}
+        same = {r[0] for r in await (await db.execute(
+            "SELECT me.file_id FROM file_text me JOIN file_text other ON other.text_hash = me.text_hash "
+            "AND other.file_id != me.file_id JOIN file_summaries s ON s.file_id = other.file_id "
+            "WHERE me.text_hash IS NOT NULL AND me.text_hash != ''")).fetchall()}
+        return own | same
 
 
 async def save_file_text(file_id: int, text: str):
@@ -145,43 +181,47 @@ async def save_file_text(file_id: int, text: str):
     это и есть "кэш" контекста лекций, о котором шла речь в обсуждении."""
     async with connect() as db:
         await db.execute("""
-            INSERT INTO file_text (file_id, content, char_count, extracted_at)
-            VALUES (?, ?, ?, datetime('now'))
+            INSERT INTO file_text (file_id, content, char_count, extracted_at, text_hash)
+            VALUES (?, ?, ?, datetime('now'), ?)
             ON CONFLICT(file_id) DO UPDATE SET
-                content=excluded.content, char_count=excluded.char_count, extracted_at=excluded.extracted_at
-        """, (file_id, text, len(text)))
+                content=excluded.content, char_count=excluded.char_count, extracted_at=excluded.extracted_at,
+                text_hash=excluded.text_hash
+        """, (file_id, text, len(text), text_hash(text)))
         await db.commit()
 
 
-async def get_subject_lecture_context(subject: str) -> str:
+async def get_subject_lecture_context(subject: str, group_id: int | None = None) -> str:
     """Склеенный текст всех лекций предмета (в порядке добавления файлов) —
     контекст для решалки по лекциям (Фаза 9, Gemini). Каждая лекция отделена
     заголовком с названием файла, чтобы при желании модель могла сослаться
     на конкретный источник в ответе."""
     async with connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("""
+        where, params = _fscope(group_id)
+        cursor = await db.execute(f"""
             SELECT f.title, ft.content
             FROM file_text ft
             JOIN files f ON f.id = ft.file_id
-            WHERE f.subject = ?
+            WHERE f.subject = ? AND {where}
             ORDER BY f.id
-        """, (subject,))
+        """, (subject, *params))
         rows = await cursor.fetchall()
     return "\n\n".join(f"=== {r['title']} ===\n{r['content']}" for r in rows)
 
 
-async def get_all_lecture_context() -> str:
+async def get_all_lecture_context(group_id: int | None = None) -> str:
     """Тексты лекций всех предметов — для подбора под вопрос в чате без
     выбранного предмета (lecture_picker). Заголовок блока — «предмет: файл»."""
     async with connect() as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute("""
+        where, params = _fscope(group_id)
+        cursor = await db.execute(f"""
             SELECT f.title, f.subject, ft.content
             FROM file_text ft
             JOIN files f ON f.id = ft.file_id
+            WHERE {where}
             ORDER BY f.subject, f.id
-        """)
+        """, params)
         rows = await cursor.fetchall()
     return "\n\n".join(f"=== {r['subject'] or 'Без предмета'}: {r['title']} ===\n{r['content']}" for r in rows)
 
@@ -194,21 +234,22 @@ async def get_file_ids_with_text() -> set[int]:
         return {r[0] for r in await cursor.fetchall()}
 
 
-async def get_subjects_with_lecture_text() -> list[str]:
+async def get_subjects_with_lecture_text(group_id: int | None = None) -> list[str]:
     """Предметы, по которым есть хоть один файл с извлечённым текстом — решалка
     по лекциям предлагает выбор только из них (иначе можно было бы выбрать
     предмет без единой лекции и получить пустой контекст)."""
     async with connect() as db:
-        cursor = await db.execute("""
+        where, params = _fscope(group_id)
+        cursor = await db.execute(f"""
             SELECT DISTINCT f.subject FROM file_text ft
             JOIN files f ON f.id = ft.file_id
-            WHERE f.subject IS NOT NULL AND f.subject != ''
+            WHERE f.subject IS NOT NULL AND f.subject != '' AND {where}
             ORDER BY f.subject
-        """)
+        """, params)
         return [r[0] for r in await cursor.fetchall()]
 
 
-async def search_files(query: str, limit: int = 20) -> list[dict]:
+async def search_files(query: str, limit: int = 20, group_id: int | None = None) -> list[dict]:
     """Полнотекстовый поиск по title/subject/file_name через FTS5.
     Каждое слово запроса — отдельная кавычка-фраза (без спецсимволов
     FTS5-синтаксиса), между словами — неявный AND. Пустой/бессмысленный
@@ -221,13 +262,14 @@ async def search_files(query: str, limit: int = 20) -> list[dict]:
     try:
         async with connect() as db:
             db.row_factory = aiosqlite.Row
-            cursor = await db.execute("""
-                SELECT files.* FROM files_fts
-                JOIN files ON files.id = files_fts.rowid
-                WHERE files_fts MATCH ?
+            where, params = _fscope(group_id)
+            cursor = await db.execute(f"""
+                SELECT f.* FROM files_fts
+                JOIN files f ON f.id = files_fts.rowid
+                WHERE files_fts MATCH ? AND {where}
                 ORDER BY bm25(files_fts)
                 LIMIT ?
-            """, (fts_query, limit))
+            """, (fts_query, *params, limit))
             return [dict(r) for r in await cursor.fetchall()]
     except Exception as e:
         import logging

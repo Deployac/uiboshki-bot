@@ -62,6 +62,114 @@ async def init_db():
             await db.execute("ALTER TABLE users ADD COLUMN notify TEXT")
         except Exception:
             pass  # колонка уже есть
+        # Группа человека (этап 1: любая группа института) — id на зеркале
+        # расписания МИРЭА. Колонка новая — всех, кто уже есть, записываем в
+        # свою группу (до этого бот был только для неё); новые выбирают сами.
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN group_id INTEGER")
+            from config import HOME_GROUP_ID
+            if HOME_GROUP_ID:
+                await db.execute("UPDATE users SET group_id = ?", (HOME_GROUP_ID,))
+        except Exception:
+            pass  # колонка уже есть
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS groups (
+                id         INTEGER PRIMARY KEY,
+                name       TEXT NOT NULL,
+                own        INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # Общие данные — по группам (этап 1 (б)): NULL — своя группа (всё,
+        # что было до этапа 1). Старосты чужих групп — group_admins.
+        for table in ("deadlines", "files", "lesson_notes"):
+            try:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN group_id INTEGER")
+            except Exception:
+                pass  # колонка уже есть (или таблица создаётся ниже — тогда добавит второй заход)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS group_admins (
+                group_id   INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                added_by   INTEGER,
+                added_at   TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (group_id, user_id)
+            )
+        """)
+        # Файл, общий для нескольких групп (один курс СДО у потока, этап 1 (в))
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS file_groups (
+                file_id  INTEGER NOT NULL,
+                group_id INTEGER NOT NULL,
+                PRIMARY KEY (file_id, group_id)
+            )
+        """)
+        # Вход в приложение без Telegram (этап 2): коды входа через бота и сессии
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS auth_logins (
+                code       TEXT PRIMARY KEY,
+                device     TEXT,
+                status     TEXT NOT NULL DEFAULT 'wait',
+                user_id    INTEGER,
+                expires_at TEXT NOT NULL
+            )
+        """)
+        # Вход через VK ID / Яндекс ID (oauth.py): кто есть кто у провайдера;
+        # oauth_states — начатые входы (state → код входа, PKCE, «привязать к»).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS identities (
+                provider   TEXT NOT NULL,
+                subject    TEXT NOT NULL,
+                user_id    INTEGER NOT NULL,
+                name       TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (provider, subject)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS oauth_states (
+                state      TEXT PRIMARY KEY,
+                provider   TEXT NOT NULL,
+                verifier   TEXT NOT NULL,
+                code       TEXT NOT NULL,
+                client     TEXT NOT NULL DEFAULT 'web',
+                link_user  INTEGER,
+                expires_at TEXT NOT NULL
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS sessions (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL,
+                token_hash TEXT NOT NULL UNIQUE,
+                device     TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                last_seen  TEXT,
+                expires_at TEXT NOT NULL,
+                revoked    INTEGER DEFAULT 0
+            )
+        """)
+        # Веб-пуши PWA (этап 2 (г), delivery.py): устройство = endpoint
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS push_subs (
+                endpoint   TEXT PRIMARY KEY,
+                user_id    INTEGER NOT NULL,
+                p256dh     TEXT NOT NULL,
+                auth       TEXT NOT NULL,
+                device     TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # Подписка (ИИ сверх базы): до какой даты; source — откуда (вручную
+        # старостой, оплата — потом)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS subscriptions (
+                user_id    INTEGER PRIMARY KEY,
+                until      TEXT NOT NULL,
+                source     TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
         try:
             await db.execute("ALTER TABLE users ADD COLUMN calendar_token TEXT")
         except Exception:
@@ -165,7 +273,9 @@ async def init_db():
         # Проверка входов СДО вразнобой (sdo_accounts.keepalive_due): у каждого
         # своё время следующей проверки; первые проверки — через 50–59 мин
         # случайно, чтобы входы разошлись по часу, потом ровно 55.
-        for col in ("next_check_at TEXT", "jitter_left INTEGER DEFAULT 3"):
+        # share — согласие делиться дедлайнами СДО с группой (этап 1 (в)): по
+        # такому входу бот синхронизирует задания всей группы (group_sync.py)
+        for col in ("next_check_at TEXT", "jitter_left INTEGER DEFAULT 3", "share INTEGER DEFAULT 0"):
             try:
                 await db.execute(f"ALTER TABLE sdo_sessions ADD COLUMN {col}")
             except Exception:
@@ -245,6 +355,21 @@ async def init_db():
             CREATE TABLE IF NOT EXISTS deadlines_skipped (
                 external_id TEXT PRIMARY KEY,
                 at          TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # Своя правка общего дедлайна (владелец 08.10: «каждый может менять,
+        # но только у себя»): поля — что видит этот человек вместо общих
+        # (NULL — как у всех), hidden=1 — убрал у себя. Общий не меняется.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS deadline_mine (
+                user_id     INTEGER NOT NULL,
+                deadline_id INTEGER NOT NULL,
+                subject     TEXT,
+                description TEXT,
+                due_date    TEXT,
+                due_time    TEXT,
+                hidden      INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, deadline_id)
             )
         """)
         # Свои напоминания о дедлайне (deadline_reminders.py): кто, о каком, когда
@@ -373,4 +498,21 @@ async def init_db():
             import logging
             logging.getLogger(__name__).warning(f"FTS5 недоступен, поиск по файлам работать не будет: {e}")
 
+        # Отпечаток текста лекции (этап 1 (в)): та же лекция у другой группы —
+        # готовый конспект без ИИ. Старым строкам — посчитать один раз.
+        try:
+            await db.execute("ALTER TABLE file_text ADD COLUMN text_hash TEXT")
+        except Exception:
+            pass  # уже есть
+        rows = await (await db.execute("SELECT file_id, content FROM file_text WHERE text_hash IS NULL")).fetchall()
+        if rows:
+            from database.files import text_hash
+            await db.executemany("UPDATE file_text SET text_hash=? WHERE file_id=?",
+                                 [(text_hash(c), fid) for fid, c in rows])
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_file_text_hash ON file_text(text_hash)")
+        for table in ("deadlines", "files", "lesson_notes"):
+            try:
+                await db.execute(f"ALTER TABLE {table} ADD COLUMN group_id INTEGER")
+            except Exception:
+                pass  # уже есть
         await db.commit()

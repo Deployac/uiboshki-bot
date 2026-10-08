@@ -3,6 +3,7 @@ import re
 from aiogram import Router, F
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart, Command, CommandObject
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database import upsert_user, set_subscription, get_user
@@ -63,7 +64,7 @@ async def send_hw_to(bot, user_id: int, hw_id) -> bool:
 
 
 @router.message(CommandStart(deep_link=True))
-async def cmd_start_deeplink(message: Message, command: CommandObject):
+async def cmd_start_deeplink(message: Message, command: CommandObject, state: FSMContext):
     """Диплинк t.me/bot?start=file_<id> / hw_<id> — запасной путь кнопки
     «Открыть» в WebApp (основной — /api/files/{id}/send, без «/start» в
     чате). Само «/start file_…» стираем, чтобы чат не зарастал. Просто
@@ -83,26 +84,67 @@ async def cmd_start_deeplink(message: Message, command: CommandObject):
         except Exception:
             pass
         return
+    if payload.startswith("login_"):            # вход в приложение без Telegram (webapp/routes/auth.py)
+        await ask_login(message, payload[6:])
+        return
     if payload == "site":                       # кнопка «Открыть бота» на сайте /about — для /stats
         import stats
         await stats.track(user.id, "from_site")
-    await cmd_start(message)
+    await cmd_start(message, state)
+
+
+async def ask_login(message: Message, code: str):
+    """«Войти в приложение на Chrome · Android?» — подтверждение входа по коду."""
+    from database.sessions import get_login
+    login = await get_login(code)
+    if not login or login["status"] != "wait":
+        await message.answer("Ссылка для входа устарела — нажми «Войти через Telegram» в приложении ещё раз.")
+        return
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Да, это я", callback_data=f"login:ok:{code}"),
+        InlineKeyboardButton(text="Нет", callback_data=f"login:no:{code}"),
+    ]])
+    await message.answer(f"🔐 Войти в приложение УИБО-бота на устройстве <b>{esc(login['device'] or 'браузер')}</b>?\n\n"
+                         "Если это не ты нажал «Войти» — жми «Нет».", parse_mode="HTML", reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("login:"))
+async def login_decision(callback: CallbackQuery):
+    from database.sessions import decide_login
+    _, verdict, code = callback.data.split(":", 2)
+    ok = await decide_login(code, callback.from_user.id, verdict == "ok")
+    await callback.answer()
+    text = ("✅ Готово — возвращайся в приложение." if verdict == "ok" else "Вход отклонён.") if ok \
+        else "Ссылка для входа устарела."
+    try:
+        await callback.message.edit_text(text)
+    except Exception:
+        await callback.message.answer(text)
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message):
+async def cmd_start(message: Message, state: FSMContext | None = None):
     user = message.from_user
     await upsert_user(user.id, user.username or "", user.full_name or "")
     # Одно короткое сообщение с одной кнопкой. Сначала оно уходит с
     # ReplyKeyboardRemove (убрать старую большую клавиатуру у тех, у кого она
     # осталась), потом к нему же цепляется кнопка «Открыть приложение».
-    sent = await message.answer(start_text(user.first_name), parse_mode="HTML", reply_markup=MAIN_KB)
+    import groups
+    # новый человек (после этапа 1: любая группа) — тем же сообщением спросить группу
+    ask = state is not None and groups.home_id() and not await groups.of_user(user.id)
+    if ask:
+        from handlers.group_pick import ASK, GroupPick
+        await state.set_state(GroupPick.query)
+    text = start_text(user.first_name) + ("\n\n" + ASK if ask else "")
+    sent = await message.answer(text, parse_mode="HTML", reply_markup=MAIN_KB)
     kb = app_button()
     if kb:
         try:
             await sent.edit_reply_markup(reply_markup=kb)
         except Exception:
             await message.answer("👇", reply_markup=kb)
+    if ask:
+        return                                # предметы по выбору — после выбора группы
     await ask_optional(message, user.id)
 
 
@@ -204,7 +246,8 @@ async def handle_action(callback: CallbackQuery):
     elif action == "nextweek":
         from schedule_parser import get_next_week_schedule
         wait = await callback.bot.send_message(uid, "⏳ Загружаю следующую неделю...")
-        text = await get_next_week_schedule()
+        from database import get_user_group
+        text = await get_next_week_schedule(await get_user_group(uid))
         await callback.bot.delete_message(uid, wait.message_id)
         for chunk in split_by_lines(text):
             await callback.bot.send_message(uid, chunk, parse_mode="HTML")

@@ -114,6 +114,9 @@ function renderSdo(connecting) {
     box.innerHTML = '<h3>' + icon("cap", "inl acc") + ' СДО</h3>' +
       statusCard("ok", "Подключено, работает", sdoState.shared ? "Вход старосты из настроек бота" : agoText(sdoState.checked_at)) +
       '<p class="sheet-hint">У дедлайнов из СДО есть кнопка «' + icon("upload", "inl") + 'Сдать»: выбираешь файл — бот загружает его в нужное задание.</p>' +
+      (sdoState.can_share ? '<div class="share-row"><div><b>Делиться заданиями с группой</b><span>Бот возьмёт из твоего СДО задания и сроки для всей ' +
+        escapeHtml(sdoState.group || "группы") + '. Баллы и работы никто не увидит.</span></div>' +
+        ntSwitch(sdoState.share, "toggleSdoShare()") + '</div>' : '') +
       (sdoState.shared ? '' : '<button class="ghost danger" onclick="disconnectSdo()">Отключить СДО</button>') + pulseBtn();
   } else if (sdoState.state === "expired") {
     box.innerHTML = '<h3>' + icon("cap", "inl acc") + ' СДО</h3>' +
@@ -387,7 +390,68 @@ async function openSecurity() {
       " сдач за " + ((lim.submit || {}).minutes || 10) + " минут с одного человека — чтобы никто не сжёг общий лимит и не долбил СДО.") +
     secItem("gear", "Ключи и пароли — только на сервере",
       "Токен бота, ключи ИИ и шифрования — в закрытых настройках сервера, в коде и базе их нет. Копия базы каждую ночь уходит только старосте.") +
+    '<div id="logins"></div><div id="devices"></div>' +
     '<button class="ghost" onclick="closeSheet(\'security-sheet\')">Понятно</button>';
+  loadDevices();
+  loadLogins();
+}
+
+// Чем ещё можно входить: VK ID и Яндекс ID (webapp/routes/auth.py). Привязка — в
+// браузере: там вход у провайдера и кнопка «Да, привязать» с именем аккаунта.
+async function loadLogins() {
+  let res;
+  try { res = await api("/api/auth/identities"); } catch (e) { return; }
+  const box = document.getElementById("logins");
+  if (!box || !res.available.length) return;
+  const have = new Set(res.items.map(i => i.provider));
+  box.innerHTML = '<h3 style="margin-top:16px">Вход без Telegram</h3>' +
+    '<p class="hint">Привяжи VK или Яндекс — сможешь войти, даже если Telegram не откроется.</p>' +
+    res.available.map(p => have.has(p.id)
+      ? '<div class="dev-row"><div><b>' + escapeHtml(p.name) + '</b><span>привязан</span></div>' +
+        '<button class="ghost danger" onclick="unlinkLogin(\'' + p.id + '\')">Отвязать</button></div>'
+      : '<button class="ghost" onclick="linkLogin(\'' + p.id + '\')">Привязать ' + escapeHtml(p.name) + '</button>').join("");
+}
+
+async function linkLogin(provider) {
+  haptic();
+  try {
+    const res = await api("/api/auth/" + provider + "/link", { method: "POST", body: JSON.stringify({ client: "web" }) });
+    if (IN_TG) openLink(res.url); else location.href = res.url;
+  } catch (e) { showToast(e.message); }
+}
+
+async function unlinkLogin(provider) {
+  haptic();
+  try { await api("/api/auth/identities/" + provider, { method: "DELETE" }); } catch (e) { showToast(e.message); return; }
+  loadLogins();
+}
+
+// Устройства, где вошли в приложение без Telegram (этап 2): выйти на одном или везде
+async function loadDevices() {
+  let res;
+  try { res = await api("/api/auth/sessions"); } catch (e) { return; }
+  const box = document.getElementById("devices");
+  if (!box || !res.items.length) return;
+  box.innerHTML = '<h3 style="margin-top:16px">Устройства</h3>' + res.items.map(d =>
+    '<div class="dev-row"><div><b>' + escapeHtml(d.device || "Браузер") + (d.current ? " · это" : "") + '</b><span>заходил ' +
+    escapeHtml(humanDate((d.last_seen || "").slice(0, 10))) + '</span></div>' +
+    '<button class="ghost danger" onclick="revokeDevice(' + d.id + ', ' + !!d.current + ')">Выйти</button></div>').join("") +
+    (res.items.length > 1 ? '<button class="ghost danger" onclick="revokeDevice(0, true)">Выйти везде</button>' : '');
+}
+
+async function revokeDevice(id, current) {
+  haptic();
+  try {
+    if (id) await api("/api/auth/sessions/" + id, { method: "DELETE" });
+    else await api("/api/auth/logout?everywhere=true", { method: "POST" });
+  } catch (e) { showToast(e.message); return; }
+  if (current && !IN_TG) {
+    saveToken("");
+    try { navigator.serviceWorker.controller.postMessage("logout"); } catch (e) {}
+    location.replace("/app");
+    return;
+  }
+  loadDevices();
 }
 
 // ── Уведомления: конструктор (что присылать и в какие дни) ───────────────
@@ -407,6 +471,48 @@ async function openNotify() {
     return;
   }
   renderNotify();
+  renderPushRow();
+}
+
+// Пуши на это устройство — только в установленном приложении вне Telegram (PWA)
+function pushSupported() {
+  return !IN_TG && "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+}
+
+async function renderPushRow() {
+  if (!pushSupported()) return;
+  const box = document.getElementById("notify-body");
+  let on = false;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    on = !!(await reg.pushManager.getSubscription()) && Notification.permission === "granted";
+  } catch (e) {}
+  const row = document.createElement("div");
+  row.className = "share-row";
+  row.innerHTML = '<div><b>Уведомления на этом устройстве</b><span>Утро, пары, дедлайны и новые задания — ' +
+    'пушем, как у обычного приложения.</span></div>' + ntSwitch(on, "togglePush(" + on + ")");
+  box.prepend(row);
+}
+
+async function togglePush(on) {
+  haptic();
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (on) {
+      if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); }
+      showToast("Пуши на этом устройстве выключены");
+    } else {
+      if (await Notification.requestPermission() !== "granted") { showToast("Разреши уведомления в настройках браузера"); return; }
+      const { key } = await api("/api/push/key");
+      const pad = "=".repeat((4 - key.length % 4) % 4);
+      const raw = Uint8Array.from(atob((key + pad).replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+      const fresh = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw });
+      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(fresh.toJSON()) });
+      showToast("Готово — пуши будут приходить сюда");
+    }
+  } catch (e) { showToast("Не получилось: " + e.message); }
+  openNotify();
 }
 
 function ntSwitch(on, action) {
@@ -656,3 +762,70 @@ function finishOnboard(actionIndex) {
 }
 
 loadSdoStatus();
+
+// ── Своя группа (этап 1: любая группа института) ─────────────────────────────
+// /api/me → myGroup; нет группы — лист открывается сам и без группы не
+// закрывается. Поиск — /api/groups/search (справочник расписания МИРЭА).
+
+let myGroup = null, myPlan = "own", groupTimer = null, groupSeq = 0;
+
+function openGroup(force) {
+  if (!force) haptic();
+  document.getElementById("group-sheet").classList.add("open");
+  document.getElementById("group-body").innerHTML =
+    '<h3>' + icon("users", "inl acc") + (myGroup ? " Моя группа" : " Из какой ты группы?") + '</h3>' +
+    (myGroup ? '<p class="hint">Сейчас: <b>' + escapeHtml(myGroup.name) + '</b>. Сменить — найди другую.' +
+               (myGroup.own ? '' : ' <a href="#" onclick="requestGroupAdmin(); return false">Я староста этой группы</a>') + '</p>'
+             : '<p class="hint">Найди свою — покажу её расписание, дедлайны и файлы.</p>') +
+    '<input class="searchbox" id="group-search" enterkeyhint="search" placeholder="Например: УИБО-03-24" autocomplete="off" oninput="groupInput()">' +
+    '<div id="group-results"></div>';
+}
+
+function groupInput() {
+  clearTimeout(groupTimer);
+  groupTimer = setTimeout(searchGroups, 250);
+}
+
+async function searchGroups() {
+  const q = document.getElementById("group-search").value.trim(), my = ++groupSeq;
+  const box = document.getElementById("group-results");
+  if (q.length < 2) { box.innerHTML = ""; return; }
+  try {
+    const res = await api("/api/groups/search?q=" + encodeURIComponent(q));
+    if (my !== groupSeq) return;
+    box.innerHTML = res.items.length ? res.items.map(g =>
+      '<button class="group-row" onclick="pickGroup(' + g.id + ')">' + escapeHtml(g.name) + icon("chevron", "inl") + '</button>').join("")
+      : '<p class="hint">Не нашёл. Напиши, как в расписании: УИБО-03-24</p>';
+  } catch (e) {
+    if (my === groupSeq) box.innerHTML = '<p class="hint">Не удалось найти: ' + escapeHtml(e.message) + '</p>';
+  }
+}
+
+async function pickGroup(id) {
+  haptic("success");
+  try {
+    const res = await api("/api/me/group", { method: "POST", body: JSON.stringify({ id }) });
+    const changed = !myGroup || myGroup.id !== res.group.id;
+    myGroup = res.group;
+    closeSheet("group-sheet");
+    showToast("Твоя группа — " + res.group.name);
+    if (changed) { todayData = null; loadToday(); }
+  } catch (e) { showToast(e.message); }
+}
+
+async function requestGroupAdmin() {
+  haptic();
+  try {
+    const res = await api("/api/me/group/admin", { method: "POST" });
+    showToast(res.message);
+  } catch (e) { showToast(e.message); }
+}
+
+async function toggleSdoShare() {
+  haptic();
+  try {
+    sdoState = await api("/api/sdo/share", { method: "POST", body: JSON.stringify({ share: !sdoState.share }) });
+    renderSdo();
+    if (sdoState.share) showToast("Спасибо! Задания группы появятся в дедлайнах через минуту");
+  } catch (e) { showToast(e.message); }
+}

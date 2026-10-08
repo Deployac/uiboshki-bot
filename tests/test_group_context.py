@@ -10,7 +10,7 @@ from utils import today_msk
 
 @pytest.mark.asyncio
 async def test_group_context_has_date_deadlines_and_homework(db, monkeypatch):
-    async def no_schedule(days=2):
+    async def no_schedule(days=2, **k):
         return ["Сегодня: <пары>"]
 
     monkeypatch.setattr(group_context, "_schedule_lines", no_schedule)
@@ -35,7 +35,7 @@ async def test_group_context_has_date_deadlines_and_homework(db, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_group_context_without_homework_table(db, monkeypatch):
-    async def no_schedule(days=2):
+    async def no_schedule(days=2, **k):
         return []
 
     monkeypatch.setattr(group_context, "_schedule_lines", no_schedule)

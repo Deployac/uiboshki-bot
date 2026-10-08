@@ -26,26 +26,30 @@ def _plain(html: str) -> str:
     return _TAG_RE.sub("", html).replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
 
 
-async def list_homework(limit: int = 30) -> list[dict]:
+async def list_homework(limit: int = 30, group_id: int | None = None) -> list[dict]:
     """ДЗ с доски (/addhw), свежие сверху. Таблица создаётся лениво
     (database/homework.init_hw_table) — на пустой базе её может не быть."""
     try:
+        from database.homework import init_hw_table
+        await init_hw_table()            # колонка group_id (этап 1 (б)) — и у таблиц старого вида
         async with aiosqlite.connect(database.DATABASE_PATH) as db:
             db.row_factory = aiosqlite.Row
+            from database.groups import g_or_home, scope_sql
             cur = await db.execute(
                 "SELECT id, subject, content, lesson_date, created_at, file_id, file_type FROM homework "
+                f"WHERE {scope_sql()} "
                 "ORDER BY COALESCE(lesson_date, substr(created_at, 1, 10)) DESC, id DESC LIMIT ?",
-                (limit,),
+                (g_or_home(group_id), limit),
             )
             return [dict(r) for r in await cur.fetchall()]
     except aiosqlite.OperationalError:
         return []
 
 
-async def _schedule_lines(days: int = 2) -> list[str]:
-    from schedule_parser import fetch_schedule_raw, format_day, parse_events_for_date
+async def _schedule_lines(days: int = 2, user_id: int | None = None) -> list[str]:
+    from schedule_parser import format_day, parse_events_for_date, raw_for_user
     try:
-        raw = await fetch_schedule_raw()
+        raw = await raw_for_user(user_id or 0)
     except Exception as e:
         logger.info(f"group_context: расписание недоступно: {e}")
         return []
@@ -59,13 +63,17 @@ async def _schedule_lines(days: int = 2) -> list[str]:
 
 
 async def build_group_context(user_id: int, deadline_days: int = 21) -> str:
+    import groups
+    from database.groups import viewer_group
+    gid = await viewer_group(user_id)
+    name = (await groups.name_of(gid)) or GROUP_NAME
     today = today_msk()
     lines = [
-        f"Контекст группы {GROUP_NAME} (используй, если вопрос про учёбу группы; не пересказывай без нужды).",
+        f"Контекст группы {name} (используй, если вопрос про учёбу группы; не пересказывай без нужды).",
         f"Сегодня {today.strftime('%d.%m.%Y')}, {WEEKDAYS[today.weekday()]}, "
         f"{datetime.now(TZ).strftime('%H:%M')} по Москве.",
     ]
-    lines += await _schedule_lines()
+    lines += await _schedule_lines(user_id=user_id)
 
     try:
         deadlines = await database.get_active_deadlines(user_id)
@@ -82,7 +90,7 @@ async def build_group_context(user_id: int, deadline_days: int = 21) -> str:
     else:
         lines.append("Активных дедлайнов на ближайшие три недели нет.")
 
-    hw = await list_homework(10)
+    hw = await list_homework(10, gid)
     if hw:
         lines.append("Домашние задания (свежие):")
         for h in hw:

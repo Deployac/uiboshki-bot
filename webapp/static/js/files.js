@@ -170,7 +170,7 @@ async function loadFiles(q) {
     renderFiles();
     if (fileQuery) loadLectureHits(fileQuery, false);
   } catch (e) {
-    list.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
+    list.innerHTML = capyError(e.message);
   }
 }
 
@@ -183,19 +183,19 @@ async function loadLectureHits(q, alone) {
   const my = ++lecSeq;
   const box = document.getElementById("lec-hits");
   if (!box) return;
-  if (q.length < 3) { if (alone) box.innerHTML = capyEmpty("Ничего не нашлось"); return; }
+  if (q.length < 3) { if (alone) box.innerHTML = capyEmpty("Ничего не нашлось", null, "sad"); return; }
   box.innerHTML = '<div class="lec-head">В тексте лекций</div><div class="skel" style="height:64px"></div>';
   let d;
   try {
     d = await api("/api/lecture-search?q=" + encodeURIComponent(q));
   } catch (e) {
-    if (my === lecSeq) box.innerHTML = alone ? capyEmpty("Ничего не нашлось") : "";
+    if (my === lecSeq) box.innerHTML = alone ? capyEmpty("Ничего не нашлось", null, "sad") : "";
     return;
   }
   if (my !== lecSeq || fileQuery !== q) return;      // уже ищем другое
   if (!d.items.length) {
     box.innerHTML = alone ? capyEmpty("Ничего не нашлось",
-      d.ready ? "Ни в названиях, ни в тексте лекций" : "Тексты лекций ещё индексируются") : "";
+      d.ready ? "Ни в названиях, ни в тексте лекций" : "Тексты лекций ещё индексируются", "sad") : "";
     return;
   }
   const stems = q.toLowerCase().split(/[^\wа-яё]+/i).filter(w => w.length >= 3).map(w => w.slice(0, 5));
@@ -296,7 +296,8 @@ function openFile(id, btn) {
 // WebApp и пересылки из чата. Старый Telegram (до 8.0) или файл больше 20 МБ —
 // шлём в чат, как «В чат».
 async function downloadFile(id, btn) {
-  if (!(tg && tg.downloadFile && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) {
+  const browser = !IN_TG;          // вне Telegram (PWA) — обычная загрузка по подписанной ссылке
+  if (!browser && !(tg && tg.downloadFile && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0"))) {
     showToast("Telegram старый для скачивания — отправляю в чат");
     return openFile(id, btn);
   }
@@ -310,6 +311,7 @@ async function downloadFile(id, btn) {
     return openFile(id, btn);
   }
   btn.disabled = false; btn.classList.remove("sending");
+  if (browser) { window.open(link.url, "_blank"); return; }
   try {
     tg.downloadFile({ url: link.url, file_name: link.file_name }, ok => { if (ok) haptic("success"); });
   } catch (e) {
@@ -356,7 +358,7 @@ async function openSummary(id) {
     const d = await api("/api/summary/" + id);
     if (sumFile === id) { sumData = d; renderSummary(false); }
   } catch (e) {
-    box.innerHTML = '<div class="empty">Не загрузилось: ' + escapeHtml(e.message) + '</div>';
+    box.innerHTML = capyError(e.message);
   }
 }
 

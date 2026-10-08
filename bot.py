@@ -11,7 +11,7 @@ from database import init_db
 import health
 from handlers import register_handlers
 from scheduler import start_scheduler
-from middleware import MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
+from middleware import GroupContextMiddleware, MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 health.install()   # ошибки из логов за сутки — в /status у старосты
@@ -84,14 +84,14 @@ STAROSTA_COMMANDS = BOT_COMMANDS + [
 # короткая строка в профиле бота и при пересылке ссылки. Задаём из кода —
 # описание всегда совпадает с тем, что бот умеет сейчас, без похода в BotFather.
 BOT_DESCRIPTION = (
-    "Бот и мини-приложение группы {group}, РТУ МИРЭА.\n\n"
-    "📅 Расписание — своё и любого преподавателя, группы или аудитории МИРЭА\n"
+    "Бот и мини-приложение для студентов РТУ МИРЭА — любой группы. Сделан в {group}.\n\n"
+    "📅 Расписание твоей группы, любого преподавателя или аудитории\n"
     "🎓 Баллы и дедлайны из СДО, сдача работ прямо из Telegram\n"
     "📂 Файлы курсов, поиск внутри лекций и конспекты\n"
     "✨ ИИ, который отвечает по лекциям группы и показывает слайд\n"
     "🔔 Новые задания, сроки и пары — напоминания под себя"
 )
-BOT_SHORT_DESCRIPTION = "Расписание, СДО, лекции и ИИ группы {group} — прямо в Telegram"
+BOT_SHORT_DESCRIPTION = "Расписание, СДО, лекции и ИИ для любой группы МИРЭА — прямо в Telegram"
 
 
 async def setup_bot_menu(bot: Bot):
@@ -169,6 +169,7 @@ async def main():
     # проглатывалось как обычный текстовый ввод. См. middleware.py.
     dp.message.outer_middleware(MenuInterruptMiddleware())
     dp.update.outer_middleware(OptionalSubjectsMiddleware())
+    dp.update.outer_middleware(GroupContextMiddleware())
     dp.message.outer_middleware(StatsMiddleware())
     dp.error.register(notify_starosta_on_error)
 

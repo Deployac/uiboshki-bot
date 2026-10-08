@@ -6,12 +6,23 @@
 <title>УИБО-03-24</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <link rel="stylesheet" href="app.css">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Капибара">
+<link rel="icon" href="img/capy/icon-64.png" type="image/png">
 </head>
 <body>
+
+<!-- заставка, пока грузится главная (core.js: hideSplash; сама гаснет через 3 с) -->
+<div id="splash" aria-hidden="true"><span class="capy-pose capy-splash"></span><b>УИБО-03-24</b></div>
 
 <header class="top">
   <h1 id="greeting">УИБО-03-24</h1>
   <p id="subtitle">открываю…</p>
+  <span class="capy-pose capy-greet" id="greet-capy" aria-hidden="true"></span>
 </header>
 
 <main>
@@ -228,7 +239,7 @@
 
 <div class="more-backdrop" id="more-menu" onclick="if (event.target === this) toggleMore(false)">
   <div class="more-pop">
-    <!-- 11 плиток по 4 в ряд, неполный ряд — по центру (дизайн-ревью, п. 18) -->
+    <!-- 12 плиток по 4 в ряд, неполный ряд — по центру (дизайн-ревью, п. 18) -->
     <div class="more-grid">
       <button onclick="toggleMore(false); switchTab('files')"><span class="sq t-files"><svg class="ico" aria-hidden="true"><use href="#i-folder"/></svg></span><span class="lbl">Файлы</span></button>
       <button onclick="toggleMore(false); openDeadlinesSeg('dl')"><span class="sq t-dl"><svg class="ico" aria-hidden="true"><use href="#i-deadlines"/></svg></span><span class="lbl">Дедлайны</span></button>
@@ -240,8 +251,16 @@
       <button onclick="toggleMore(false); showWhatsNew()"><span class="sq t-news"><svg class="ico" aria-hidden="true"><use href="#i-sparkle"/></svg></span><span class="lbl">Что нового</span></button>
       <button onclick="toggleMore(false); openConfigLink(CHANNEL_URL)"><span class="sq t-channel"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></span><span class="lbl">Канал бота</span></button>
       <button onclick="toggleMore(false); openConfigLink(CONTACT_URL)"><span class="sq t-contact"><svg class="ico" aria-hidden="true"><use href="#i-message"/></svg></span><span class="lbl">Написать нам</span></button>
+      <button onclick="toggleMore(false); openGroup()"><span class="sq t-group"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span><span class="lbl">Моя группа</span></button>
       <button onclick="toggleMore(false); shareBot()"><span class="sq t-share"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span><span class="lbl">Позвать</span></button>
     </div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="group-sheet" onclick="if (event.target === this &amp;&amp; myGroup) closeSheet('group-sheet')">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div id="group-body"></div>
   </div>
 </div>
 
@@ -253,6 +272,7 @@
 </div>
 
 <div class="onboard" id="onboard"></div>
+<div class="login" id="login"></div>
 
 <div class="sheet-backdrop" id="news-sheet" onclick="if (event.target === this) closeSheet('news-sheet')">
   <div class="sheet">

@@ -32,7 +32,7 @@ from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from webapp import deps
-from webapp.routes import account, channel, chat, deadlines, files, schedule, sdo, site
+from webapp.routes import account, aitest, auth, channel, chat, deadlines, files, meta, push, schedule, sdo, site
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 # httpx на INFO пишет полный адрес каждого запроса — с sesskey СДО в query.
@@ -95,6 +95,25 @@ class BodyLimit:
 app.add_middleware(BodyLimit)
 
 
+class ApiV1:
+    """«/api/v1/…» — то же, что «/api/…» (этап 2: API как контракт). Своё
+    приложение и PWA ходят по /api/v1: когда понадобится ломающее изменение,
+    появится /api/v2, а старые версии приложения в магазинах продолжат
+    работать. Mini App — по-прежнему /api/…"""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http" and scope["path"].startswith("/api/v1/"):
+            scope = dict(scope, path="/api/" + scope["path"][8:],
+                         raw_path=b"/api/" + scope.get("raw_path", b"")[8:])
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(ApiV1)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     """Заголовки безопасности и ограничение размера запроса.
@@ -139,7 +158,7 @@ async def health():
 # ── Обработчики по темам (webapp/routes/*) ──────────────────────────────────
 # Пути у них не пересекаются, так что порядок не важен; важно только, что
 # статика ниже — последней.
-for _module in (schedule, account, deadlines, files, chat, sdo, channel, site):
+for _module in (schedule, account, deadlines, files, chat, sdo, channel, site, aitest, auth, meta, push):
     app.include_router(_module.router)
 
 
@@ -182,6 +201,7 @@ def _digest(rel: str) -> str:
 
 @app.get("/", include_in_schema=False)
 @app.get("/index.html", include_in_schema=False)
+@app.get("/app", include_in_schema=False)       # PWA: приложение вне Telegram (вход — экран «Войти»)
 async def index_page(request: Request):
     """index.html со ссылками на стили и скрипты с меткой версии (?v=хэш
     содержимого): WebApp Telegram держит старые файлы в кэше, и после
@@ -209,6 +229,19 @@ async def index_page(request: Request):
     html = html.replace("УИБО-03-24", escape(config.GROUP_NAME)).replace(
         '<script src="js/core.js"', f'<script>window.APP_CONFIG = {cfg};</script>\n<script src="js/core.js"', 1)
     return Response(_ASSET_RE.sub(versioned, html), media_type="text/html",
+                    headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/sw.js", include_in_schema=False)
+async def service_worker():
+    """Service worker PWA (этап 2): без кэша — обновление приложения доходит сразу."""
+    return Response((STATIC_DIR / "sw.js").read_bytes(), media_type="text/javascript",
+                    headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"})
+
+
+@app.get("/manifest.webmanifest", include_in_schema=False)
+async def web_manifest():
+    return Response((STATIC_DIR / "manifest.webmanifest").read_bytes(), media_type="application/manifest+json",
                     headers={"Cache-Control": "no-cache"})
 
 

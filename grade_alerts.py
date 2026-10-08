@@ -56,7 +56,8 @@ async def check_user(bot, user_id: int, cookie: str, notify: bool = True) -> boo
     await sdo_history.record(user_id, courses)
     if not diff or not notify:
         return False
-    await bot.send_message(user_id, message(diff), parse_mode="HTML",
+    import delivery
+    await delivery.deliver(bot, user_id, message(diff), kind="grades", tab="sdo",
                            reply_markup=app_button("🎓 Открыть баллы", "sdo"))
     return True
 

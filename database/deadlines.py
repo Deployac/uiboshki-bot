@@ -10,14 +10,15 @@ from database._conn import connect
 # ── Deadlines ─────────────────────────────────────────────────────────────────
 
 async def add_deadline(subject, description, due_date, due_time, created_by, external_id=None,
-                       personal: bool = False) -> int:
+                       personal: bool = False, group_id: int | None = None) -> int:
     """personal — только автору, даже если автор — староста (иначе дедлайн
     старосты общий для группы: «Сходить к врачу» из WebApp видели все)."""
     async with connect() as db:
         cursor = await db.execute("""
-            INSERT INTO deadlines (subject, description, due_date, due_time, created_by, external_id, personal)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (subject, description, due_date, due_time, created_by, external_id, 1 if personal else 0))
+            INSERT INTO deadlines (subject, description, due_date, due_time, created_by, external_id, personal, group_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (subject, description, due_date, due_time, created_by, external_id, 1 if personal else 0,
+              _stored(group_id)))
         await db.commit()
         return cursor.lastrowid
 
@@ -80,7 +81,28 @@ async def get_deadline_by_external_id(external_id: str) -> dict | None:
 # Дедлайн считается "общим" (видят все), если его добавил/утвердил староста,
 # либо это автосинк из СДО (created_by=0) — всё остальное видит только автор.
 _DEADLINE_COLS = ("d.id, d.subject, d.description, d.due_date, d.due_time, d.created_by, d.created_at, "
-                  "d.external_id, d.manual_edit, d.personal")
+                  "d.external_id, d.manual_edit, d.personal, d.group_id")
+
+
+def _stored(group_id):
+    from database.groups import stored
+    return stored(group_id)
+
+
+def _visible_sql() -> str:
+    """Виден зрителю: свой (автор) или общий его группы. Общий — от старосты
+    бота и СДО (как раньше) или с группой (старосты групп, синк группы).
+    Параметры: автор, группа зрителя (+ старосты в _shared_in)."""
+    from database.groups import scope_sql
+    return (f"((d.created_by = ? OR (COALESCE(d.personal, 0) = 0 AND "
+            f"(d.created_by IN {_shared_in()[0]} OR d.group_id IS NOT NULL) AND {scope_sql('d')})) "
+            f"AND NOT EXISTS (SELECT 1 FROM deadline_mine m0 WHERE m0.deadline_id = d.id "
+            f"AND m0.user_id = ? AND m0.hidden = 1))")
+
+
+async def _visible_params(viewer_id: int) -> tuple:
+    from database.groups import viewer_group
+    return (viewer_id, *_shared_in()[1], await viewer_group(viewer_id), viewer_id)
 
 
 def _shared_in() -> tuple[str, tuple]:
@@ -90,8 +112,22 @@ def _shared_in() -> tuple[str, tuple]:
     return "(0" + ", ?" * len(ids) + ")", ids
 
 
+async def deadline_group(d: dict) -> int:
+    """Группа общего дедлайна (NULL — своя)."""
+    from database.groups import g_or_home
+    return g_or_home(d.get("group_id"))
+
+
+async def can_see_deadline(d: dict, user_id: int) -> bool:
+    """Свой — автор; общий — люди его группы."""
+    from database.groups import viewer_group
+    if d.get("created_by") == user_id:
+        return True
+    return is_shared_deadline(d) and await deadline_group(d) == await viewer_group(user_id)
+
+
 def is_shared_deadline(d: dict) -> bool:
-    return d.get("created_by") in (0, *STAROSTA_IDS) and not d.get("personal")
+    return not d.get("personal") and (d.get("created_by") in (0, *STAROSTA_IDS) or bool(d.get("group_id")))
 
 
 async def get_active_deadlines(viewer_id: int, include_done: bool = False) -> list[dict]:
@@ -106,9 +142,9 @@ async def get_active_deadlines(viewer_id: int, include_done: bool = False) -> li
                        WHERE dd.deadline_id = d.id AND dd.user_id = ?
                    ) AS done
             FROM deadlines d
-            WHERE (d.created_by = ? OR (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0))
+            WHERE {_visible_sql()}
         """
-        params = [viewer_id, viewer_id, *_shared_in()[1]]
+        params = [viewer_id, *await _visible_params(viewer_id)]
         if not include_done:
             query += """
                 AND NOT EXISTS (
@@ -119,7 +155,7 @@ async def get_active_deadlines(viewer_id: int, include_done: bool = False) -> li
             params.append(viewer_id)
         query += " ORDER BY d.due_date, d.due_time"
         cursor = await db.execute(query, params)
-        return [dict(r) for r in await cursor.fetchall()]
+        return await _apply_mine([dict(r) for r in await cursor.fetchall()], viewer_id)
 
 
 async def get_deadlines_soon(days=3, viewer_id: int | None = None, shared_only: bool = False) -> list[dict]:
@@ -136,7 +172,7 @@ async def get_deadlines_soon(days=3, viewer_id: int | None = None, shared_only: 
         if shared_only:
             query = f"""
                 SELECT {_DEADLINE_COLS} FROM deadlines d
-                WHERE (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0)
+                WHERE (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0 AND d.group_id IS NULL)
                 AND d.due_date BETWEEN ? AND date(?, ? || ' days')
                 AND NOT EXISTS (SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)
                 ORDER BY d.due_date, d.due_time
@@ -147,14 +183,76 @@ async def get_deadlines_soon(days=3, viewer_id: int | None = None, shared_only: 
                 raise ValueError("viewer_id обязателен при shared_only=False")
             query = f"""
                 SELECT {_DEADLINE_COLS} FROM deadlines d
-                WHERE (d.created_by = ? OR (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0))
+                WHERE {_visible_sql()}
                 AND d.due_date BETWEEN ? AND date(?, ? || ' days')
                 AND NOT EXISTS (SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)
                 ORDER BY d.due_date, d.due_time
             """
-            params = (viewer_id, *_shared_in()[1], today, today, str(days), viewer_id)
+            params = (*await _visible_params(viewer_id), today, today, str(days), viewer_id)
         cursor = await db.execute(query, params)
-        return [dict(r) for r in await cursor.fetchall()]
+        rows = [dict(r) for r in await cursor.fetchall()]
+        return rows if shared_only else await _apply_mine(rows, viewer_id)
+
+
+# ── Свои правки общих дедлайнов (deadline_mine) ─────────────────────────────
+
+_MINE_FIELDS = ("subject", "description", "due_date", "due_time")
+
+
+async def get_deadline_mine(user_id: int) -> dict[int, dict]:
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute("SELECT * FROM deadline_mine WHERE user_id=?", (user_id,))).fetchall()
+        return {r["deadline_id"]: dict(r) for r in rows}
+
+
+async def _apply_mine(rows: list[dict], viewer_id: int) -> list[dict]:
+    """Подставить свои правки зрителя поверх общих полей; mine_changed — есть
+    своя правка (кнопка «Вернуть как у всех»)."""
+    mine = await get_deadline_mine(viewer_id)
+    if not mine:
+        return rows
+    for d in rows:
+        m = mine.get(d["id"])
+        if not m:
+            continue
+        for f in _MINE_FIELDS:
+            if m[f] is not None:
+                d[f] = m[f]
+        d["mine_changed"] = True
+    rows.sort(key=lambda d: (d["due_date"], d.get("due_time") or ""))
+    return rows
+
+
+async def set_deadline_mine(user_id: int, did: int, subject: str, description: str,
+                            due_date: str, due_time: str | None):
+    """Изменить общий дедлайн только у себя."""
+    async with connect() as db:
+        await db.execute(
+            """INSERT INTO deadline_mine (user_id, deadline_id, subject, description, due_date, due_time, hidden)
+               VALUES (?, ?, ?, ?, ?, ?, 0)
+               ON CONFLICT(user_id, deadline_id) DO UPDATE SET subject=excluded.subject,
+                 description=excluded.description, due_date=excluded.due_date, due_time=excluded.due_time, hidden=0""",
+            (user_id, did, subject, description, due_date, due_time or ""))
+        await db.commit()
+
+
+async def hide_deadline_for(user_id: int, did: int):
+    """Убрать общий дедлайн только у себя (у группы остаётся)."""
+    async with connect() as db:
+        await db.execute(
+            """INSERT INTO deadline_mine (user_id, deadline_id, hidden) VALUES (?, ?, 1)
+               ON CONFLICT(user_id, deadline_id) DO UPDATE SET hidden=1""", (user_id, did))
+        await db.execute("DELETE FROM deadline_reminders WHERE user_id=? AND deadline_id=?", (user_id, did))
+        await db.commit()
+
+
+async def reset_deadline_mine(user_id: int, did: int) -> bool:
+    """«Вернуть как у всех»: снять свою правку или вернуть убранный."""
+    async with connect() as db:
+        cur = await db.execute("DELETE FROM deadline_mine WHERE user_id=? AND deadline_id=?", (user_id, did))
+        await db.commit()
+        return cur.rowcount > 0
 
 
 async def get_deadline_stats(viewer_id: int) -> dict:
@@ -163,8 +261,8 @@ async def get_deadline_stats(viewer_id: int) -> dict:
     get_deadlines_soon)."""
     today = today_msk().isoformat()
     async with connect() as db:
-        visible = f"(d.created_by = ? OR (d.created_by IN {_shared_in()[0]} AND COALESCE(d.personal, 0) = 0))"
-        vparams = (viewer_id, *_shared_in()[1])
+        visible = _visible_sql()
+        vparams = await _visible_params(viewer_id)
         done_expr = "EXISTS(SELECT 1 FROM deadline_done dd WHERE dd.deadline_id=d.id AND dd.user_id=?)"
 
         total = (await (await db.execute(
@@ -236,15 +334,17 @@ async def get_sdo_deadlines() -> list[dict]:
         return [dict(r) for r in await cursor.fetchall()]
 
 
-async def delete_deadline(did: int):
+async def delete_deadline(did: int, remember: bool = True):
     """Удалить дедлайн с отметками и напоминаниями. Дедлайн из СДО запоминаем
-    в deadlines_skipped — иначе следующий синк вернул бы его заново."""
+    в deadlines_skipped — иначе следующий синк вернул бы его заново
+    (remember=False — пропал из самого СДО: вернётся там — вернётся и тут)."""
     async with connect() as db:
         row = await (await db.execute("SELECT external_id FROM deadlines WHERE id=?", (did,))).fetchone()
-        if row and (row[0] or "").startswith("sdo:"):
+        if remember and row and (row[0] or "").startswith("sdo:"):
             await db.execute("INSERT OR IGNORE INTO deadlines_skipped (external_id) VALUES (?)", (row[0],))
         await db.execute("DELETE FROM deadline_done WHERE deadline_id=?", (did,))
         await db.execute("DELETE FROM deadline_reminders WHERE deadline_id=?", (did,))
+        await db.execute("DELETE FROM deadline_mine WHERE deadline_id=?", (did,))
         await db.execute("DELETE FROM deadlines WHERE id=?", (did,))
         await db.commit()
 
