@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api/api.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy.dart';
 import '../widgets/common.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -86,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Spacer(),
-                ClipOval(child: Image.asset('assets/capy.png', width: 96, height: 96, fit: BoxFit.cover)),
+                ClipOval(child: CapyImage(size: 96)),
                 const SizedBox(height: Space.xl),
                 Text('расписание · сроки · баллы', style: s.eyebrow()),
                 const SizedBox(height: 6),

@@ -79,13 +79,13 @@ class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMix
                   height: widget.size,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: p.dark ? p.cardSolid : p.line,
+                    color: p.dark ? p.cardSolid : p.card,
                     border: Border.all(color: p.line),
                   ),
                   child: ClipOval(
                     child: Opacity(
                       opacity: sleepy ? 0.75 : 1,
-                      child: Image.asset('assets/capy.png', fit: BoxFit.cover),
+                      child: CapyImage(size: widget.size),
                     ),
                   ),
                 ),
@@ -108,6 +108,26 @@ class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMix
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Картинка капибары — белый силуэт: в тёмной теме как есть, в светлой
+/// «Тетради» — цветом текста, иначе на светлом фоне её не видно.
+class CapyImage extends StatelessWidget {
+  final double size;
+  const CapyImage({super.key, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    return Image.asset(
+      'assets/capy.png',
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      color: p.dark ? null : p.text,
+      colorBlendMode: p.dark ? null : BlendMode.srcIn,
     );
   }
 }

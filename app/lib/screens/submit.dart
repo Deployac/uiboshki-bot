@@ -11,6 +11,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy.dart';
 import '../widgets/common.dart';
 
 typedef Picked = ({String name, Uint8List bytes});
@@ -282,7 +283,7 @@ class _Done extends StatelessWidget {
             height: 112,
             child: Stack(
               children: [
-                ClipOval(child: Image.asset('assets/capy.png', width: 104, height: 104, fit: BoxFit.cover)),
+                ClipOval(child: CapyImage(size: 104)),
                 Positioned(
                   right: 0,
                   bottom: 0,
