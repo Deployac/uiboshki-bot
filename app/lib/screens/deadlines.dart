@@ -1,6 +1,9 @@
 // «Сдать» — сроки: самый горящий крупно с обратным отсчётом, дальше
-// «Сегодня и завтра», «На неделе», «Позже», «Сдано». Свайп вправо — «сдал».
+// «Сегодня и завтра», «На неделе», «Позже», «Сдано». Свайп вправо — «сдал»,
+// нажатие — действия (изменить, напомнить, убрать…), «+» — свой срок.
+// Сверху — входы в «ДЗ группы» и «Заметки».
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/api.dart';
 import '../api/models.dart';
@@ -8,7 +11,11 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
 import '../widgets/common.dart';
+import 'deadline_edit.dart';
+import 'homework.dart';
 import 'submit.dart';
+
+typedef _Items = ({List<Deadline> list, Map<int, DlExtra> extra});
 
 class DeadlinesScreen extends StatefulWidget {
   final Api api;
@@ -20,25 +27,90 @@ class DeadlinesScreen extends StatefulWidget {
 }
 
 class _DeadlinesScreenState extends State<DeadlinesScreen> {
-  Future<List<Deadline>> _load() async {
+  Future<_Items> _load() async {
     final j = await widget.api.get('/deadlines?include_done=true');
-    return [for (final x in j['items'] as List) Deadline.fromJson(x)];
+    final raw = [for (final x in j['items'] as List) Map<String, dynamic>.from(x)];
+    return (
+      list: [for (final x in raw) Deadline.fromJson(x)],
+      extra: {for (final x in raw) x['id'] as int: DlExtra.fromJson(x)},
+    );
+  }
+
+  /// Запрос с ошибкой внизу экрана; true — прошёл.
+  Future<bool> _run(Future<void> Function() call) async {
+    try {
+      await call();
+      return true;
+    } on ApiError catch (e) {
+      if (mounted) snack(context, e.message);
+    } catch (_) {
+      if (mounted) snack(context, 'Нет связи с сервером.');
+    }
+    return false;
   }
 
   Future<void> _toggle(Deadline d, bool done) async {
-    await widget.api.post('/deadlines/${d.id}/toggle', {'done': done});
+    await _run(() => widget.api.post('/deadlines/${d.id}/toggle', {'done': done}));
+  }
+
+  Future<void> _submit(Deadline d, Future<void> Function() reload) async {
+    final ok = await showSubmitSheet(context, widget.api, title: d.subject, deadlineId: d.id);
+    if (ok == true) await reload();
+  }
+
+  Future<void> _actions(Deadline d, DlExtra x, Future<void> Function() reload) async {
+    final api = widget.api;
+    final due = _dueLabel(d);
+    final a = await showDeadlineActions(context, d, x, due: due);
+    if (a == null || !mounted) return;
+    switch (a) {
+      case DlAction.submit:
+        await _submit(d, reload);
+      case DlAction.task:
+        await launchUrl(Uri.parse(x.description), mode: LaunchMode.externalApplication);
+      case DlAction.remind:
+        await showRemindSheet(context, api, d, x, due: due);
+        await reload();
+      case DlAction.done || DlAction.undone:
+        await _toggle(d, a == DlAction.done);
+        await reload();
+      case DlAction.edit:
+        final saved = await showDeadlineEdit(context, api, d: d, x: x);
+        if (saved == true) {
+          if (mounted) snack(context, x.editScope == 'me' && !x.personal ? 'Сохранено у тебя' : 'Сохранено');
+          await reload();
+        }
+      case DlAction.delete:
+        if (!await confirmDelete(context, x)) return;
+        if (await _run(() => api.delete('/deadlines/${d.id}'))) await reload();
+      case DlAction.resetMine:
+        if (await _run(() => api.delete('/deadlines/${d.id}/mine'))) {
+          if (mounted) snack(context, 'Снова как у всей группы');
+          await reload();
+        }
+    }
+  }
+
+  Future<void> _add(Future<void> Function() reload) async {
+    tick();
+    final saved = await showDeadlineEdit(context, widget.api);
+    if (saved == true) {
+      if (mounted) snack(context, 'Срок добавлен — видишь только ты');
+      await reload();
+    }
   }
 
   @override
-  Widget build(BuildContext context) => Loader<List<Deadline>>(
+  Widget build(BuildContext context) => Loader<_Items>(
     load: _load,
     onUnauthorized: widget.onUnauthorized,
     builder: (context, items, reload) => _DeadlinesView(
-      items: items,
-      onSubmit: (d) async {
-        final ok = await showSubmitSheet(context, widget.api, title: d.subject, deadlineId: d.id);
-        if (ok == true) await reload();
-      },
+      items: items.list,
+      extra: items.extra,
+      api: widget.api,
+      onAdd: () => _add(reload),
+      onOpen: (d) => _actions(d, items.extra[d.id] ?? DlExtra.fromJson(const {}), reload),
+      onSubmit: (d) => _submit(d, reload),
       onToggle: (d, done) async {
         await _toggle(d, done);
         await reload();
@@ -49,27 +121,42 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
 
 class _DeadlinesView extends StatelessWidget {
   final List<Deadline> items;
+  final Map<int, DlExtra> extra;
+  final Api api;
   final Future<void> Function(Deadline, bool) onToggle;
-  final ValueChanged<Deadline> onSubmit;
-  const _DeadlinesView({required this.items, required this.onToggle, required this.onSubmit});
+  final ValueChanged<Deadline> onSubmit, onOpen;
+  final VoidCallback onAdd;
+  const _DeadlinesView({
+    required this.items,
+    required this.extra,
+    required this.api,
+    required this.onToggle,
+    required this.onSubmit,
+    required this.onOpen,
+    required this.onAdd,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
     final t = now();
     final open = items.where((d) => !d.done && d.due.isAfter(t)).toList()..sort((a, b) => a.due.compareTo(b.due));
     final late = items.where((d) => !d.done && !d.due.isAfter(t)).toList();
     final done = items.where((d) => d.done).toList();
-    final soon = open.where((d) => d.due.difference(t).inHours < 48).toList();
-    final week = open.where((d) => !soon.contains(d) && d.due.difference(t).inDays < 7).toList();
-    final later = open.where((d) => !soon.contains(d) && !week.contains(d)).toList();
     final hot = open.firstOrNull;
+    // самый горящий — крупно сверху, в списках его не повторяем
+    final soon = open.where((d) => d.due.difference(t).inHours < 48).toList();
+    final week = open.where((d) => d != hot && !soon.contains(d) && d.due.difference(t).inDays < 7).toList();
+    final later = open.where((d) => d != hot && !soon.contains(d) && !week.contains(d)).toList();
     final dayEnd = DateTime(t.year, t.month, t.day + 1);
     final burning = open.where((d) => d.due.isBefore(dayEnd)).length;
 
     Widget row(Deadline d) => Padding(
       padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-      child: _Row(d: d, at: t, onToggle: onToggle, onSubmit: onSubmit),
+      child: _Row(d: d, x: extra[d.id], at: t, onToggle: onToggle, onOpen: onOpen),
     );
+
+    void push(Widget screen) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 120),
@@ -81,14 +168,53 @@ class _DeadlinesView extends StatelessWidget {
             '${done.length} сдано',
           ].join(' · '),
           title: 'Сдать',
+          trailing: IconButton.filled(
+            tooltip: 'Свой срок',
+            style: IconButton.styleFrom(backgroundColor: p.accent, foregroundColor: p.onAccent),
+            onPressed: onAdd,
+            icon: const Icon(Icons.add_rounded),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.m),
+          child: Row(
+            children: [
+              Expanded(
+                child: _Entry(
+                  icon: Icons.assignment_outlined,
+                  text: 'ДЗ группы',
+                  onTap: () => push(HomeworkScreen(api: api)),
+                ),
+              ),
+              const SizedBox(width: Space.s),
+              Expanded(
+                child: _Entry(
+                  icon: Icons.push_pin_outlined,
+                  text: 'Заметки',
+                  onTap: () => push(NotesScreen(api: api)),
+                ),
+              ),
+            ],
+          ),
         ),
         if (hot != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: _Hot(d: hot, at: t, onDone: () => onToggle(hot, true), onSubmit: () => onSubmit(hot)),
+            child: _Hot(
+              d: hot,
+              x: extra[hot.id],
+              at: t,
+              onDone: () => onToggle(hot, true),
+              onSubmit: () => onSubmit(hot),
+              onOpen: () => onOpen(hot),
+            ),
           ),
         if (open.isEmpty)
-          const Notice(title: 'Всё сдано', text: 'Новые задания из СДО появятся здесь сами.', pose: CapyPose.joy),
+          const Notice(
+            title: 'Всё сдано',
+            text: 'Новые задания из СДО появятся здесь сами. Свой срок — кнопкой +.',
+            pose: CapyPose.joy,
+          ),
         if (soon.length > 1) ...[const Section('Сегодня и завтра'), for (final d in soon.skip(1)) row(d)],
         if (week.isNotEmpty) ...[const Section('На неделе'), for (final d in week) row(d)],
         if (later.isNotEmpty) ...[const Section('Позже'), for (final d in later) row(d)],
@@ -99,6 +225,36 @@ class _DeadlinesView extends StatelessWidget {
   }
 }
 
+/// Плитка-вход: «ДЗ группы», «Заметки».
+class _Entry extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final VoidCallback onTap;
+  const _Entry({required this.icon, required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    return Tile(
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: Space.m, vertical: Space.m),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: s.p.accent),
+          const SizedBox(width: Space.s),
+          Expanded(
+            child: Text(text, style: s.body(15, weight: FontWeight.w600)),
+          ),
+          Icon(Icons.chevron_right_rounded, size: 20, color: s.p.muted),
+        ],
+      ),
+    );
+  }
+}
+
+/// Пометки на карточке — только если есть что показать.
+bool _hasChips(DlExtra? x) => x != null && (x.personal || x.mineChanged || x.reminders.isNotEmpty);
+
 String _dueLabel(Deadline d) {
   final due = d.due;
   return '${weekdaysShort[due.weekday - 1].toLowerCase()}, ${due.day} ${monthsGen[due.month - 1]} · ${d.dueTime.isEmpty ? '23:59' : d.dueTime}';
@@ -106,9 +262,17 @@ String _dueLabel(Deadline d) {
 
 class _Hot extends StatelessWidget {
   final Deadline d;
+  final DlExtra? x;
   final DateTime at;
-  final VoidCallback onDone, onSubmit;
-  const _Hot({required this.d, required this.at, required this.onDone, required this.onSubmit});
+  final VoidCallback onDone, onSubmit, onOpen;
+  const _Hot({
+    required this.d,
+    required this.x,
+    required this.at,
+    required this.onDone,
+    required this.onSubmit,
+    required this.onOpen,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -118,6 +282,7 @@ class _Hot extends StatelessWidget {
     final c = left.inHours < 24 ? p.danger : p.warn;
     final h = left.inHours, m = left.inMinutes % 60;
     return Tile(
+      onTap: onOpen,
       radius: Radii.card,
       gradient: LinearGradient(
         begin: Alignment.topRight,
@@ -145,6 +310,7 @@ class _Hot extends StatelessWidget {
           ),
           const SizedBox(height: Space.s),
           Text(d.subject, style: s.title(21)),
+          if (_hasChips(x)) ...[const SizedBox(height: Space.s), DlChips(x: x!)],
           const SizedBox(height: Space.m),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -216,10 +382,11 @@ class _Hot extends StatelessWidget {
 
 class _Row extends StatelessWidget {
   final Deadline d;
+  final DlExtra? x;
   final DateTime at;
   final Future<void> Function(Deadline, bool) onToggle;
-  final ValueChanged<Deadline> onSubmit;
-  const _Row({required this.d, required this.at, required this.onToggle, required this.onSubmit});
+  final ValueChanged<Deadline> onOpen;
+  const _Row({required this.d, required this.x, required this.at, required this.onToggle, required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
@@ -227,7 +394,7 @@ class _Row extends StatelessWidget {
     final p = s.p;
     final color = subjectColor(d.subject.contains(' · ') ? d.subject.split(' · ').last : d.subject);
     final tile = Tile(
-      onTap: d.canSubmit && !d.done ? () => onSubmit(d) : null,
+      onTap: () => onOpen(d),
       padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
       child: Opacity(
         opacity: d.done ? 0.5 : 1,
@@ -255,6 +422,7 @@ class _Row extends StatelessWidget {
                       d.done ? 'сдано' : '${_dueLabel(d)} · ${leftText(d.due.difference(at))}',
                       style: s.body(13, color: p.muted),
                     ),
+                    if (_hasChips(x)) ...[const SizedBox(height: 6), DlChips(x: x!)],
                   ],
                 ),
               ),
