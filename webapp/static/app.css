@@ -43,6 +43,8 @@
     background: linear-gradient(var(--bg) 75%, transparent);
   }
   html.fullscreen nav.tabs { padding-bottom: calc(8px + var(--safe-bottom, 0px)); }
+  /* PWA с экрана «Домой» (core.js): отступы под часы и полоску — от системы */
+  html.standalone { --safe-top: env(safe-area-inset-top); --safe-bottom: env(safe-area-inset-bottom); }
   header.top h1 {
     margin: 0;
     font-size: 22px;

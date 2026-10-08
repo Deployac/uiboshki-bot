@@ -24,6 +24,13 @@ const NEED_LOGIN = !IN_TG && !APP_TOKEN;      // /app без входа — эк
 if (!IN_TG && "serviceWorker" in navigator && location.protocol === "https:") {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }
+// PWA с экрана «Домой» на iPhone — на весь экран, строка с часами поверх
+// (black-translucent): без отступа шапка уезжала под часы (скрин владельца,
+// iPhone 16 Pro). Тот же режим, что полный экран Telegram: отступы — из
+// env(safe-area-inset-*) (app.css, html.standalone).
+if (!IN_TG && (navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches))) {
+  document.documentElement.classList.add("standalone", "fullscreen");
+}
 // Тема вне Telegram — системная (тёмная/светлая), как у остальных приложений телефона
 if (!tg || !tg.initData) {
   const mq = window.matchMedia ? window.matchMedia("(prefers-color-scheme: light)") : null;

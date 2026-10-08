@@ -132,8 +132,9 @@ async def test_root_in_plain_browser_goes_to_site(db, monkeypatch):
         await bot.stop_webapp(server, task)
 
 
-def _pwa(url: str, token: str) -> tuple[bool, bool, list]:
-    """/app вне Telegram: (экран «Войти» открыт, главная загрузилась, ошибки JS)."""
+def _pwa(url: str, token: str, standalone: bool = False) -> tuple[bool, bool, list]:
+    """/app вне Telegram: (экран «Войти» открыт, главная загрузилась, ошибки JS).
+    standalone — как с экрана «Домой» на iPhone; тогда вместо главной — отступ шапки сверху."""
     import json
     errors = []
     with sync_playwright() as p:
@@ -144,12 +145,16 @@ def _pwa(url: str, token: str) -> tuple[bool, bool, list]:
         page.add_init_script(TG_STUB % json.dumps(""))
         if token:
             page.add_init_script(f"localStorage.setItem('uib_token', {json.dumps(token)})")
+        if standalone:
+            page.add_init_script("Object.defineProperty(navigator, 'standalone', { get: () => true })")
         page.goto(url)
         page.wait_for_timeout(800)
         login = page.evaluate("document.getElementById('login').classList.contains('open')")
         home = page.evaluate("document.getElementById('greeting') ? document.getElementById('greeting').textContent : ''")
+        if standalone:
+            home = page.evaluate("parseFloat(getComputedStyle(document.querySelector('header.top')).paddingTop)")
         browser.close()
-    return login, bool(home), errors
+    return login, (home if standalone else bool(home)), errors
 
 
 @pytest.mark.asyncio
@@ -172,5 +177,31 @@ async def test_pwa_login_screen_and_token(db, monkeypatch):
         assert login and not errors, errors
         login, _, errors = await asyncio.to_thread(_pwa, f"http://127.0.0.1:{port}/app", token)
         assert not login and not errors, errors
+    finally:
+        await bot.stop_webapp(server, task)
+
+
+@pytest.mark.asyncio
+async def test_pwa_home_screen_header_below_clock(db, monkeypatch):
+    """Баг (скрин владельца, iPhone 16 Pro): PWA с экрана «Домой» — шапка под часами.
+    В режиме standalone шапка отступает как в полном экране Telegram (не меньше 44 + 8)."""
+    import bot
+    import webapp.deps as deps
+    from database.sessions import create_session
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    await db.upsert_user(222, "", "Alice")
+    token = await create_session(222, "test")
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        _, top, errors = await asyncio.to_thread(_pwa, f"http://127.0.0.1:{port}/app", token, True)
+        assert not errors, errors
+        assert top >= 52
+        _, home, _ = await asyncio.to_thread(_pwa, f"http://127.0.0.1:{port}/app", token)
+        assert home
     finally:
         await bot.stop_webapp(server, task)
