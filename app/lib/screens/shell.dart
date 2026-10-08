@@ -1,9 +1,11 @@
 // Оболочка: пять вкладок и меню-капсула; при первом запуске — короткое
 // знакомство «что где».
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api.dart';
+import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capsule_tabbar.dart';
@@ -144,10 +146,68 @@ class _ShellState extends State<Shell> {
       body: Backdrop(
         child: SafeArea(
           bottom: false,
-          child: IndexedStack(index: _index, children: pages),
+          child: Column(
+            children: [
+              OfflineBanner(since: widget.api.offlineSince),
+              Expanded(
+                child: IndexedStack(index: _index, children: pages),
+              ),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: CapsuleTabBar(items: tabs, index: _index, onTap: (i) => setState(() => _index = i)),
+    );
+  }
+}
+
+/// «Без сети · данные от 10:07» — пока ответы идут из памяти телефона.
+class OfflineBanner extends StatelessWidget {
+  final ValueListenable<DateTime?> since;
+  const OfflineBanner({super.key, required this.since});
+
+  static String label(DateTime at, DateTime today) {
+    final hm = '${at.hour.toString().padLeft(2, '0')}:${at.minute.toString().padLeft(2, '0')}';
+    final days = DateTime(today.year, today.month, today.day).difference(DateTime(at.year, at.month, at.day)).inDays;
+    final day = switch (days) {
+      0 => '',
+      1 => 'вчера ',
+      _ => '${at.day} ${monthsGen[at.month - 1]} ',
+    };
+    return 'Без сети · данные от $day$hm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    return ValueListenableBuilder<DateTime?>(
+      valueListenable: since,
+      builder: (context, at, _) => AnimatedSize(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOutCubic,
+        child: at == null
+            ? const SizedBox(width: double.infinity)
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.l, 0),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.s),
+                  decoration: BoxDecoration(
+                    color: s.p.warn.withValues(alpha: 0.16),
+                    borderRadius: BorderRadius.circular(Radii.pill),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.cloud_off_rounded, size: 16, color: s.p.warn),
+                      const SizedBox(width: Space.s),
+                      Expanded(
+                        child: Text(label(at, now()), style: s.body(13, weight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+      ),
     );
   }
 }

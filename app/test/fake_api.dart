@@ -13,9 +13,15 @@ Map<String, dynamic> demoFixtures() {
 }
 
 /// Api, который отвечает записанными ответами; requests — что спрашивали.
-Api fakeApi({String? token = 'test-token', List<String>? requests, Map<String, Object?>? bodies}) {
+Api fakeApi({
+  String? token = 'test-token',
+  List<String>? requests,
+  Map<String, Object?>? bodies,
+  bool Function()? offline,
+}) {
   final fx = demoFixtures();
   final client = MockClient((req) async {
+    if (offline?.call() ?? false) throw http.ClientException('нет сети');
     final path = req.url.path.replaceFirst('/api/v1/', '/api/');
     final q = req.url.query.isEmpty ? '' : '?${req.url.query}';
     var key = '${req.method} $path$q';

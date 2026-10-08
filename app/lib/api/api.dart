@@ -1,6 +1,8 @@
 // Клиент API бота (/api/v1, этап 2): вход через бота, токен сессии устройства.
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -55,7 +57,53 @@ class Api {
     return body;
   }
 
-  Future<dynamic> get(String path) async => _decode(await _client.get(_uri(path), headers: _headers));
+  /// Без сети — ответы GET из последней удачной загрузки (как sw.js у PWA).
+  /// Время той загрузки — здесь; null — данные свежие.
+  final offlineSince = ValueNotifier<DateTime?>(null);
+  static const _cachePrefix = 'uib_cache:';
+  static const timeout = Duration(seconds: 8);
+
+  Future<dynamic> get(String path) async {
+    final http.Response r;
+    try {
+      r = await _client.get(_uri(path), headers: _headers).timeout(timeout);
+    } catch (e) {
+      final cached = await _cached(path).catchError((_) => null);
+      if (cached == null) rethrow;
+      offlineSince.value = cached.at;
+      return cached.body;
+    }
+    final body = _decode(r);
+    offlineSince.value = null;
+    // Запас — в фоне: показ данных не ждёт памяти телефона и не падает из-за неё.
+    if (!path.startsWith('/auth/')) unawaited(_remember(path, r).catchError((_) {}));
+    return body;
+  }
+
+  Future<void> _remember(String path, http.Response r) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      '$_cachePrefix$path',
+      jsonEncode({'at': DateTime.now().toIso8601String(), 'body': utf8.decode(r.bodyBytes)}),
+    );
+  }
+
+  Future<({DateTime at, dynamic body})?> _cached(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('$_cachePrefix$path');
+    if (raw == null) return null;
+    final j = jsonDecode(raw);
+    return (at: DateTime.parse(j['at'] as String), body: jsonDecode(j['body'] as String));
+  }
+
+  /// Выход — данные с телефона стираются (как «выйти» в PWA).
+  Future<void> clearCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final k in prefs.getKeys().where((k) => k.startsWith(_cachePrefix)).toList()) {
+      await prefs.remove(k);
+    }
+    offlineSince.value = null;
+  }
 
   Future<dynamic> post(String path, [Object? body]) async =>
       _decode(await _client.post(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
@@ -79,5 +127,6 @@ class Api {
       await post('/auth/logout');
     } catch (_) {}
     await saveToken(null);
+    await clearCache();
   }
 }
