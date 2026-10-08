@@ -3,16 +3,19 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy.dart';
 import '../widgets/common.dart';
 import '../widgets/goal_card.dart';
 import 'chat.dart';
 import 'files.dart';
-import 'submit.dart';
+import 'sdo_connect.dart';
+import 'task.dart';
 
 class Course {
   final int id;
@@ -51,23 +54,37 @@ class StudyScreen extends StatelessWidget {
   final VoidCallback? onUnauthorized;
   const StudyScreen({super.key, required this.api, this.onUnauthorized});
 
-  Future<({List<Course> courses, String? problem})> _load() async {
+  Future<_StudyData> _load() async {
+    // статус входа — рядом, без него баллы всё равно показываем
+    final status = api
+        .get('/sdo/status')
+        .then<String?>((r) => r is Map ? r['state'] as String? : null, onError: (_) => null);
     try {
       final j = await api.get('/sdo/grades');
-      return (courses: [for (final c in j['courses'] as List) Course.fromJson(c)], problem: null);
+      return (courses: [for (final c in j['courses'] as List) Course.fromJson(c)], problem: null, sdo: await status);
     } on ApiError catch (e) {
-      return (courses: <Course>[], problem: e.message);
+      return (courses: <Course>[], problem: e.message, sdo: await status);
     }
   }
 
+  /// «Вход в СДО»; вернулся — баллы и статус заново.
+  Future<void> _openConnect(BuildContext context, Future<void> Function() reload) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SdoConnectScreen(api: api)));
+    await reload();
+  }
+
   @override
-  Widget build(BuildContext context) => Loader<({List<Course> courses, String? problem})>(
+  Widget build(BuildContext context) => Loader<_StudyData>(
     load: _load,
     onUnauthorized: onUnauthorized,
-    builder: (context, d, _) => ListView(
+    builder: (context, d, reload) => ListView(
       padding: const EdgeInsets.only(bottom: 120),
       children: [
-        ScreenTitle(eyebrow: 'баллы БРС · текущий семестр', title: 'Учёба'),
+        ScreenTitle(
+          eyebrow: 'баллы БРС · текущий семестр',
+          title: 'Учёба',
+          trailing: d.sdo == null ? null : _SdoBadge(state: d.sdo!, onTap: () => _openConnect(context, reload)),
+        ),
         Padding(
           padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.l),
           child: Row(
@@ -92,8 +109,10 @@ class StudyScreen extends StatelessWidget {
             ],
           ),
         ),
-        if (d.problem != null)
-          Notice(title: 'Баллы не видны', text: d.problem!)
+        if (d.problem != null && needsSdo(d.problem!))
+          _ConnectCard(problem: d.problem!, onTap: () => _openConnect(context, reload))
+        else if (d.problem != null)
+          Notice(title: 'Баллы не видны', text: d.problem!, onRetry: reload)
         else if (d.courses.isEmpty)
           const Notice(title: 'Пока пусто', text: 'Преподаватели ещё не завели журналы.'),
         for (final c in d.courses)
@@ -111,6 +130,131 @@ class StudyScreen extends StatelessWidget {
       ],
     ),
   );
+}
+
+typedef _StudyData = ({List<Course> courses, String? problem, String? sdo});
+
+/// Статус СДО в шапке: точка (работает / устарел / нет) и «СДО».
+class _SdoBadge extends StatelessWidget {
+  final String state;
+  final VoidCallback onTap;
+  const _SdoBadge({required this.state, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final (color, label) = switch (state) {
+      'ok' => (p.ok, 'СДО подключено'),
+      'expired' => (p.danger, 'Вход в СДО устарел'),
+      _ => (p.muted, 'СДО не подключено'),
+    };
+    return Semantics(
+      container: true,
+      button: true,
+      label: label,
+      child: Material(
+        color: p.card,
+        shape: StadiumBorder(side: BorderSide(color: p.line)),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () {
+            tick();
+            onTap();
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                ExcludeSemantics(
+                  child: Text('СДО', style: s.body(13, weight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Баллы не видны без своего входа — объясняем, что он даст, и ведём подключить.
+class _ConnectCard extends StatelessWidget {
+  final String problem;
+  final VoidCallback onTap;
+  const _ConnectCard({required this.problem, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final expired = problem.contains('устарел');
+    final title = problem.replaceFirst(RegExp(r':\s*вкладка.*$'), '');
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Space.l),
+      child: Tile(
+        radius: Radii.card,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CapyImage(pose: expired ? CapyPose.sad : CapyPose.day, size: 64, color: p.accent),
+                const SizedBox(width: Space.l),
+                Expanded(
+                  child: Text(
+                    title.isEmpty ? title : title[0].toUpperCase() + title.substring(1),
+                    style: s.body(17, weight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: Space.m),
+            Text(
+              'Баллы и задания у каждого свои — их видно только со своим входом в СДО.',
+              style: s.body(14, color: p.muted),
+            ),
+            const SizedBox(height: Space.m),
+            for (final (icon, text) in sdoPerks)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(icon, size: 18, color: p.accent),
+                    const SizedBox(width: Space.m),
+                    Expanded(child: Text(text, style: s.body(14))),
+                  ],
+                ),
+              ),
+            const SizedBox(height: Space.l),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: p.accent,
+                  foregroundColor: p.onAccent,
+                  shape: const StadiumBorder(),
+                ),
+                onPressed: () {
+                  tick();
+                  onTap();
+                },
+                child: Text(expired ? 'Подключить заново' : 'Подключить СДО'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Вход в «Помощника» и «Файлы» — две плитки над баллами.
@@ -351,7 +495,7 @@ class CourseScreen extends StatelessWidget {
                         children: [
                           for (var i = 0; i < c.works.length; i++) ...[
                             if (i > 0) Divider(height: 1, color: p.line),
-                            _WorkRow(w: c.works[i], color: color, api: api),
+                            _WorkRow(w: c.works[i], color: color, api: api, course: c.title),
                           ],
                         ],
                       ),
@@ -408,7 +552,8 @@ class _WorkRow extends StatelessWidget {
   final Map<String, dynamic> w;
   final Color color;
   final Api api;
-  const _WorkRow({required this.w, required this.color, required this.api});
+  final String course;
+  const _WorkRow({required this.w, required this.color, required this.api, required this.course});
 
   @override
   Widget build(BuildContext context) {
@@ -422,14 +567,23 @@ class _WorkRow extends StatelessWidget {
       _ => p.muted,
     };
     final grade = w['grade'];
-    // Задание (не тест) без зачёта — можно сдать файлом прямо отсюда.
-    final canSubmit = w['module'] == 'assign' && w['cmid'] is int && w['status'] != 'ok';
+    // Задание или тест — свой экран (описание, файлы, «Сдать»); прочее — страница в СДО.
+    final isTask = (w['module'] == 'assign' || w['module'] == 'quiz') && w['cmid'] is int;
+    final url = w['url'] is String ? w['url'] as String : null;
     return InkWell(
-      onTap: !canSubmit
+      onTap: !isTask && url == null
           ? null
           : () {
               tick();
-              showSubmitSheet(context, api, title: '${w['name']}', cmid: w['cmid'] as int);
+              if (isTask) {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => TaskScreen(api: api, work: w, course: course),
+                  ),
+                );
+              } else {
+                launchUrl(Uri.parse(url!), mode: LaunchMode.externalApplication);
+              }
             },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
@@ -445,7 +599,10 @@ class _WorkRow extends StatelessWidget {
               grade != null ? '$grade/${w['max']}' : st.$2,
               style: s.body(13, color: grade != null ? p.text : p.muted),
             ),
-            if (canSubmit) ...[const SizedBox(width: Space.s), Icon(Icons.upload_rounded, size: 18, color: p.accent)],
+            if (isTask) ...[
+              const SizedBox(width: Space.xs),
+              Icon(Icons.chevron_right_rounded, size: 20, color: p.muted),
+            ],
           ],
         ),
       ),

@@ -1,0 +1,495 @@
+// Экран задания СДО (как в WebApp, js/sdo.js → renderTask): срок, сколько
+// осталось, статус и оценка, описание, файлы преподавателя и мой ответ,
+// «Сдать работу». У теста — попытки и лучший результат; пройти — на сайте.
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../api/api.dart';
+import '../api/models.dart';
+import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
+import '../widgets/common.dart';
+import '../widgets/goal_card.dart';
+import 'files.dart';
+import 'sdo_connect.dart';
+import 'submit.dart';
+
+/// Открыть ссылку — системным браузером; в тестах подменяется.
+typedef OpenLink = Future<void> Function(Uri uri);
+
+Future<void> openExternal(Uri uri) async {
+  await launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
+/// Ссылка на файл из СДО (/sdl/…): сервер отдаёт полный адрес, а если путь — к нему адрес сервера.
+Uri sdoLink(String dl) => Uri.parse(dl.startsWith('http') ? dl : '${Api.base}$dl');
+
+/// Статус ответа — по-человечески, а не сырым текстом Moodle.
+String humanStatus(String s) {
+  const rules = [
+    (r'не представлен|нет ответа|no attempt', 'Ещё не сдано'),
+    (r'черновик|draft', 'Черновик — не отправлен'),
+    (r'отправлено для оценивания|submitted for grading', 'Сдано, ждёт оценки'),
+    (r'вне сайта', 'Сдаётся на занятии'),
+  ];
+  for (final (re, text) in rules) {
+    if (RegExp(re, caseSensitive: false).hasMatch(s)) return text;
+  }
+  return s;
+}
+
+/// Подпись статуса работы из журнала (поле status у works).
+const _tags = {
+  'ok': (Icons.check_circle_rounded, 'зачтено'),
+  'low': (Icons.error_outline_rounded, 'ниже порога'),
+  'wait': (Icons.hourglass_top_rounded, 'ждёт оценки'),
+  'offline': (Icons.groups_outlined, 'сдаётся на занятии'),
+  'soon': (Icons.lock_outline_rounded, 'ещё закрыто'),
+  'miss': (Icons.cancel_outlined, 'срок прошёл'),
+  'late': (Icons.hourglass_top_rounded, 'ждём оценку'),
+};
+
+class TaskScreen extends StatefulWidget {
+  final Api api;
+
+  /// Работа из журнала предмета: name, module, cmid, status, grade, max, pass_mark, url.
+  final Map<String, dynamic> work;
+  final String course;
+  final OpenLink open;
+  final PickFiles pick;
+  const TaskScreen({
+    super.key,
+    required this.api,
+    required this.work,
+    this.course = '',
+    this.open = openExternal,
+    this.pick = systemPick,
+  });
+
+  @override
+  State<TaskScreen> createState() => _TaskScreenState();
+}
+
+class _TaskScreenState extends State<TaskScreen> {
+  Map<String, dynamic>? _t;
+  String? _error;
+  DateTime? _loadedAt;
+
+  Map<String, dynamic> get w => widget.work;
+  bool get _quiz => w['module'] == 'quiz';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final r = await widget.api.get('/sdo/task/${w['cmid']}${_quiz ? '?module=quiz' : ''}');
+      if (!mounted) return;
+      setState(() {
+        _t = Map<String, dynamic>.from(r);
+        _error = null;
+        _loadedAt = DateTime.now();
+      });
+    } on ApiError catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Нет связи с сервером — проверь интернет.');
+    }
+  }
+
+  /// Ссылки на файлы живут 10 минут — экран открыт дольше, берём свежие.
+  Future<void> _download(bool mine, int i) async {
+    tick();
+    if (_loadedAt != null && DateTime.now().difference(_loadedAt!) > const Duration(minutes: 9)) await _load();
+    final t = _t;
+    if (t == null) return;
+    final list = (mine ? t['mine'] : t['files']) as List? ?? [];
+    if (i >= list.length) return;
+    await widget.open(sdoLink('${list[i]['dl']}'));
+  }
+
+  Future<void> _submit() async {
+    tick();
+    final t = _t!;
+    final ok = await showSubmitSheet(
+      context,
+      widget.api,
+      title: '${t['title'] ?? w['name']}',
+      cmid: w['cmid'] as int,
+      pick: widget.pick,
+    );
+    if (ok == true) await _load(); // мой ответ и статус — заново
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    final t = _t;
+    return Scaffold(
+      body: Backdrop(
+        tint: widget.course.isEmpty ? null : subjectColor(widget.course),
+        child: SafeArea(
+          child: RefreshIndicator(
+            color: p.accent,
+            onRefresh: _load,
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: Space.xxl),
+              children: [
+                const BackRow(),
+                ScreenTitle(
+                  eyebrow: [if (widget.course.isNotEmpty) widget.course, _quiz ? 'тест' : 'задание'].join(' · '),
+                  title: '${t?['title'] ?? w['name']}',
+                ),
+                if (t != null)
+                  ..._body(context, t)
+                else if (_error != null)
+                  Notice(
+                    title: 'Задание не открылось',
+                    text: _error!,
+                    onRetry: () {
+                      setState(() => _error = null);
+                      _load();
+                    },
+                  )
+                else
+                  Padding(
+                    padding: const EdgeInsets.all(Space.xxl),
+                    child: Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5)),
+                  ),
+                // вход устарел или не подключён — сразу к подключению, потом задание заново
+                if (t == null && _error != null && needsSdo(_error!))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(Space.l, Space.l, Space.l, 0),
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: p.accent,
+                        foregroundColor: p.onAccent,
+                        shape: const StadiumBorder(),
+                      ),
+                      onPressed: () async {
+                        tick();
+                        await Navigator.of(context)
+                            .push(MaterialPageRoute(builder: (_) => SdoConnectScreen(api: widget.api)));
+                        if (mounted) setState(() => _error = null);
+                        await _load();
+                      },
+                      child: const Text('Подключить СДО'),
+                    ),
+                  ),
+                if (t == null && _error != null && w['url'] is String) _openSdo(context, '${w['url']}'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _body(BuildContext context, Map<String, dynamic> t) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    const pad = EdgeInsets.symmetric(horizontal: Space.l);
+    final status = '${w['status'] ?? ''}';
+    final files = (t['files'] as List?) ?? [];
+    final mine = (t['mine'] as List?) ?? [];
+    final remaining = '${t['remaining'] ?? ''}'.replaceFirst(RegExp(r' осталось$'), '');
+    final tag = status == 'todo' && remaining.isNotEmpty ? (Icons.schedule_rounded, remaining) : _tags[status];
+    final tagColor = switch (status) {
+      'ok' => p.ok,
+      'low' || 'miss' => p.danger,
+      'todo' => p.warn,
+      _ => p.muted,
+    };
+    final graded = status == 'ok' || status == 'low';
+    final limit = (t['limit'] as num?)?.toInt() ?? 1;
+    final max = w['max'];
+    return [
+      Padding(
+        padding: pad,
+        child: Tile(
+          radius: Radii.card,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (t['due'] != null) ...[
+                Text('Срок сдачи', style: s.eyebrow()),
+                const SizedBox(height: 2),
+                Text('${t['due']}', style: s.title(20)),
+                const SizedBox(height: Space.m),
+              ],
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  if (tag != null) _Chip(icon: tag.$1, text: tag.$2, color: tagColor),
+                  if (graded)
+                    const _Chip(text: 'Оценено')
+                  else if ('${t['status'] ?? ''}'.isNotEmpty)
+                    _Chip(text: humanStatus('${t['status']}')),
+                  _Chip(text: w['grade'] != null ? 'Оценка ${fmtNum(w['grade'])} / ${fmtNum(max ?? 0)}' : 'Не оценено'),
+                ],
+              ),
+              if (max != null) ...[
+                const SizedBox(height: Space.m),
+                Text(
+                  'до ${fmtNum(max)} ${plural((max as num).round(), 'балла', 'баллов', 'баллов')}'
+                  '${w['pass_mark'] != null ? ' · зачёт от ${fmtNum(w['pass_mark'])}' : ''}',
+                  style: s.body(13, color: p.muted),
+                ),
+              ],
+              if (t['graded_by'] != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  'Оценил(а): ${t['graded_by']}${t['graded_at'] != null ? ' · ${t['graded_at']}' : ''}',
+                  style: s.body(13, color: p.muted),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      if ('${t['description'] ?? ''}'.isNotEmpty) ...[
+        const Section('Задание'),
+        Padding(
+          padding: pad,
+          child: Tile(child: SelectableText('${t['description']}', style: s.body(15))),
+        ),
+      ],
+      if ('${t['feedback'] ?? ''}'.isNotEmpty) ...[
+        const Section('Комментарий преподавателя'),
+        Padding(
+          padding: pad,
+          child: Tile(child: SelectableText('${t['feedback']}', style: s.body(15))),
+        ),
+      ],
+      if (t['quiz'] == true) ...[
+        const Section('Тест'),
+        Padding(
+          padding: pad,
+          child: _QuizCard(t: t, status: status),
+        ),
+      ],
+      if (files.isNotEmpty) ...[
+        const Section('Файлы задания'),
+        Padding(
+          padding: pad,
+          child: _FileList(names: [for (final f in files) '${f['name']}'], onTap: (i) => _download(false, i)),
+        ),
+      ],
+      if (mine.isNotEmpty) ...[
+        const Section('Мой ответ'),
+        Padding(
+          padding: pad,
+          child: _FileList(names: [for (final f in mine) '${f['name']}'], onTap: (i) => _download(true, i)),
+        ),
+      ],
+      const SizedBox(height: Space.xl),
+      if (t['can_submit'] == true)
+        Padding(
+          padding: pad,
+          child: SizedBox(
+            height: 50,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: p.accent,
+                foregroundColor: p.onAccent,
+                shape: const StadiumBorder(),
+              ),
+              onPressed: _submit,
+              icon: const Icon(Icons.upload_rounded),
+              label: Text(
+                '${mine.isNotEmpty ? 'Сдать ещё / заменить' : 'Сдать работу'}'
+                '${limit > 1 ? ' · до $limit ${plural(limit, 'файла', 'файлов', 'файлов')}' : ''}',
+              ),
+            ),
+          ),
+        )
+      else if (status == 'offline')
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.xl),
+          child: Text(
+            'Эту работу сдают на занятии, не через СДО.',
+            textAlign: TextAlign.center,
+            style: s.body(14, color: p.muted),
+          ),
+        ),
+      if (t['quiz'] == true && t['open_now'] == true)
+        Padding(
+          padding: pad,
+          child: SizedBox(
+            height: 50,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: p.accent,
+                foregroundColor: p.onAccent,
+                shape: const StadiumBorder(),
+              ),
+              onPressed: () => widget.open(Uri.parse('${t['url']}')),
+              icon: const Icon(Icons.open_in_new_rounded),
+              label: const Text('Пройти тест в СДО'),
+            ),
+          ),
+        )
+      else if (t['url'] is String)
+        _openSdo(context, t['url'] as String),
+    ];
+  }
+
+  Widget _openSdo(BuildContext context, String url) {
+    final s = AppStyle.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.l, 0),
+      child: TextButton.icon(
+        onPressed: () {
+          tick();
+          widget.open(Uri.parse(url));
+        },
+        icon: Icon(Icons.open_in_new_rounded, size: 18, color: s.p.accent),
+        label: Text(
+          'Открыть в СДО',
+          style: s.body(15, weight: FontWeight.w600, color: s.p.accent),
+        ),
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  final IconData? icon;
+  final String text;
+  final Color? color;
+  const _Chip({this.icon, required this.text, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final c = color ?? s.p.muted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(Radii.pill)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[Icon(icon, size: 14, color: c), const SizedBox(width: 4)],
+          Text(
+            text,
+            style: s.body(13, weight: FontWeight.w600, color: color ?? s.p.text),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+IconData _fileIcon(String name) {
+  final ext = name.contains('.') ? name.split('.').last.toLowerCase() : '';
+  return switch (ext) {
+    'pdf' => Icons.picture_as_pdf_outlined,
+    'doc' || 'docx' || 'odt' || 'rtf' || 'txt' => Icons.description_outlined,
+    'xls' || 'xlsx' || 'csv' => Icons.table_chart_outlined,
+    'ppt' || 'pptx' => Icons.slideshow_outlined,
+    'zip' || 'rar' || '7z' => Icons.folder_zip_outlined,
+    'png' || 'jpg' || 'jpeg' => Icons.image_outlined,
+    _ => Icons.insert_drive_file_outlined,
+  };
+}
+
+/// Файлы карточкой: иконка по типу, имя, «скачать».
+class _FileList extends StatelessWidget {
+  final List<String> names;
+  final ValueChanged<int> onTap;
+  const _FileList({required this.names, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Tile(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          for (var i = 0; i < names.length; i++) ...[
+            if (i > 0) Divider(height: 1, color: p.line),
+            InkWell(
+              onTap: () => onTap(i),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+                child: Row(
+                  children: [
+                    Icon(_fileIcon(names[i]), size: 20, color: p.accent),
+                    const SizedBox(width: Space.m),
+                    Expanded(
+                      child: Text(names[i], style: s.body(14, weight: FontWeight.w600)),
+                    ),
+                    Icon(Icons.download_rounded, size: 20, color: p.muted, semanticLabel: 'Скачать'),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Тест: открыт ли, попытки, лучший результат, проходная, время на попытку.
+class _QuizCard extends StatelessWidget {
+  final Map<String, dynamic> t;
+  final String status;
+  const _QuizCard({required this.t, required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final attempts = (t['attempts'] as List?) ?? [];
+    final allowed = t['attempts_allowed'];
+    final state = t['open_now'] == true
+        ? 'Тест открыт — можно проходить'
+        : t['no_more'] == true
+        ? 'Попыток больше нет'
+        : t['unavailable'] == true || status == 'soon'
+        ? 'Ещё не открыт${t['opens'] != null ? ' · откроется ${t['opens']}' : ''}'
+        : 'Сейчас пройти нельзя';
+    final limit = (t['time_limit'] as num?)?.toInt();
+    Widget line(IconData icon, String text, {bool bold = false}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: p.muted),
+          const SizedBox(width: Space.s),
+          Expanded(
+            child: Text(text, style: s.body(14, weight: bold ? FontWeight.w600 : FontWeight.w400)),
+          ),
+        ],
+      ),
+    );
+    return Tile(
+      child: Column(
+        children: [
+          line(t['open_now'] == true ? Icons.lock_open_rounded : Icons.lock_outline_rounded, state, bold: true),
+          line(
+            Icons.replay_rounded,
+            'Попытки: ${allowed != null ? 'использовано ${attempts.length} из $allowed' : '${attempts.length} · без ограничения'}',
+          ),
+          if ('${t['best'] ?? ''}'.isNotEmpty)
+            line(Icons.emoji_events_outlined, 'Лучший результат: ${'${t['best']}'.replaceFirst('/', ' из ')}'),
+          if ('${t['pass_text'] ?? ''}'.isNotEmpty) line(Icons.flag_outlined, 'Проходная: ${t['pass_text']}'),
+          if (limit != null && limit > 0)
+            line(Icons.timer_outlined, 'На попытку: ${limit % 60 != 0 ? '$limit мин' : '${limit ~/ 60} ч'}'),
+          for (var i = 0; i < attempts.length; i++)
+            line(
+              Icons.check_rounded,
+              'Попытка ${i + 1}: ${'${attempts[i]['grade'] ?? ''}'.isNotEmpty ? attempts[i]['grade'] : attempts[i]['state'] ?? ''}'
+              '${'${attempts[i]['finished'] ?? ''}'.isNotEmpty ? ' · ${attempts[i]['finished']}' : ''}',
+            ),
+        ],
+      ),
+    );
+  }
+}
