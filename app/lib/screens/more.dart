@@ -11,7 +11,17 @@ class MoreScreen extends StatelessWidget {
   final ValueChanged<FontChoice> onFont;
   final VoidCallback onLogout;
   final VoidCallback? onUnauthorized;
-  const MoreScreen({super.key, required this.api, required this.onFont, required this.onLogout, this.onUnauthorized});
+
+  /// «Группа» → выбрать другую (оболочка перестроит экраны).
+  final VoidCallback? onGroup;
+  const MoreScreen({
+    super.key,
+    required this.api,
+    required this.onFont,
+    required this.onLogout,
+    this.onUnauthorized,
+    this.onGroup,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,7 +33,38 @@ class MoreScreen extends StatelessWidget {
       builder: (context, me, _) => ListView(
         padding: const EdgeInsets.only(bottom: 120),
         children: [
-          ScreenTitle(eyebrow: me['group']?['name'] ?? 'группа не выбрана', title: me['first_name'] ?? 'Ещё'),
+          ScreenTitle(eyebrow: 'профиль и настройки', title: me['first_name'] ?? 'Ещё'),
+          const Section('Группа'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.l),
+            child: Tile(
+              onTap: onGroup,
+              child: Row(
+                children: [
+                  Icon(Icons.groups_outlined, color: p.accent),
+                  const SizedBox(width: Space.m),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(me['group']?['name'] ?? 'не выбрана', style: s.body(16, weight: FontWeight.w600)),
+                        Text('расписание и сроки — этой группы', style: s.body(13, color: p.muted)),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    'Сменить',
+                    style: s.body(14, weight: FontWeight.w600, color: p.accent),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (me['group'] != null && me['group']['own'] != true)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.l, 0),
+              child: _AdminRequest(api: api),
+            ),
           const Section('Шрифт'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
@@ -128,6 +169,45 @@ class _FontCard extends StatelessWidget {
             Text(book ? 'с засечками' : 'ровный, Onest', style: s.body(12, color: p.muted)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// «Я староста этой группы» — запрос владельцу бота (одобрит — можно вести
+/// общие сроки, ДЗ и заметки группы).
+class _AdminRequest extends StatefulWidget {
+  final Api api;
+  const _AdminRequest({required this.api});
+
+  @override
+  State<_AdminRequest> createState() => _AdminRequestState();
+}
+
+class _AdminRequestState extends State<_AdminRequest> {
+  String? _note;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    return Tile(
+      onTap: _note != null
+          ? null
+          : () async {
+              try {
+                await widget.api.post('/me/group/admin');
+                setState(() => _note = 'Запрос отправлен — ответ придёт в бота.');
+              } on ApiError catch (e) {
+                setState(() => _note = e.message);
+              }
+            },
+      padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+      child: Row(
+        children: [
+          Icon(Icons.verified_user_outlined, color: s.p.muted, size: 20),
+          const SizedBox(width: Space.m),
+          Expanded(child: Text(_note ?? 'Я староста этой группы', style: s.body(15))),
+        ],
       ),
     );
   }

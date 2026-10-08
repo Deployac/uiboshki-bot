@@ -11,6 +11,7 @@ import '../theme/tokens.dart';
 import '../widgets/capsule_tabbar.dart';
 import '../widgets/common.dart';
 import 'deadlines.dart';
+import 'group_pick.dart';
 import 'more.dart';
 import 'study.dart';
 import 'today.dart';
@@ -62,10 +63,37 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   late int _index = widget.initialTab;
 
+  /// Сменилась группа — номер растёт, экраны строятся заново со своими данными.
+  int _epoch = 0;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeTour());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _ensureGroup();
+      await _maybeTour();
+    });
+  }
+
+  /// Нет группы в профиле (новый человек) — сначала выбрать её.
+  Future<void> _ensureGroup() async {
+    Map? me;
+    try {
+      me = await widget.api.get('/me') as Map?;
+    } catch (_) {
+      return; // нет сети или вход устарел — экраны сами скажут
+    }
+    if (me == null || me['group'] != null || !mounted) return;
+    await pickGroup(required: true);
+  }
+
+  Future<void> pickGroup({bool required = false}) async {
+    final g = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => GroupPickScreen(api: widget.api, required: required),
+      ),
+    );
+    if (g != null && mounted) setState(() => _epoch++);
   }
 
   Future<void> _maybeTour() async {
@@ -135,11 +163,18 @@ class _ShellState extends State<Shell> {
     final api = widget.api;
     final un = widget.onUnauthorized;
     final pages = [
-      TodayScreen(api: api, onUnauthorized: un),
-      WeekScreen(api: api, onUnauthorized: un),
-      DeadlinesScreen(api: api, onUnauthorized: un),
-      StudyScreen(api: api, onUnauthorized: un),
-      MoreScreen(api: api, onFont: widget.onFont, onLogout: widget.onLogout, onUnauthorized: un),
+      TodayScreen(key: ValueKey('today$_epoch'), api: api, onUnauthorized: un),
+      WeekScreen(key: ValueKey('week$_epoch'), api: api, onUnauthorized: un),
+      DeadlinesScreen(key: ValueKey('dl$_epoch'), api: api, onUnauthorized: un),
+      StudyScreen(key: ValueKey('study$_epoch'), api: api, onUnauthorized: un),
+      MoreScreen(
+        key: ValueKey('more$_epoch'),
+        api: api,
+        onFont: widget.onFont,
+        onLogout: widget.onLogout,
+        onUnauthorized: un,
+        onGroup: () => pickGroup(),
+      ),
     ];
     return Scaffold(
       extendBody: true,

@@ -18,6 +18,7 @@ Api fakeApi({
   List<String>? requests,
   Map<String, Object?>? bodies,
   bool Function()? offline,
+  Map<String, Object?> overrides = const {},
 }) {
   final fx = demoFixtures();
   final client = MockClient((req) async {
@@ -31,7 +32,7 @@ Api fakeApi({
     if (req.headers['Authorization'] == null && !path.startsWith('/api/auth/')) {
       return http.Response('{"detail":"нет входа"}', 401);
     }
-    Object? body = fx[key];
+    Object? body = overrides.containsKey(key) ? overrides[key] : fx[key];
     body ??= switch (path) {
       '/api/day' => {'lessons': []},
       '/api/week' => {'week': null, 'days': []},
@@ -44,6 +45,14 @@ Api fakeApi({
         'maxbytes': 10485760,
       },
       '/api/sdo/submit' => {'status': 'Отправлено для оценивания'},
+      '/api/groups/search' => {
+        'items': [
+          {'id': 5001, 'name': 'УИБО-01-24'},
+        ],
+      },
+      '/api/me/group' => {
+        'group': {'id': 5001, 'name': 'УИБО-01-24', 'own': false},
+      },
       _ => {'ok': true},
     };
     return http.Response.bytes(utf8.encode(jsonEncode(body)), 200, headers: {'content-type': 'application/json'});
