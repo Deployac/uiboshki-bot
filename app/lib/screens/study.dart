@@ -11,6 +11,7 @@ import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import 'chat.dart';
 import 'files.dart';
+import 'submit.dart';
 
 class Course {
   final int id;
@@ -327,7 +328,7 @@ class CourseScreen extends StatelessWidget {
                         children: [
                           for (var i = 0; i < c.works.length; i++) ...[
                             if (i > 0) Divider(height: 1, color: p.line),
-                            _WorkRow(w: c.works[i], color: color),
+                            _WorkRow(w: c.works[i], color: color, api: api),
                           ],
                         ],
                       ),
@@ -374,7 +375,8 @@ class CourseScreen extends StatelessWidget {
 class _WorkRow extends StatelessWidget {
   final Map<String, dynamic> w;
   final Color color;
-  const _WorkRow({required this.w, required this.color});
+  final Api api;
+  const _WorkRow({required this.w, required this.color, required this.api});
 
   @override
   Widget build(BuildContext context) {
@@ -388,21 +390,32 @@ class _WorkRow extends StatelessWidget {
       _ => p.muted,
     };
     final grade = w['grade'];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
-      child: Row(
-        children: [
-          Icon(st.$1, size: 20, color: iconColor),
-          const SizedBox(width: Space.m),
-          Expanded(
-            child: Text('${w['name']}', style: s.body(14, weight: FontWeight.w600)),
-          ),
-          const SizedBox(width: Space.s),
-          Text(
-            grade != null ? '$grade/${w['max']}' : st.$2,
-            style: s.body(13, color: grade != null ? p.text : p.muted),
-          ),
-        ],
+    // Задание (не тест) без зачёта — можно сдать файлом прямо отсюда.
+    final canSubmit = w['module'] == 'assign' && w['cmid'] is int && w['status'] != 'ok';
+    return InkWell(
+      onTap: !canSubmit
+          ? null
+          : () {
+              tick();
+              showSubmitSheet(context, api, title: '${w['name']}', cmid: w['cmid'] as int);
+            },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+        child: Row(
+          children: [
+            Icon(st.$1, size: 20, color: iconColor),
+            const SizedBox(width: Space.m),
+            Expanded(
+              child: Text('${w['name']}', style: s.body(14, weight: FontWeight.w600)),
+            ),
+            const SizedBox(width: Space.s),
+            Text(
+              grade != null ? '$grade/${w['max']}' : st.$2,
+              style: s.body(13, color: grade != null ? p.text : p.muted),
+            ),
+            if (canSubmit) ...[const SizedBox(width: Space.s), Icon(Icons.upload_rounded, size: 18, color: p.accent)],
+          ],
+        ),
       ),
     );
   }

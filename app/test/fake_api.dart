@@ -13,13 +13,14 @@ Map<String, dynamic> demoFixtures() {
 }
 
 /// Api, который отвечает записанными ответами; requests — что спрашивали.
-Api fakeApi({String? token = 'test-token', List<String>? requests}) {
+Api fakeApi({String? token = 'test-token', List<String>? requests, Map<String, Object?>? bodies}) {
   final fx = demoFixtures();
   final client = MockClient((req) async {
     final path = req.url.path.replaceFirst('/api/v1/', '/api/');
     final q = req.url.query.isEmpty ? '' : '?${req.url.query}';
     final key = '${req.method} $path$q';
     requests?.add(key);
+    if (req.method == 'POST' && req.body.isNotEmpty) bodies?[key] = jsonDecode(req.body);
     if (req.headers['Authorization'] == null && !path.startsWith('/api/auth/')) {
       return http.Response('{"detail":"нет входа"}', 401);
     }
@@ -29,6 +30,13 @@ Api fakeApi({String? token = 'test-token', List<String>? requests}) {
       '/api/week' => {'week': null, 'days': []},
       '/api/auth/start' => {'code': 'abc', 'link': 'https://t.me/UiboshkiBot?start=login_abc'},
       '/api/auth/poll' => {'status': 'wait'},
+      '/api/sdo/submit-rules' => {
+        'accepted': ['.zip'],
+        'labels': ['Архив ZIP'],
+        'maxfiles': 2,
+        'maxbytes': 10485760,
+      },
+      '/api/sdo/submit' => {'status': 'Отправлено для оценивания'},
       _ => {'ok': true},
     };
     return http.Response.bytes(utf8.encode(jsonEncode(body)), 200, headers: {'content-type': 'application/json'});

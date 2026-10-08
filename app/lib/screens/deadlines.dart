@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
+import 'submit.dart';
 
 class DeadlinesScreen extends StatefulWidget {
   final Api api;
@@ -33,6 +34,10 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
     onUnauthorized: widget.onUnauthorized,
     builder: (context, items, reload) => _DeadlinesView(
       items: items,
+      onSubmit: (d) async {
+        final ok = await showSubmitSheet(context, widget.api, title: d.subject, deadlineId: d.id);
+        if (ok == true) await reload();
+      },
       onToggle: (d, done) async {
         await _toggle(d, done);
         await reload();
@@ -44,7 +49,8 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
 class _DeadlinesView extends StatelessWidget {
   final List<Deadline> items;
   final Future<void> Function(Deadline, bool) onToggle;
-  const _DeadlinesView({required this.items, required this.onToggle});
+  final ValueChanged<Deadline> onSubmit;
+  const _DeadlinesView({required this.items, required this.onToggle, required this.onSubmit});
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +67,7 @@ class _DeadlinesView extends StatelessWidget {
 
     Widget row(Deadline d) => Padding(
       padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-      child: _Row(d: d, at: t, onToggle: onToggle),
+      child: _Row(d: d, at: t, onToggle: onToggle, onSubmit: onSubmit),
     );
 
     return ListView(
@@ -78,7 +84,7 @@ class _DeadlinesView extends StatelessWidget {
         if (hot != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: _Hot(d: hot, at: t, onDone: () => onToggle(hot, true)),
+            child: _Hot(d: hot, at: t, onDone: () => onToggle(hot, true), onSubmit: () => onSubmit(hot)),
           ),
         if (open.isEmpty) const Notice(title: 'Всё сдано', text: 'Новые задания из СДО появятся здесь сами.'),
         if (soon.length > 1) ...[const Section('Сегодня и завтра'), for (final d in soon.skip(1)) row(d)],
@@ -99,8 +105,8 @@ String _dueLabel(Deadline d) {
 class _Hot extends StatelessWidget {
   final Deadline d;
   final DateTime at;
-  final VoidCallback onDone;
-  const _Hot({required this.d, required this.at, required this.onDone});
+  final VoidCallback onDone, onSubmit;
+  const _Hot({required this.d, required this.at, required this.onDone, required this.onSubmit});
 
   @override
   Widget build(BuildContext context) {
@@ -167,18 +173,38 @@ class _Hot extends StatelessWidget {
             ),
           ),
           const SizedBox(height: Space.l),
-          OutlinedButton.icon(
-            style: OutlinedButton.styleFrom(
-              foregroundColor: p.text,
-              side: BorderSide(color: p.line),
-              shape: const StadiumBorder(),
-            ),
-            onPressed: () {
-              tick();
-              onDone();
-            },
-            icon: const Icon(Icons.check_rounded, size: 18),
-            label: const Text('Уже сдал'),
+          Wrap(
+            spacing: Space.s,
+            runSpacing: Space.s,
+            children: [
+              if (d.canSubmit)
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: c,
+                    foregroundColor: Colors.white,
+                    shape: const StadiumBorder(),
+                  ),
+                  onPressed: () {
+                    tick();
+                    onSubmit();
+                  },
+                  icon: const Icon(Icons.upload_rounded, size: 18),
+                  label: const Text('Сдать файлом'),
+                ),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: p.text,
+                  side: BorderSide(color: p.line),
+                  shape: const StadiumBorder(),
+                ),
+                onPressed: () {
+                  tick();
+                  onDone();
+                },
+                icon: const Icon(Icons.check_rounded, size: 18),
+                label: const Text('Уже сдал'),
+              ),
+            ],
           ),
         ],
       ),
@@ -190,7 +216,8 @@ class _Row extends StatelessWidget {
   final Deadline d;
   final DateTime at;
   final Future<void> Function(Deadline, bool) onToggle;
-  const _Row({required this.d, required this.at, required this.onToggle});
+  final ValueChanged<Deadline> onSubmit;
+  const _Row({required this.d, required this.at, required this.onToggle, required this.onSubmit});
 
   @override
   Widget build(BuildContext context) {
@@ -198,6 +225,7 @@ class _Row extends StatelessWidget {
     final p = s.p;
     final color = subjectColor(d.subject.contains(' · ') ? d.subject.split(' · ').last : d.subject);
     final tile = Tile(
+      onTap: d.canSubmit && !d.done ? () => onSubmit(d) : null,
       padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
       child: Opacity(
         opacity: d.done ? 0.5 : 1,

@@ -38,12 +38,16 @@ class Deadline {
   final String subject, dueDate, dueTime;
   final bool done;
 
+  /// Задание СДО, которое можно сдать файлом из приложения.
+  final bool canSubmit;
+
   const Deadline({
     required this.id,
     required this.subject,
     required this.dueDate,
     required this.dueTime,
     this.done = false,
+    this.canSubmit = false,
   });
 
   factory Deadline.fromJson(Map<String, dynamic> j) => Deadline(
@@ -52,6 +56,7 @@ class Deadline {
     dueDate: j['due_date'] ?? '',
     dueTime: j['due_time'] ?? '',
     done: (j['done'] ?? 0) == 1 || j['done'] == true,
+    canSubmit: j['can_submit'] == true,
   );
 
   DateTime get due {
