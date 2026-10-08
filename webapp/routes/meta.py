@@ -32,10 +32,11 @@ def _min(platform: str) -> str:
 
 @router.get("/api/meta")
 async def api_meta():
+    import oauth
     return {
         "api": API_VERSION,
         "server": server_version(),
         "min_client": {p: _min(p) for p in ("web", "android", "ios")},
-        "login": ["telegram"],
+        "login": ["telegram", *oauth.available()],   # VK/Яндекс — когда есть ключи
         "features": {"groups": True, "sessions": True, "offline": True},
     }

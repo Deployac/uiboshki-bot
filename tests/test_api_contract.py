@@ -23,6 +23,7 @@ def test_v1_prefix_and_meta(db, monkeypatch):
     c = TestClient(server.app)
     meta = c.get("/api/v1/meta").json()
     assert meta["api"] == 1 and meta["server"].count(".") == 2 and set(meta["min_client"]) == {"web", "android", "ios"}
+    assert meta["login"][0] == "telegram"
     h = {"X-Telegram-Init-Data": _make_init_data()}
     assert c.get("/api/v1/me", headers=h).json()["id"] == c.get("/api/me", headers=h).json()["id"]
     assert c.get("/api/v1/me").status_code == 401                              # вход — как у /api

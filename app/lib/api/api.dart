@@ -105,6 +105,14 @@ class Api {
     offlineSince.value = null;
   }
 
+  Future<dynamic> put(String path, [Object? body]) async =>
+      _decode(await _client.put(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
+
+  Future<dynamic> patch(String path, [Object? body]) async =>
+      _decode(await _client.patch(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
+
+  Future<dynamic> delete(String path) async => _decode(await _client.delete(_uri(path), headers: _headers));
+
   Future<dynamic> post(String path, [Object? body]) async =>
       _decode(await _client.post(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
 
