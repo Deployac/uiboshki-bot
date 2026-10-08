@@ -395,6 +395,14 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
   «Тетрадь», цвета предметов, шрифты («Книжный»/«Строгий»), размеры,
   радиусы, отступы, движение, вибрация; `python tools/tokens.py` собирает
   `webapp/static/tokens.css` (тест следит) и Dart-константы для `app/`.
+- **Своё приложение (этап 3)** — `app/` (Flutter, Android и iPhone, не
+  обёртка): данные только через `/api/v1`, вход через бота (как PWA), токен —
+  shared_preferences. Тема по телефону, шрифт — настройка; `lib/theme/
+  tokens.dart` генерирует `tools/tokens.py`. Вкладки Сегодня · Неделя · Сдать
+  · Учёба · Ещё, меню-капсула (`widgets/capsule_tabbar.dart`), `?tab=` из
+  пуша. Тесты — `cd app && flutter test` (ответы из `site/demo.json`), в CI
+  отдельная задача; SDK в облаке — `/home/user/sdk/flutter`. Стенд — `flutter
+  build web --dart-define=API= --dart-define=NOW=…` + ответы demo.json.
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

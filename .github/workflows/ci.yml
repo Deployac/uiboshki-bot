@@ -33,3 +33,27 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -v
+
+  # Своё приложение (app/, Flutter, этап 3): анализатор и тесты виджетов.
+  app:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.6
+          channel: stable
+          cache: true
+
+      - name: Зависимости
+        run: flutter pub get
+
+      - name: Анализатор
+        run: flutter analyze
+
+      - name: Тесты
+        run: flutter test
