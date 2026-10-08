@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import 'lesson.dart';
+import 'search.dart';
 import 'today.dart' show LessonList;
 
 class WeekData {
@@ -60,6 +61,7 @@ class _WeekScreenState extends State<WeekScreen> {
     onUnauthorized: widget.onUnauthorized,
     builder: (context, d, _) => _WeekView(
       onLesson: (l) => openLesson(context, widget.api, l),
+      onSearch: () => openSearch(context, widget.api),
       data: d,
       onShift: (k) {
         tick();
@@ -73,7 +75,10 @@ class _WeekView extends StatefulWidget {
   final WeekData data;
   final ValueChanged<int> onShift;
   final ValueChanged<Lesson> onLesson;
-  const _WeekView({required this.data, required this.onShift, required this.onLesson});
+
+  /// Поиск расписания любой группы, преподавателя, аудитории.
+  final VoidCallback onSearch;
+  const _WeekView({required this.data, required this.onShift, required this.onLesson, required this.onSearch});
 
   @override
   State<_WeekView> createState() => _WeekViewState();
@@ -129,6 +134,14 @@ class _WeekViewState extends State<_WeekView> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              IconButton(
+                tooltip: 'Поиск расписания',
+                onPressed: () {
+                  tick();
+                  widget.onSearch();
+                },
+                icon: Icon(Icons.search_rounded, color: p.muted),
+              ),
               IconButton(
                 onPressed: () => widget.onShift(-1),
                 icon: Icon(Icons.chevron_left_rounded, color: p.muted),
