@@ -9,6 +9,7 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
+import '../widgets/goal_card.dart';
 import 'chat.dart';
 import 'files.dart';
 import 'submit.dart';
@@ -20,6 +21,7 @@ class Course {
   final int worksTotal, worksPassed;
   final List<Map<String, dynamic>> works, categories;
   final List<({num at, String label})> marks;
+  final Map<String, dynamic>? goal, attendance, history;
 
   Course.fromJson(Map<String, dynamic> j)
     : id = j['id'] as int,
@@ -33,7 +35,12 @@ class Course {
       worksPassed = j['works_passed'] ?? 0,
       works = [for (final w in (j['works'] as List? ?? [])) Map<String, dynamic>.from(w)],
       categories = [for (final c in (j['categories'] as List? ?? [])) Map<String, dynamic>.from(c)],
-      marks = [for (final m in (j['marks'] as List? ?? [])) (at: m['at'] as num, label: '${m['label']}')];
+      marks = [for (final m in (j['marks'] as List? ?? [])) (at: m['at'] as num, label: '${m['label']}')],
+      goal = _map(j['goal']),
+      attendance = _map(j['attendance']),
+      history = _map(j['history']);
+
+  static Map<String, dynamic>? _map(Object? v) => v is Map ? Map<String, dynamic>.from(v) : null;
 
   /// Порог высшей отметки — «полное» кольцо (у экзамена это 5 при 80).
   num get top => marks.isEmpty ? max : marks.last.at;
@@ -318,6 +325,22 @@ class CourseScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (c.goal != null) ...[
+                  const SizedBox(height: Space.m),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Space.l),
+                    child: GoalCard(api: api, courseId: c.id, goal: c.goal!, color: color),
+                  ),
+                ],
+                if (c.attendance != null && (c.attendance!['lectures'] as List? ?? []).isNotEmpty) ...[
+                  const Section('Посещения лекций'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Space.l),
+                    child: Tile(
+                      child: AttendanceStrip(att: c.attendance!, color: color),
+                    ),
+                  ),
+                ],
                 if (c.works.isNotEmpty) ...[
                   Section('Текущий контроль · ${c.worksPassed} из ${c.worksTotal} зачтено'),
                   Padding(
@@ -362,6 +385,15 @@ class CourseScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                ],
+                if (c.history != null) ...[
+                  const Section('Как растут баллы'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Space.l),
+                    child: Tile(
+                      child: HistoryChart(history: c.history!, color: color),
+                    ),
+                  ),
                 ],
               ],
             ),

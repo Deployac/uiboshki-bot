@@ -18,7 +18,8 @@ Api fakeApi({String? token = 'test-token', List<String>? requests, Map<String, O
   final client = MockClient((req) async {
     final path = req.url.path.replaceFirst('/api/v1/', '/api/');
     final q = req.url.query.isEmpty ? '' : '?${req.url.query}';
-    final key = '${req.method} $path$q';
+    var key = '${req.method} $path$q';
+    if (path.startsWith('/api/sdo/goal/')) key += '|${jsonDecode(req.body)['label']}'; // как demo.js на сайте
     requests?.add(key);
     if (req.method == 'POST' && req.body.isNotEmpty) bodies?[key] = jsonDecode(req.body);
     if (req.headers['Authorization'] == null && !path.startsWith('/api/auth/')) {
