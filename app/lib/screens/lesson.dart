@@ -9,8 +9,8 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import 'files.dart';
+import 'search.dart';
 import 'study.dart';
-import 'today.dart' show LessonList;
 
 void openLesson(BuildContext context, Api api, Lesson l) => Navigator.of(context).push(
   MaterialPageRoute(
@@ -292,10 +292,9 @@ class _CourseStrip extends StatelessWidget {
 }
 
 /// Расписание преподавателя или аудитории: найти в справочнике МИРЭА
-/// (тип 2 — преподаватель, 3 — аудитория) и открыть ближайшие две недели.
+/// (тип 2 — преподаватель, 3 — аудитория) и открыть (search.dart).
 Future<void> openTarget(BuildContext context, Api api, String query, int type) async {
   final s = AppStyle.of(context);
-  final nav = Navigator.of(context);
   final messenger = ScaffoldMessenger.of(context);
   List items;
   try {
@@ -332,60 +331,5 @@ Future<void> openTarget(BuildContext context, Api api, String query, int type) a
     if (chosen == null) return;
     pick = chosen;
   }
-  nav.push(
-    MaterialPageRoute(
-      builder: (_) => TargetScreen(api: api, type: type, id: pick['id'] as int),
-    ),
-  );
-}
-
-class TargetScreen extends StatelessWidget {
-  final Api api;
-  final int type, id;
-  const TargetScreen({super.key, required this.api, required this.type, required this.id});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Backdrop(
-        child: SafeArea(
-          child: Loader<Map<String, dynamic>>(
-            load: () async => Map<String, dynamic>.from(await api.get('/target/$type/$id')),
-            builder: (context, d, _) {
-              final t = now();
-              final days = <(DateTime, List<Lesson>)>[
-                for (final w in (d['weeks'] as List).take(2))
-                  for (final day in w['days'] as List)
-                    if ((day['lessons'] as List).isNotEmpty)
-                      (
-                        DateTime.parse('${day['date']}'),
-                        [for (final l in day['lessons'] as List) Lesson.fromJson(Map<String, dynamic>.from(l))],
-                      ),
-              ];
-              final today = DateTime(t.year, t.month, t.day);
-              return ListView(
-                padding: const EdgeInsets.only(bottom: Space.xxl),
-                children: [
-                  const BackRow(),
-                  ScreenTitle(
-                    eyebrow: type == 2 ? 'преподаватель · две недели' : 'аудитория · две недели',
-                    title: '${d['title']}',
-                  ),
-                  if (days.isEmpty) const Notice(title: 'Пар нет', text: 'На ближайшие две недели в расписании пусто.'),
-                  for (final (date, lessons) in days)
-                    if (!date.isBefore(today)) ...[
-                      Section(date == today ? '${dayTitle(date)} · сегодня' : dayTitle(date)),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Space.l),
-                        child: LessonList(lessons: lessons, at: t, showGroups: true),
-                      ),
-                    ],
-                ],
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
+  if (context.mounted) await openTargetScreen(context, api, Target.fromJson(pick));
 }

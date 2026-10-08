@@ -32,10 +32,20 @@ def _min(platform: str) -> str:
 
 @router.get("/api/meta")
 async def api_meta():
+    import oauth
     return {
         "api": API_VERSION,
         "server": server_version(),
         "min_client": {p: _min(p) for p in ("web", "android", "ios")},
-        "login": ["telegram"],
+        "login": ["telegram", *oauth.available()],   # VK/Яндекс — когда есть ключи
         "features": {"groups": True, "sessions": True, "offline": True},
+        # ссылки для меню «Ещё» и экрана «Вход в СДО» своего приложения (как APP_CONFIG у WebApp)
+        "links": await _links(),
     }
+
+
+async def _links() -> dict:
+    import config
+    from webapp.server import _guide_link
+    return {"bot": f"https://t.me/{config.BOT_USERNAME}", "channel": config.CHANNEL_URL or "",
+            "contact": config.CONTACT_URL or "", "sdo_guide": await _guide_link()}

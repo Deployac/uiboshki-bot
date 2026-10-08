@@ -1,5 +1,9 @@
 // Файлы курсов: предметы → файлы по типам (лекции, практики…). Нажал файл —
 // лист: конспект (общий на всех, ИИ зовётся один раз), скачать, прислать в Telegram.
+// Поиск сверху: файлы по названию и места в самих лекциях («где было про NPV?»
+// → «Лекция 5 · слайд 12» и отрывок) — нажал, открылась страница (showPageSheet).
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -7,6 +11,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy.dart';
 import '../widgets/common.dart';
 import '../widgets/tg_html.dart';
 
@@ -44,12 +49,136 @@ const _categoryIcons = {
   'other': Icons.insert_drive_file_outlined,
 };
 
-class FilesScreen extends StatelessWidget {
+class FilesScreen extends StatefulWidget {
   final Api api;
   const FilesScreen({super.key, required this.api});
 
   @override
+  State<FilesScreen> createState() => _FilesScreenState();
+}
+
+/// Место в тексте лекции из поиска (/api/lecture-search): лекция · слайд · отрывок.
+class LectureHit {
+  final int fileId, page;
+  final String title, subject, place, snippet;
+
+  LectureHit.fromJson(Map<String, dynamic> j)
+    : fileId = j['file_id'] as int,
+      page = (j['page'] as num?)?.toInt() ?? 1,
+      title = j['title'] ?? '',
+      subject = j['subject'] ?? '',
+      place = j['place'] ?? '',
+      snippet = j['snippet'] ?? '';
+}
+
+class _FilesScreenState extends State<FilesScreen> {
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String _query = '';
+  int _seq = 0; // ответ старого запроса не перетирает новый
+  List<FileItem>? _found; // по названию; null — ещё ищем
+  List<LectureHit>? _hits; // в тексте лекций; null — ещё ищем
+  bool _ready = true; // false — тексты лекций ещё индексируются
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _onQuery(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _run(v.trim()));
+  }
+
+  Future<void> _run(String q) async {
+    if (!mounted || q == _query) return;
+    final my = ++_seq;
+    setState(() {
+      _query = q;
+      _found = null;
+      _hits = null;
+      _ready = true;
+    });
+    if (q.isEmpty) return;
+    final enc = Uri.encodeQueryComponent(q);
+    final files = widget.api
+        .get('/files?q=$enc')
+        .then((j) => [for (final f in (j['items'] as List? ?? [])) FileItem.fromJson(Map<String, dynamic>.from(f))])
+        .catchError((_) => <FileItem>[]);
+    // короче трёх букв сервер в лекциях не ищет
+    final lectures = q.length < 3
+        ? Future.value((items: <LectureHit>[], ready: true))
+        : widget.api
+              .get('/lecture-search?q=$enc')
+              .then(
+                (j) => (
+                  items: [
+                    for (final h in (j['items'] as List? ?? [])) LectureHit.fromJson(Map<String, dynamic>.from(h)),
+                  ],
+                  ready: j['ready'] != false,
+                ),
+              )
+              .catchError((_) => (items: <LectureHit>[], ready: true));
+    final f = await files;
+    if (mounted && my == _seq) setState(() => _found = f);
+    final l = await lectures;
+    if (mounted && my == _seq) {
+      setState(() {
+        _hits = l.items;
+        _ready = l.ready;
+      });
+    }
+  }
+
+  /// Найденное: файлы по названию, ниже — места в самих лекциях.
+  List<Widget> _results(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    final found = _found, hits = _hits;
+    final spinner = Padding(
+      padding: const EdgeInsets.all(Space.xl),
+      child: Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5)),
+    );
+    if (found == null) return [spinner];
+    if (found.isEmpty && hits != null && hits.isEmpty) {
+      return [
+        Notice(
+          title: 'Ничего не нашлось',
+          text: _ready ? 'Ни в названиях, ни в тексте лекций.' : 'Тексты лекций ещё индексируются.',
+          pose: CapyPose.sad,
+        ),
+      ];
+    }
+    final stems = queryStems(_query);
+    return [
+      if (found.isNotEmpty) ...[
+        Section('Файлы · ${found.length}'),
+        _card(p, [for (final f in found) _FileRow(api: widget.api, f: f, withSubject: true)]),
+      ],
+      if (hits == null) spinner,
+      if (hits != null && hits.isNotEmpty) ...[
+        const Section('В тексте лекций'),
+        _card(p, [for (final h in hits) _HitRow(api: widget.api, h: h, stems: stems)]),
+      ],
+    ];
+  }
+
+  Widget _card(Palette p, List<Widget> rows) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: Space.l),
+    child: Tile(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[if (i > 0) Divider(height: 1, color: p.line), rows[i]],
+        ],
+      ),
+    ),
+  );
+
+  @override
   Widget build(BuildContext context) {
+    final api = widget.api;
     return Scaffold(
       body: Backdrop(
         child: SafeArea(
@@ -63,24 +192,30 @@ class FilesScreen extends StatelessWidget {
               final subjects = bySubject.keys.toList()..sort();
               return ListView(
                 padding: const EdgeInsets.only(bottom: Space.xxl),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
                   const BackRow(),
                   ScreenTitle(eyebrow: '${files.length} ${_files(files.length)} группы', title: 'Файлы'),
                   if (files.isEmpty)
-                    const Notice(title: 'Пока пусто', text: 'Файлы курсов появятся после выгрузки из СДО.'),
-                  for (final s in subjects)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-                      child: _SubjectRow(
-                        subject: s,
-                        count: bySubject[s]!.length,
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => SubjectFilesScreen(api: api, subject: s, files: bySubject[s]!),
+                    const Notice(title: 'Пока пусто', text: 'Файлы курсов появятся после выгрузки из СДО.')
+                  else
+                    _SearchField(key: const ValueKey('files-search'), controller: _search, onChanged: _onQuery),
+                  if (_query.isNotEmpty)
+                    ..._results(context)
+                  else
+                    for (final s in subjects)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+                        child: _SubjectRow(
+                          subject: s,
+                          count: bySubject[s]!.length,
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => SubjectFilesScreen(api: api, subject: s, files: bySubject[s]!),
+                            ),
                           ),
                         ),
                       ),
-                    ),
                 ],
               );
             },
@@ -92,6 +227,140 @@ class FilesScreen extends StatelessWidget {
 }
 
 String _files(int n) => plural(n, 'файл', 'файла', 'файлов');
+
+class _SearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  const _SearchField({super.key, required this.controller, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.m),
+      child: Container(
+        padding: const EdgeInsets.only(left: Space.l),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: BorderRadius.circular(Radii.pill),
+          border: Border.all(color: p.line),
+        ),
+        child: ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (context, v, _) => TextField(
+            controller: controller,
+            onChanged: onChanged,
+            textInputAction: TextInputAction.search,
+            style: s.body(15),
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              icon: Icon(Icons.search_rounded, color: p.muted),
+              hintText: 'Название или слово из лекции',
+              hintStyle: s.body(15, color: p.muted),
+              suffixIcon: v.text.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Очистить',
+                      icon: Icon(Icons.close_rounded, color: p.muted),
+                      onPressed: () {
+                        controller.clear();
+                        onChanged('');
+                      },
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Корни слов запроса — первые пять букв (без окончаний), как в WebApp.
+List<String> queryStems(String q) => [
+  for (final w in q.toLowerCase().split(RegExp(r'[^\p{L}\p{N}_]+', unicode: true)))
+    if (w.length >= 3) w.length > 5 ? w.substring(0, 5) : w,
+];
+
+/// Отрывок, где слова запроса выделены.
+TextSpan markStems(String text, List<String> stems, TextStyle base, TextStyle mark) {
+  if (stems.isEmpty) return TextSpan(text: text, style: base);
+  final re = RegExp('(${stems.map(RegExp.escape).join('|')})[\\p{L}\\p{N}_]*', caseSensitive: false, unicode: true);
+  final parts = <TextSpan>[];
+  var at = 0;
+  for (final m in re.allMatches(text)) {
+    if (m.start > at) parts.add(TextSpan(text: text.substring(at, m.start)));
+    parts.add(TextSpan(text: m.group(0), style: mark));
+    at = m.end;
+  }
+  if (at < text.length) parts.add(TextSpan(text: text.substring(at)));
+  return TextSpan(style: base, children: parts);
+}
+
+class _HitRow extends StatelessWidget {
+  final Api api;
+  final LectureHit h;
+  final List<String> stems;
+  const _HitRow({required this.api, required this.h, required this.stems});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return InkWell(
+      onTap: () {
+        tick();
+        showPageSheet(context, api, h.fileId, h.page, subject: h.subject);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Icon(Icons.auto_stories_outlined, color: p.muted, size: 20),
+            ),
+            const SizedBox(width: Space.m),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: h.title),
+                        if (h.place.isNotEmpty)
+                          TextSpan(
+                            text: ' · ${h.place}',
+                            style: TextStyle(color: p.accent),
+                          ),
+                      ],
+                    ),
+                    style: s.body(15, weight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 2),
+                  Text.rich(
+                    markStems(
+                      h.snippet,
+                      stems,
+                      s.body(13, color: p.muted),
+                      TextStyle(color: p.text, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  if (h.subject.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    Text(h.subject, style: s.body(12, color: p.muted)),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Кнопка «назад» вверху экранов, открытых поверх вкладок.
 class BackRow extends StatelessWidget {
@@ -193,7 +462,8 @@ class SubjectFilesScreen extends StatelessWidget {
 class _FileRow extends StatelessWidget {
   final Api api;
   final FileItem f;
-  const _FileRow({required this.api, required this.f});
+  final bool withSubject; // в результатах поиска — ещё и предмет
+  const _FileRow({required this.api, required this.f, this.withSubject = false});
 
   @override
   Widget build(BuildContext context) {
@@ -215,15 +485,185 @@ class _FileRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(f.title, style: s.body(15, weight: FontWeight.w600)),
-                  if (ext.isNotEmpty || f.hasSummary)
+                  if (ext.isNotEmpty || f.hasSummary || (withSubject && f.subject.isNotEmpty))
                     Text(
-                      [if (ext.isNotEmpty) ext, if (f.hasSummary) 'есть конспект'].join(' · '),
+                      [
+                        if (withSubject && f.subject.isNotEmpty) f.subject,
+                        if (ext.isNotEmpty) ext,
+                        if (f.hasSummary) 'есть конспект',
+                      ].join(' · '),
                       style: s.body(12, color: s.p.muted),
                     ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Адрес картинки страницы: сервер даёт полный (WEBAPP_URL), стенд — относительный.
+String pageImageUrl(String url) => url.startsWith('http') ? url : '${Api.base}/${url.replaceFirst(RegExp('^/'), '')}';
+
+/// Страница лекции по ссылке из ответа ИИ или из поиска («Лекция 5 · слайд 12»):
+/// у PDF — сама страница картинкой, ниже текст; листать соседние, «Весь файл» —
+/// обычный лист файла.
+Future<void> showPageSheet(BuildContext context, Api api, int fileId, int page, {String subject = ''}) {
+  final s = AppStyle.of(context);
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: s.p.cardSolid,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (ctx) => _PageSheet(api: api, host: context, fileId: fileId, page: page, subject: subject),
+  );
+}
+
+class _PageSheet extends StatefulWidget {
+  final Api api;
+  final BuildContext host; // экран под листом — с него откроется «Весь файл»
+  final int fileId, page;
+  final String subject;
+  const _PageSheet({
+    required this.api,
+    required this.host,
+    required this.fileId,
+    required this.page,
+    required this.subject,
+  });
+
+  @override
+  State<_PageSheet> createState() => _PageSheetState();
+}
+
+class _PageSheetState extends State<_PageSheet> {
+  Map<String, dynamic>? _p;
+  String? _error;
+  int _seq = 0, _page = 1;
+  String _title = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _open(widget.page);
+  }
+
+  Future<void> _open(int page) async {
+    final my = ++_seq;
+    setState(() {
+      _error = null;
+      _page = page;
+    });
+    try {
+      final r = Map<String, dynamic>.from(await widget.api.get('/files/${widget.fileId}/page/$page'));
+      if (!mounted || my != _seq) return;
+      setState(() {
+        _p = r;
+        _title = r['title'] ?? _title;
+      });
+    } on ApiError catch (e) {
+      if (mounted && my == _seq) setState(() => _error = e.message);
+    } catch (_) {
+      if (mounted && my == _seq) setState(() => _error = 'Нет связи с сервером.');
+    }
+  }
+
+  void _wholeFile() {
+    tick();
+    Navigator.pop(context);
+    if (!widget.host.mounted) return;
+    showFileSheet(
+      widget.host,
+      widget.api,
+      FileItem.fromJson({'id': widget.fileId, 'title': _title, 'subject': widget.subject, 'has_text': true}),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final d = _p;
+    final whole = FilledButton.icon(
+      style: FilledButton.styleFrom(
+        backgroundColor: p.accent,
+        foregroundColor: p.onAccent,
+        shape: const StadiumBorder(),
+      ),
+      onPressed: _wholeFile,
+      icon: const Icon(Icons.description_outlined, size: 18),
+      label: const Text('Весь файл'),
+    );
+    final List<Widget> children;
+    if (_error != null) {
+      children = [
+        Text('Не открылось', style: s.title(22)),
+        const SizedBox(height: Space.s),
+        Text(_error!, style: s.body(15, color: p.muted)),
+        const SizedBox(height: Space.l),
+        SizedBox(width: double.infinity, child: whole),
+      ];
+    } else if (d == null) {
+      children = [
+        Padding(
+          padding: const EdgeInsets.all(Space.xxl),
+          child: Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5)),
+        ),
+      ];
+    } else {
+      final page = (d['page'] as num?)?.toInt() ?? _page;
+      final pages = (d['pages'] as num?)?.toInt() ?? page;
+      final kind = d['kind'] == 'слайд' ? 'Слайд' : (d['kind'] == 'стр.' ? 'Страница' : 'Часть');
+      final image = d['image'] as String?;
+      final text = (d['text'] as String? ?? '').trim();
+      children = [
+        Text('$kind $page из $pages', style: s.eyebrow()),
+        const SizedBox(height: 4),
+        Text(_title, style: s.title(22)),
+        if (image != null && image.isNotEmpty) ...[
+          const SizedBox(height: Space.l),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(Radii.chip),
+            child: Image.network(
+              pageImageUrl(image),
+              key: ValueKey(image),
+              width: double.infinity,
+              fit: BoxFit.fitWidth,
+              semanticLabel: '$kind $page',
+              errorBuilder: (_, _, _) => const SizedBox.shrink(),
+            ),
+          ),
+        ],
+        if (text.isNotEmpty) ...[
+          const SizedBox(height: Space.l),
+          SelectableText(text, style: image != null ? s.body(13, color: p.muted) : s.body(15)),
+        ],
+        const SizedBox(height: Space.l),
+        Row(
+          children: [
+            IconButton(
+              tooltip: 'Предыдущая',
+              onPressed: page > 1 ? () => _open(page - 1) : null,
+              icon: Icon(Icons.chevron_left_rounded, color: page > 1 ? p.text : p.line),
+            ),
+            Expanded(child: whole),
+            IconButton(
+              tooltip: 'Следующая',
+              onPressed: page < pages ? () => _open(page + 1) : null,
+              icon: Icon(Icons.chevron_right_rounded, color: page < pages ? p.text : p.line),
+            ),
+          ],
+        ),
+      ];
+    }
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.88),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
         ),
       ),
     );
