@@ -120,6 +120,7 @@ class _TodayView extends StatelessWidget {
             text: d.tomorrowFirst == null
                 ? 'Завтра тоже свободно.'
                 : 'Завтра первая — ${d.tomorrowFirst!.start}, ${d.tomorrowFirst!.title}.',
+            pose: CapyPose.joy,
           ),
         if (lessons.isNotEmpty) ...[
           const Section('Весь день'),

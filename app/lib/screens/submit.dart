@@ -283,7 +283,7 @@ class _Done extends StatelessWidget {
             height: 112,
             child: Stack(
               children: [
-                ClipOval(child: CapyImage(size: 104)),
+                CapyImage(pose: CapyPose.joy, size: 104, color: p.ok),
                 Positioned(
                   right: 0,
                   bottom: 0,

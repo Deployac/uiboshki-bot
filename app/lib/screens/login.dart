@@ -87,11 +87,11 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Spacer(),
-                ClipOval(child: CapyImage(size: 96)),
+                CapyImage(pose: CapyPose.splash, size: 120, color: p.accent),
                 const SizedBox(height: Space.xl),
-                Text('расписание · сроки · баллы', style: s.eyebrow()),
+                Text('учёба МИРЭА · расписание · сроки · баллы', style: s.eyebrow()),
                 const SizedBox(height: 6),
-                Text('УИБО', style: s.title(54)),
+                Text('Капибара', style: s.title(54)),
                 const SizedBox(height: 10),
                 Container(
                   width: 34,

@@ -18,7 +18,7 @@ void main() {
     await t.pumpWidget(UiboApp(api: fakeApi(token: null)));
     await settle(t);
     expect(find.text('Войти через Telegram'), findsOneWidget);
-    expect(find.text('УИБО'), findsOneWidget);
+    expect(find.text('Капибара'), findsOneWidget);
   });
 
   testWidgets('с токеном — вкладки, капсула переключает экраны', (t) async {
@@ -69,10 +69,10 @@ void main() {
   });
 
   test('капибара по времени суток', () {
-    expect(moodAt(8), CapyMood.morning);
-    expect(moodAt(14), CapyMood.day);
-    expect(moodAt(20), CapyMood.evening);
-    expect(moodAt(2), CapyMood.night);
+    expect(poseAt(8), CapyPose.morning); // часы — как в WebApp
+    expect(poseAt(14), CapyPose.day);
+    expect(poseAt(20), CapyPose.evening);
+    expect(poseAt(2), CapyPose.night);
   });
 
   test('сроки и числа по-русски', () {

@@ -51,7 +51,7 @@ class _UiboAppState extends State<UiboApp> {
       p: p,
       font: _font,
       child: MaterialApp(
-        title: 'УИБО',
+        title: 'Капибара',
         debugShowCheckedModeBanner: false,
         theme: materialTheme(p),
         home: _loggedIn

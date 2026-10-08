@@ -6,6 +6,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy.dart';
 import '../widgets/common.dart';
 import 'submit.dart';
 
@@ -86,7 +87,8 @@ class _DeadlinesView extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
             child: _Hot(d: hot, at: t, onDone: () => onToggle(hot, true), onSubmit: () => onSubmit(hot)),
           ),
-        if (open.isEmpty) const Notice(title: 'Всё сдано', text: 'Новые задания из СДО появятся здесь сами.'),
+        if (open.isEmpty)
+          const Notice(title: 'Всё сдано', text: 'Новые задания из СДО появятся здесь сами.', pose: CapyPose.joy),
         if (soon.length > 1) ...[const Section('Сегодня и завтра'), for (final d in soon.skip(1)) row(d)],
         if (week.isNotEmpty) ...[const Section('На неделе'), for (final d in week) row(d)],
         if (later.isNotEmpty) ...[const Section('Позже'), for (final d in later) row(d)],

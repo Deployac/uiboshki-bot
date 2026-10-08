@@ -2,7 +2,7 @@
     <!-- API бота и вход через Telegram (в релизе без этого — нет сети) -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="УИБО"
+        android:label="Капибара"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

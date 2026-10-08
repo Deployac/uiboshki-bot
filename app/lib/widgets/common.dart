@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import '../api/api.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import 'capy.dart';
 
 /// «Сейчас». Для стенда и скриншотов время можно сдвинуть: --dart-define=NOW=2026-10-08T10:07:00+03:00
 DateTime now() {
@@ -169,7 +170,10 @@ class Section extends StatelessWidget {
 class Notice extends StatelessWidget {
   final String title, text;
   final VoidCallback? onRetry;
-  const Notice({super.key, required this.title, required this.text, this.onRetry});
+
+  /// Капибара слева: радостная — «всё хорошо, пусто», грустная — «не вышло».
+  final CapyPose? pose;
+  const Notice({super.key, required this.title, required this.text, this.onRetry, this.pose});
 
   @override
   Widget build(BuildContext context) {
@@ -177,19 +181,29 @@ class Notice extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Space.l),
       child: Tile(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Text(title, style: s.body(17, weight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text(text, style: s.body(14, color: s.p.muted)),
-            if (onRetry != null) ...[
-              const SizedBox(height: Space.m),
-              TextButton(
-                onPressed: onRetry,
-                child: Text('Ещё раз', style: s.body(15, color: s.p.accent)),
-              ),
+            if (pose != null) ...[
+              CapyImage(pose: pose!, size: 72, color: pose == CapyPose.sad ? s.p.muted : s.p.accent),
+              const SizedBox(width: Space.l),
             ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: s.body(17, weight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(text, style: s.body(14, color: s.p.muted)),
+                  if (onRetry != null) ...[
+                    const SizedBox(height: Space.m),
+                    TextButton(
+                      onPressed: onRetry,
+                      child: Text('Ещё раз', style: s.body(15, color: s.p.accent)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -246,7 +260,12 @@ class _LoaderState<T> extends State<Loader<T>> {
       return ListView(
         children: [
           const SizedBox(height: 120),
-          Notice(title: 'Не загрузилось', text: 'Нет связи с сервером — проверь интернет.', onRetry: _reload),
+          Notice(
+            title: 'Не загрузилось',
+            text: 'Нет связи с сервером — проверь интернет.',
+            onRetry: _reload,
+            pose: CapyPose.sad,
+          ),
         ],
       );
     }

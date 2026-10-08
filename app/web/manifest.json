@@ -1,6 +1,6 @@
 {
-    "name": "УИБО",
-    "short_name": "УИБО",
+    "name": "Капибара — учёба МИРЭА",
+    "short_name": "Капибара",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

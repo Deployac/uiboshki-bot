@@ -61,7 +61,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
-    - assets/capy.png
+    - assets/capy/
   fonts:
     - family: Onest
       fonts:
