@@ -90,7 +90,8 @@ function renderDeadline(item) {
   if (!item.done) actions.push('<button onclick="event.stopPropagation(); openRemind(' + item.id + ')">' + icon("bell") + ' Напомнить</button>');
   if (isLink) actions.push('<a href="#" onclick="event.stopPropagation(); openLink(' + escapeHtml(JSON.stringify(desc)) + '); return false;">' + icon("link") + ' Задание</a>');
   if (item.can_edit) actions.push('<button onclick="event.stopPropagation(); openAddSheet(' + item.id + ')">' + icon("edit") + ' Изменить</button>');
-  if (item.can_edit) actions.push('<button class="del" onclick="event.stopPropagation(); deleteDeadline(' + item.id + ')">' + icon("trash") + ' Удалить</button>');
+  if (item.can_edit) actions.push('<button class="del" onclick="event.stopPropagation(); deleteDeadline(' + item.id + ')">' + icon("trash") + (item.edit_scope === "me" ? ' Убрать у себя' : ' Удалить') + '</button>');
+  if (item.mine_changed) actions.push('<button onclick="event.stopPropagation(); resetMine(' + item.id + ')">' + icon("undo") + ' Как у всех</button>');
   return (
     '<div class="deadline-card ' + (item.done ? "done" : "") + '" onclick="toggleDeadline(' + item.id + ', ' + (!item.done) + ')">' +
       '<div class="checkbox ' + (item.done ? "checked" : "") + '">' + (item.done ? icon("check") : "") + '</div>' +
@@ -98,6 +99,7 @@ function renderDeadline(item) {
         '<p class="dl-title">' + escapeHtml(item.subject) + '</p>' +
         (desc && !isLink ? '<p class="dl-desc">' + escapeHtml(desc) + '</p>' : '') +
         '<div class="dl-meta">' + dueBadge(item) + (item.personal ? '<span class="chip">' + icon("user") + ' личный</span>' : '') +
+          (item.mine_changed ? '<span class="chip">' + icon("edit") + ' изменён у тебя</span>' : '') +
           (item.reminders || []).map(r => '<span class="chip remind">' + icon("bell") + ' ' + escapeHtml(r.label) + '</span>').join("") + '</div>' +
         (actions.length ? '<div class="dl-actions">' + actions.join("") + '</div>' : '') +
       '</div>' +
@@ -196,10 +198,23 @@ async function toggleDeadline(id, done) {
 }
 
 async function deleteDeadline(id) {
-  const ok = await confirmDialog("Удалить этот дедлайн?");
+  const item = deadlineIndex[id];
+  const ok = await confirmDialog(item && item.edit_scope === "me"
+    ? "Убрать у себя? У группы этот дедлайн останется." : "Удалить этот дедлайн?");
   if (!ok) return;
   try {
     await api("/api/deadlines/" + id, { method: "DELETE" });
+    haptic("success");
+    loadDeadlines(); loadToday();
+  } catch (e) {
+    alert("Не получилось: " + e.message);
+  }
+}
+
+// Снять свою правку общего дедлайна — снова как у всей группы.
+async function resetMine(id) {
+  try {
+    await api("/api/deadlines/" + id + "/mine", { method: "DELETE" });
     haptic("success");
     loadDeadlines(); loadToday();
   } catch (e) {
@@ -269,6 +284,7 @@ function openAddSheet(id) {
   document.getElementById("nd-hint").innerHTML = !item
     ? icon("user", "inl") + " Личный — видишь только ты. Общие дедлайны группы добавляет староста."
     : item.personal ? icon("user", "inl") + " Личный — видишь только ты."
+    : item.edit_scope === "me" ? icon("user", "inl") + " Изменится только у тебя — у группы останется как было."
     : icon("edit", "inl") + " Общий дедлайн — изменится у всей группы. Автосинк СДО его больше не перезапишет.";
   if (item) {
     document.getElementById("nd-subject").value = item.subject;

@@ -1,6 +1,7 @@
 [
  "DELETE /api/auth/sessions/{session_id}",
  "DELETE /api/deadlines/{deadline_id}",
+ "DELETE /api/deadlines/{deadline_id}/mine",
  "DELETE /api/deadlines/{deadline_id}/remind",
  "DELETE /api/pins/{target_type}/{target_id}",
  "GET /api/auth/sessions",

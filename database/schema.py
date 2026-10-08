@@ -334,6 +334,21 @@ async def init_db():
                 at          TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Своя правка общего дедлайна (владелец 08.10: «каждый может менять,
+        # но только у себя»): поля — что видит этот человек вместо общих
+        # (NULL — как у всех), hidden=1 — убрал у себя. Общий не меняется.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS deadline_mine (
+                user_id     INTEGER NOT NULL,
+                deadline_id INTEGER NOT NULL,
+                subject     TEXT,
+                description TEXT,
+                due_date    TEXT,
+                due_time    TEXT,
+                hidden      INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (user_id, deadline_id)
+            )
+        """)
         # Свои напоминания о дедлайне (deadline_reminders.py): кто, о каком, когда
         # (время МСК «ГГГГ-ММ-ДД ЧЧ:ММ»); sent — уже пришло.
         await db.execute("""
