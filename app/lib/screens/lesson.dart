@@ -1,0 +1,391 @@
+// «Пара» (концепт, экран 3): что за пара и сколько идёт, где (аудитория и
+// корпус), кто ведёт (все его пары), какой поток; по предмету — баллы и
+// посещения, лекции с конспектами. Открывается нажатием на пару где угодно.
+import 'package:flutter/material.dart';
+
+import '../api/api.dart';
+import '../api/models.dart';
+import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
+import '../widgets/common.dart';
+import 'files.dart';
+import 'study.dart';
+import 'today.dart' show LessonList;
+
+void openLesson(BuildContext context, Api api, Lesson l) => Navigator.of(context).push(
+  MaterialPageRoute(
+    builder: (_) => LessonScreen(api: api, lesson: l),
+  ),
+);
+
+/// Тот же предмет в журнале СДО и в файлах: без регистра и «ё».
+bool sameSubject(String a, String b) {
+  String n(String x) => x.toLowerCase().replaceAll('ё', 'е').trim();
+  return n(a) == n(b) || (n(a).length > 12 && n(b).startsWith(n(a))) || (n(b).length > 12 && n(a).startsWith(n(b)));
+}
+
+class LessonExtras {
+  final Course? course;
+  final List<FileItem> lectures;
+  LessonExtras(this.course, this.lectures);
+}
+
+class LessonScreen extends StatelessWidget {
+  final Api api;
+  final Lesson lesson;
+  const LessonScreen({super.key, required this.api, required this.lesson});
+
+  /// Баллы и лекции по предмету — что найдётся; нет СДО — просто без них.
+  Future<LessonExtras> _extras() async {
+    Course? course;
+    var lectures = <FileItem>[];
+    try {
+      final g = await api.get('/sdo/grades');
+      for (final c in g['courses'] as List) {
+        if (sameSubject('${c['title']}', lesson.title)) course = Course.fromJson(Map<String, dynamic>.from(c));
+      }
+    } catch (_) {}
+    try {
+      final f = await api.get('/files');
+      lectures = [
+        for (final x in f['items'] as List)
+          if (sameSubject('${x['subject']}', lesson.title) && x['category'] == 'lecture') FileItem.fromJson(x),
+      ];
+    } catch (_) {}
+    return LessonExtras(course, lectures);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final c = subjectColor(lesson.title);
+    final t = now();
+    final live =
+        lesson.startAt != null && lesson.endAt != null && !t.isBefore(lesson.startAt!) && t.isBefore(lesson.endAt!);
+    final campus = RegExp(r'\(([^)]+)\)').firstMatch(lesson.room)?.group(1) ?? '';
+    final room = lesson.room.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+    final groups = lesson.groups.split(RegExp(r',\s*')).where((g) => g.isNotEmpty).toList();
+    return Scaffold(
+      body: Backdrop(
+        tint: c,
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: Space.xxl),
+            children: [
+              const BackRow(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.l),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          [
+                            if (lesson.kind.isNotEmpty) lesson.kind[0].toUpperCase() + lesson.kind.substring(1),
+                            if (live) 'идёт',
+                          ].join(' · '),
+                          style: s.eyebrow(color: c),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: Space.s),
+                    Text(lesson.title, style: s.title(30)),
+                    const SizedBox(height: Space.l),
+                    Row(
+                      children: [
+                        Text(lesson.start, style: s.body(14, weight: FontWeight.w700)),
+                        const SizedBox(width: Space.m),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: LinearProgressIndicator(
+                              value: !live
+                                  ? (lesson.endAt != null && !t.isBefore(lesson.endAt!) ? 1 : 0)
+                                  : t.difference(lesson.startAt!).inSeconds /
+                                        lesson.endAt!.difference(lesson.startAt!).inSeconds,
+                              minHeight: 5,
+                              color: c,
+                              backgroundColor: p.line,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: Space.m),
+                        Text(lesson.end, style: s.body(14, weight: FontWeight.w700)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: Space.l),
+                child: Tile(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: [
+                      if (room.isNotEmpty)
+                        _InfoRow(
+                          icon: Icons.place_outlined,
+                          title: room,
+                          text: campus.isEmpty ? 'аудитория · её расписание' : 'корпус $campus · расписание аудитории',
+                          onTap: () => openTarget(context, api, room, 3),
+                        ),
+                      if (lesson.teacher.isNotEmpty) ...[
+                        Divider(height: 1, color: p.line),
+                        _InfoRow(
+                          icon: Icons.person_outline_rounded,
+                          title: lesson.teacher,
+                          text: 'все пары преподавателя',
+                          onTap: () => openTarget(context, api, lesson.teacher, 2),
+                        ),
+                      ],
+                      if (groups.length > 1) ...[
+                        Divider(height: 1, color: p.line),
+                        _InfoRow(
+                          icon: Icons.groups_outlined,
+                          title: 'Поток · ${groups.length} ${plural(groups.length, 'группа', 'группы', 'групп')}',
+                          text: groups.length > 3 ? '${groups.first} … ${groups.last}' : groups.join(', '),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              FutureBuilder<LessonExtras>(
+                future: _extras(),
+                builder: (context, snap) {
+                  final x = snap.data;
+                  if (x == null || (x.course == null && x.lectures.isEmpty)) return const SizedBox.shrink();
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Section('По предмету'),
+                      if (x.course != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: Space.l),
+                          child: _CourseStrip(api: api, course: x.course!, color: c),
+                        ),
+                      for (final f in x.lectures.reversed.take(3))
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.l, 0),
+                          child: Tile(
+                            onTap: () => showFileSheet(context, api, f),
+                            padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+                            child: Row(
+                              children: [
+                                Icon(Icons.menu_book_outlined, size: 20, color: p.muted),
+                                const SizedBox(width: Space.m),
+                                Expanded(
+                                  child: Text(f.title, style: s.body(15, weight: FontWeight.w600)),
+                                ),
+                                if (f.hasText)
+                                  Text(
+                                    f.hasSummary ? 'Конспект' : 'Открыть',
+                                    style: s.body(13, weight: FontWeight.w700, color: p.accent),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String title, text;
+  final VoidCallback? onTap;
+  const _InfoRow({required this.icon, required this.title, required this.text, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    return InkWell(
+      onTap: onTap == null
+          ? null
+          : () {
+              tick();
+              onTap!();
+            },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+        child: Row(
+          children: [
+            Icon(icon, color: s.p.accent, size: 20),
+            const SizedBox(width: Space.m),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: s.body(16, weight: FontWeight.w600)),
+                  Text(text, style: s.body(13, color: s.p.muted)),
+                ],
+              ),
+            ),
+            if (onTap != null) Icon(Icons.chevron_right_rounded, color: s.p.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Баллы и цель коротко; нажал — экран предмета.
+class _CourseStrip extends StatelessWidget {
+  final Api api;
+  final Course course;
+  final Color color;
+  const _CourseStrip({required this.api, required this.course, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final c = course;
+    return Tile(
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CourseScreen(api: api, course: c),
+        ),
+      ),
+      child: Row(
+        children: [
+          ScoreRing(
+            value: c.score / c.top,
+            color: color,
+            child: Text('${c.score}', style: s.number(18)),
+          ),
+          const SizedBox(width: Space.l),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Баллы БРС', style: s.body(13, color: s.p.muted)),
+                Text(
+                  c.need > 0 ? 'до «${c.needLabel}» ещё ${c.need}' : 'на «${c.needLabel}» хватает',
+                  style: s.body(16, weight: FontWeight.w700),
+                ),
+                if (c.worksTotal > 0)
+                  Text('работы: зачтено ${c.worksPassed} из ${c.worksTotal}', style: s.body(13, color: s.p.muted)),
+              ],
+            ),
+          ),
+          Icon(Icons.chevron_right_rounded, color: s.p.muted),
+        ],
+      ),
+    );
+  }
+}
+
+/// Расписание преподавателя или аудитории: найти в справочнике МИРЭА
+/// (тип 2 — преподаватель, 3 — аудитория) и открыть ближайшие две недели.
+Future<void> openTarget(BuildContext context, Api api, String query, int type) async {
+  final s = AppStyle.of(context);
+  final nav = Navigator.of(context);
+  final messenger = ScaffoldMessenger.of(context);
+  List items;
+  try {
+    items = (await api.get('/search?q=${Uri.encodeQueryComponent(query)}&type=$type'))['items'] as List;
+  } catch (_) {
+    messenger.showSnackBar(const SnackBar(content: Text('Расписание МИРЭА сейчас не отвечает')));
+    return;
+  }
+  if (items.isEmpty) {
+    messenger.showSnackBar(SnackBar(content: Text('«$query» в расписании МИРЭА не нашёл')));
+    return;
+  }
+  Map pick = items.first;
+  if (items.length > 1 && context.mounted) {
+    // однофамильцы: «Морозов В. А.» бывает трижды — подсказка у каждого
+    final chosen = await showModalBottomSheet<Map>(
+      context: context,
+      backgroundColor: s.p.cardSolid,
+      showDragHandle: true,
+      builder: (ctx) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            for (final it in items.take(8))
+              ListTile(
+                title: Text('${it['title']}', style: s.body(15, weight: FontWeight.w600)),
+                subtitle: it['hint'] == null ? null : Text('${it['hint']}', style: s.body(13, color: s.p.muted)),
+                onTap: () => Navigator.pop(ctx, it),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (chosen == null) return;
+    pick = chosen;
+  }
+  nav.push(
+    MaterialPageRoute(
+      builder: (_) => TargetScreen(api: api, type: type, id: pick['id'] as int),
+    ),
+  );
+}
+
+class TargetScreen extends StatelessWidget {
+  final Api api;
+  final int type, id;
+  const TargetScreen({super.key, required this.api, required this.type, required this.id});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Backdrop(
+        child: SafeArea(
+          child: Loader<Map<String, dynamic>>(
+            load: () async => Map<String, dynamic>.from(await api.get('/target/$type/$id')),
+            builder: (context, d, _) {
+              final t = now();
+              final days = <(DateTime, List<Lesson>)>[
+                for (final w in (d['weeks'] as List).take(2))
+                  for (final day in w['days'] as List)
+                    if ((day['lessons'] as List).isNotEmpty)
+                      (
+                        DateTime.parse('${day['date']}'),
+                        [for (final l in day['lessons'] as List) Lesson.fromJson(Map<String, dynamic>.from(l))],
+                      ),
+              ];
+              final today = DateTime(t.year, t.month, t.day);
+              return ListView(
+                padding: const EdgeInsets.only(bottom: Space.xxl),
+                children: [
+                  const BackRow(),
+                  ScreenTitle(
+                    eyebrow: type == 2 ? 'преподаватель · две недели' : 'аудитория · две недели',
+                    title: '${d['title']}',
+                  ),
+                  if (days.isEmpty) const Notice(title: 'Пар нет', text: 'На ближайшие две недели в расписании пусто.'),
+                  for (final (date, lessons) in days)
+                    if (!date.isBefore(today)) ...[
+                      Section(date == today ? '${dayTitle(date)} · сегодня' : dayTitle(date)),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: Space.l),
+                        child: LessonList(lessons: lessons, at: t, showGroups: true),
+                      ),
+                    ],
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}

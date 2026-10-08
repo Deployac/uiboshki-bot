@@ -90,6 +90,9 @@ class Tile extends StatelessWidget {
     final r = BorderRadius.circular(radius);
     return Material(
       color: Colors.transparent,
+      // подсветка нажатия у строк внутри карточки — по её скруглённым углам
+      shape: RoundedRectangleBorder(borderRadius: r),
+      clipBehavior: Clip.antiAlias,
       child: Ink(
         decoration: BoxDecoration(
           color: gradient == null ? (color ?? p.card) : null,

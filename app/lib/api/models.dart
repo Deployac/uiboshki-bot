@@ -2,6 +2,9 @@
 
 class Lesson {
   final String start, end, title, kind, room, teacher, status;
+
+  /// Чьи это пары: поток («УИБО-01-24, УИБО-02-24…»), у преподавателя — группы.
+  final String groups;
   final DateTime? startAt, endAt;
 
   const Lesson({
@@ -12,6 +15,7 @@ class Lesson {
     required this.room,
     required this.teacher,
     required this.status,
+    this.groups = '',
     this.startAt,
     this.endAt,
   });
@@ -24,6 +28,7 @@ class Lesson {
     room: j['room'] ?? '',
     teacher: j['teacher'] ?? '',
     status: j['status'] ?? '',
+    groups: j['groups'] ?? '',
     startAt: j['start_iso'] != null ? DateTime.tryParse(j['start_iso']) : null,
     endAt: j['end_iso'] != null ? DateTime.tryParse(j['end_iso']) : null,
   );

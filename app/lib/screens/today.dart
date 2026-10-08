@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
 import '../widgets/common.dart';
+import 'lesson.dart';
 
 class TodayData {
   final List<Lesson> lessons;
@@ -57,13 +58,17 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      Loader<TodayData>(load: _load, onUnauthorized: widget.onUnauthorized, builder: (context, d, _) => _TodayView(d));
+  Widget build(BuildContext context) => Loader<TodayData>(
+    load: _load,
+    onUnauthorized: widget.onUnauthorized,
+    builder: (context, d, _) => _TodayView(d, widget.api),
+  );
 }
 
 class _TodayView extends StatelessWidget {
   final TodayData d;
-  const _TodayView(this.d);
+  final Api api;
+  const _TodayView(this.d, this.api);
 
   @override
   Widget build(BuildContext context) {
@@ -100,13 +105,13 @@ class _TodayView extends StatelessWidget {
         if (hero != null)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: _Hero(lesson: hero, live: hero == current),
+            child: _Hero(lesson: hero, live: hero == current, onTap: () => openLesson(context, api, hero)),
           ),
         if (after != null) ...[
           const SizedBox(height: Space.m),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: _Next(lesson: after, prev: current),
+            child: _Next(lesson: after, prev: current, onTap: () => openLesson(context, api, after)),
           ),
         ],
         if (lessons.isEmpty)
@@ -120,7 +125,7 @@ class _TodayView extends StatelessWidget {
           const Section('Весь день'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: LessonList(lessons: lessons, at: t),
+            child: LessonList(lessons: lessons, at: t, onTap: (l) => openLesson(context, api, l)),
           ),
         ],
         if (d.soon.isNotEmpty) ...[
@@ -152,7 +157,8 @@ class _TodayView extends StatelessWidget {
 class _Hero extends StatelessWidget {
   final Lesson lesson;
   final bool live;
-  const _Hero({required this.lesson, required this.live});
+  final VoidCallback? onTap;
+  const _Hero({required this.lesson, required this.live, this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -164,6 +170,7 @@ class _Hero extends StatelessWidget {
     final passed = t.difference(lesson.startAt!).inSeconds.clamp(0, total);
     final minutes = live ? lesson.endAt!.difference(t).inMinutes + 1 : lesson.startAt!.difference(t).inMinutes + 1;
     return Tile(
+      onTap: onTap,
       radius: Radii.card,
       gradient: LinearGradient(
         begin: Alignment.topRight,
@@ -260,7 +267,8 @@ class _Meta extends StatelessWidget {
 class _Next extends StatelessWidget {
   final Lesson lesson;
   final Lesson? prev;
-  const _Next({required this.lesson, this.prev});
+  final VoidCallback? onTap;
+  const _Next({required this.lesson, this.prev, this.onTap});
 
   static String campus(String room) {
     final m = RegExp(r'\(([^)]+)\)').firstMatch(room);
@@ -276,6 +284,7 @@ class _Next extends StatelessWidget {
     final moving = from.isNotEmpty && to.isNotEmpty && from != to;
     final gap = prev?.endAt != null && lesson.startAt != null ? lesson.startAt!.difference(prev!.endAt!).inMinutes : 0;
     return Tile(
+      onTap: onTap,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -310,7 +319,13 @@ class _Next extends StatelessWidget {
 class LessonList extends StatelessWidget {
   final List<Lesson> lessons;
   final DateTime at;
-  const LessonList({super.key, required this.lessons, required this.at});
+
+  /// Нажал пару — её экран («Пара»); null — список только для чтения.
+  final ValueChanged<Lesson>? onTap;
+
+  /// Расписание преподавателя или аудитории: под парой — чьи это пары.
+  final bool showGroups;
+  const LessonList({super.key, required this.lessons, required this.at, this.onTap, this.showGroups = false});
 
   @override
   Widget build(BuildContext context) {
@@ -327,7 +342,7 @@ class LessonList extends StatelessWidget {
                 final l = lessons[i];
                 final past = l.endAt != null && !at.isBefore(l.endAt!);
                 final live = l.startAt != null && !past && !at.isBefore(l.startAt!);
-                return Opacity(
+                final row = Opacity(
                   opacity: past ? 0.45 : 1,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
@@ -360,7 +375,11 @@ class LessonList extends StatelessWidget {
                                 Text(l.title, style: s.body(15, weight: FontWeight.w600)),
                                 const SizedBox(height: 2),
                                 Text(
-                                  live ? '${l.place} · идёт' : l.place,
+                                  [
+                                    l.place,
+                                    if (showGroups && l.groups.isNotEmpty) l.groups,
+                                    if (live) 'идёт',
+                                  ].join(' · '),
                                   style: s.body(13, color: live ? subjectColor(l.title) : p.muted),
                                 ),
                               ],
@@ -370,6 +389,14 @@ class LessonList extends StatelessWidget {
                       ),
                     ),
                   ),
+                );
+                if (onTap == null) return row;
+                return InkWell(
+                  onTap: () {
+                    tick();
+                    onTap!(l);
+                  },
+                  child: row,
                 );
               },
             ),

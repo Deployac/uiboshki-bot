@@ -8,6 +8,7 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
+import 'lesson.dart';
 import 'today.dart' show LessonList;
 
 class WeekData {
@@ -58,6 +59,7 @@ class _WeekScreenState extends State<WeekScreen> {
     load: _load,
     onUnauthorized: widget.onUnauthorized,
     builder: (context, d, _) => _WeekView(
+      onLesson: (l) => openLesson(context, widget.api, l),
       data: d,
       onShift: (k) {
         tick();
@@ -70,7 +72,8 @@ class _WeekScreenState extends State<WeekScreen> {
 class _WeekView extends StatefulWidget {
   final WeekData data;
   final ValueChanged<int> onShift;
-  const _WeekView({required this.data, required this.onShift});
+  final ValueChanged<Lesson> onLesson;
+  const _WeekView({required this.data, required this.onShift, required this.onLesson});
 
   @override
   State<_WeekView> createState() => _WeekViewState();
@@ -176,6 +179,7 @@ class _WeekViewState extends State<_WeekView> {
                     due: d.due[iso(d.monday.add(Duration(days: i)))] ?? const [],
                     today: iso(d.monday.add(Duration(days: i))) == todayIso,
                     at: t,
+                    onLesson: widget.onLesson,
                   ),
               ],
             ),
@@ -258,6 +262,7 @@ class _DayBlock extends StatelessWidget {
   final List<Deadline> due;
   final bool today;
   final DateTime at;
+  final ValueChanged<Lesson>? onLesson;
   const _DayBlock({
     super.key,
     required this.date,
@@ -265,6 +270,7 @@ class _DayBlock extends StatelessWidget {
     required this.due,
     required this.today,
     required this.at,
+    this.onLesson,
   });
 
   @override
@@ -295,7 +301,7 @@ class _DayBlock extends StatelessWidget {
               ),
             )
           else
-            LessonList(lessons: lessons, at: at),
+            LessonList(lessons: lessons, at: at, onTap: onLesson),
           for (final x in due)
             Container(
               margin: const EdgeInsets.only(top: Space.s),
