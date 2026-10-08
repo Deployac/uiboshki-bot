@@ -174,7 +174,8 @@ async def check_schedule_changes(bot):
             if not text:
                 continue
             try:
-                await bot.send_message(uid, text, parse_mode="HTML")
+                from delivery import deliver
+                await deliver(bot, uid, text, kind="lessons", tab="today")
             except Exception as e:
                 logger.warning(f"Не смог отправить diff расписания {uid}: {e}")
 

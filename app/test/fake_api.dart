@@ -38,6 +38,13 @@ Api fakeApi({
       '/api/week' => {'week': null, 'days': []},
       '/api/auth/start' => {'code': 'abc', 'link': 'https://t.me/UiboshkiBot?start=login_abc'},
       '/api/auth/poll' => {'status': 'wait'},
+      '/api/auth/providers' => {
+        'items': [
+          {'id': 'vk', 'name': 'VK ID'},
+          {'id': 'yandex', 'name': 'Яндекс ID'},
+        ],
+      },
+      '/api/auth/vk/start' => {'url': 'https://id.vk.com/authorize?state=s1'},
       '/api/sdo/submit-rules' => {
         'accepted': ['.zip'],
         'labels': ['Архив ZIP'],

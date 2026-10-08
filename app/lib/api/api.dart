@@ -122,6 +122,26 @@ class Api {
     return status == 'wait' ? null : status;
   }
 
+  // ── вход через VK ID / Яндекс ID (webapp/routes/auth.py) ──
+  /// Какие входы кроме Telegram есть на сервере: [(id, название)].
+  Future<List<({String id, String name})>> providers() async {
+    final r = await get('/auth/providers');
+    return [for (final p in r['items'] as List) (id: p['id'] as String, name: p['name'] as String)];
+  }
+
+  /// Ссылка на вход у провайдера; вернётся он на ru.uiboshki.app://auth#token=…
+  Future<String> startOAuth(String provider) async =>
+      (await post('/auth/$provider/start', {'client': 'app'}))['url'] as String;
+
+  /// Адрес возврата → токен (сохраняется); null — токена нет.
+  Future<String?> finishOAuth(String callbackUrl) async {
+    final frag = Uri.parse(callbackUrl).fragment;
+    if (!frag.startsWith('token=')) return null;
+    final token = Uri.decodeComponent(frag.substring(6));
+    await saveToken(token);
+    return token;
+  }
+
   Future<void> logout() async {
     try {
       await post('/auth/logout');

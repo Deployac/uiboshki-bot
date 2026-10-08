@@ -193,6 +193,9 @@ def _person(p: dict) -> str:
     from utils import esc
     name = esc(p["name"] or (f"@{p['username']}" if p["username"] else f"id {p['id']}"))
     nick = f" @{esc(p['username'])}" if p["username"] and p["name"] else ""
+    from database.identities import is_local
+    if is_local(p["id"]):             # вошёл через VK/Яндекс — профиля в Telegram нет
+        return ("🆕 " if p.get("new") else "") + f"{name} (без Telegram)"
     return ("🆕 " if p.get("new") else "") + f'<a href="tg://user?id={p["id"]}">{name}</a>{nick}'
 
 

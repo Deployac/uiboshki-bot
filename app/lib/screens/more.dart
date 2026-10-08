@@ -34,7 +34,7 @@ class MoreScreen extends StatelessWidget {
         padding: const EdgeInsets.only(bottom: 120),
         children: [
           ScreenTitle(eyebrow: 'профиль и настройки', title: me['first_name'] ?? 'Ещё'),
-          const Section('Группа'),
+          const Section('Моя группа'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
             child: Tile(

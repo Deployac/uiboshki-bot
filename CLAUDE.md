@@ -376,7 +376,19 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
   продлением). Запросы — `Authorization: Bearer` (`webapp/deps.
   _session_user`), фронт хранит токен в localStorage (`core.js`: `APP_TOKEN`,
   экран «Войти» — `showLogin`). Устройства и «выйти везде» — в листе
-  «Безопасность». Корень `/` вне Telegram без токена — по-прежнему сайт.
+  «Безопасность».
+  **Вход через VK ID и Яндекс ID** (владелец 08.10, `oauth.py`,
+  `database/identities.py`): `/api/auth/<vk|yandex>/start` → провайдер →
+  `/callback` → токен **только** тому, кто вошёл: PWA — `/app#token=…`,
+  приложение — `ru.uiboshki.app://auth#token=…` (опрос по коду, как у бота,
+  тут нельзя — чужую ссылку можно подсунуть). Привязка к аккаунту — `/link`
+  + страница «Да, привязать» с именем аккаунта. Нет привязки — новый
+  аккаунт **без Telegram**: номер ≤ `LOCAL_BASE` (`is_local`), рассылки —
+  только пушем (`delivery.deliver`), «В Telegram» недоступно. Ключи —
+  `VK_CLIENT_ID` (+`VK_CLIENT_SECRET`), `YANDEX_CLIENT_ID` +
+  `YANDEX_CLIENT_SECRET`; нет ключей — кнопок нет. Адреса возврата у
+  провайдеров: `https://www.uiboshki.ru/api/auth/<vk|yandex>/callback`.
+  SMS-код — «нет пока» (платно, накрутка SMS). Корень `/` вне Telegram без токена — по-прежнему сайт.
   **PWA (2 (б))**: `manifest.webmanifest` (start_url `/app`, иконки
   `static/pwa/` — капибара с сайта), `sw.js` (регистрируется только вне
   Telegram: оболочка из кэша, GET `/api/…` — сеть до 5 с, иначе последний

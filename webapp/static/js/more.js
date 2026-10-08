@@ -390,9 +390,40 @@ async function openSecurity() {
       " сдач за " + ((lim.submit || {}).minutes || 10) + " минут с одного человека — чтобы никто не сжёг общий лимит и не долбил СДО.") +
     secItem("gear", "Ключи и пароли — только на сервере",
       "Токен бота, ключи ИИ и шифрования — в закрытых настройках сервера, в коде и базе их нет. Копия базы каждую ночь уходит только старосте.") +
-    '<div id="devices"></div>' +
+    '<div id="logins"></div><div id="devices"></div>' +
     '<button class="ghost" onclick="closeSheet(\'security-sheet\')">Понятно</button>';
   loadDevices();
+  loadLogins();
+}
+
+// Чем ещё можно входить: VK ID и Яндекс ID (webapp/routes/auth.py). Привязка — в
+// браузере: там вход у провайдера и кнопка «Да, привязать» с именем аккаунта.
+async function loadLogins() {
+  let res;
+  try { res = await api("/api/auth/identities"); } catch (e) { return; }
+  const box = document.getElementById("logins");
+  if (!box || !res.available.length) return;
+  const have = new Set(res.items.map(i => i.provider));
+  box.innerHTML = '<h3 style="margin-top:16px">Вход без Telegram</h3>' +
+    '<p class="hint">Привяжи VK или Яндекс — сможешь войти, даже если Telegram не откроется.</p>' +
+    res.available.map(p => have.has(p.id)
+      ? '<div class="dev-row"><div><b>' + escapeHtml(p.name) + '</b><span>привязан</span></div>' +
+        '<button class="ghost danger" onclick="unlinkLogin(\'' + p.id + '\')">Отвязать</button></div>'
+      : '<button class="ghost" onclick="linkLogin(\'' + p.id + '\')">Привязать ' + escapeHtml(p.name) + '</button>').join("");
+}
+
+async function linkLogin(provider) {
+  haptic();
+  try {
+    const res = await api("/api/auth/" + provider + "/link", { method: "POST", body: JSON.stringify({ client: "web" }) });
+    if (IN_TG) openLink(res.url); else location.href = res.url;
+  } catch (e) { showToast(e.message); }
+}
+
+async function unlinkLogin(provider) {
+  haptic();
+  try { await api("/api/auth/identities/" + provider, { method: "DELETE" }); } catch (e) { showToast(e.message); return; }
+  loadLogins();
 }
 
 // Устройства, где вошли в приложение без Telegram (этап 2): выйти на одном или везде
@@ -742,7 +773,7 @@ function openGroup(force) {
   if (!force) haptic();
   document.getElementById("group-sheet").classList.add("open");
   document.getElementById("group-body").innerHTML =
-    '<h3>' + icon("users", "inl acc") + (myGroup ? " Твоя группа" : " Из какой ты группы?") + '</h3>' +
+    '<h3>' + icon("users", "inl acc") + (myGroup ? " Моя группа" : " Из какой ты группы?") + '</h3>' +
     (myGroup ? '<p class="hint">Сейчас: <b>' + escapeHtml(myGroup.name) + '</b>. Сменить — найди другую.' +
                (myGroup.own ? '' : ' <a href="#" onclick="requestGroupAdmin(); return false">Я староста этой группы</a>') + '</p>'
              : '<p class="hint">Найди свою — покажу её расписание, дедлайны и файлы.</p>') +

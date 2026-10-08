@@ -60,6 +60,9 @@ async def api_send_file(file_id: int, user: dict = CurrentUser):
     диплинк t.me/<бот>?start=file_<id>, и в чате копились «/start file_…»."""
     from handlers.start import send_file_to
     import ratelimit
+    from database.identities import is_local
+    if is_local(user["id"]):
+        raise HTTPException(400, "Telegram не подключён — скачай файл кнопкой «Скачать»")
     if not ratelimit.allow("send", user["id"]):
         raise HTTPException(429, "Много файлов подряд — подожди минутку")
     if not await send_file_to(deps.tg_bot(), user["id"], file_id):

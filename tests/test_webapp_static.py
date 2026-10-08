@@ -502,7 +502,7 @@ def test_more_menu_tiles_with_actions():
     menu = _more_menu()
     labels = re.findall(r'<span class="lbl">([^<]+)</span>', menu)
     assert labels == ["Файлы", "Дедлайны", "ДЗ", "Календарь", "Уведомления", "Безопасность",
-                      "Ярлык", "Что нового", "Канал бота", "Написать нам", "Группа", "Позвать"]
+                      "Ярлык", "Что нового", "Канал бота", "Написать нам", "Моя группа", "Позвать"]
     for call in ("openHomework()", "showWhatsNew()", "openConfigLink(CHANNEL_URL)", "openConfigLink(CONTACT_URL)",
                  "shareBot()", "openGroup()"):
         assert f'toggleMore(false); {call}"' in menu, call

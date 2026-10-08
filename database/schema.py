@@ -114,6 +114,29 @@ async def init_db():
                 expires_at TEXT NOT NULL
             )
         """)
+        # Вход через VK ID / Яндекс ID (oauth.py): кто есть кто у провайдера;
+        # oauth_states — начатые входы (state → код входа, PKCE, «привязать к»).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS identities (
+                provider   TEXT NOT NULL,
+                subject    TEXT NOT NULL,
+                user_id    INTEGER NOT NULL,
+                name       TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (provider, subject)
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS oauth_states (
+                state      TEXT PRIMARY KEY,
+                provider   TEXT NOT NULL,
+                verifier   TEXT NOT NULL,
+                code       TEXT NOT NULL,
+                client     TEXT NOT NULL DEFAULT 'web',
+                link_user  INTEGER,
+                expires_at TEXT NOT NULL
+            )
+        """)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS sessions (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,

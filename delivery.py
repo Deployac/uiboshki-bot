@@ -56,4 +56,7 @@ async def deliver(bot, user_id: int, html: str, *, kind: str, tab: str | None = 
         await push(user_id, kind, html, tab)
     except Exception as e:
         logger.info(f"доставка {user_id}: пуш не ушёл: {e}")
+    from database.identities import is_local
+    if is_local(user_id):
+        return None               # вошёл через VK/Яндекс, Telegram нет — только пуш
     return await bot.send_message(user_id, html, parse_mode=parse_mode, reply_markup=reply_markup)

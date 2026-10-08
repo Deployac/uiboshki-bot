@@ -43,8 +43,18 @@ async def send_announce(message: Message, state: FSMContext, bot: Bot):
     failed = 0
     wait = await message.answer(f"⏳ Рассылаю {len(users)} пользователям...")
 
+    from database.identities import is_local
     for uid in users:
         if uid == message.from_user.id:
+            continue
+        if is_local(uid):                 # без Telegram — текст пушем, вложения не дойдут
+            if message.text:
+                from delivery import push
+                try:
+                    await push(uid, "announce", f"📢 {message.html_text}", None)
+                    sent += 1
+                except Exception:
+                    failed += 1
             continue
         try:
             if message.photo:

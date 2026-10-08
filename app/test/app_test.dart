@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uiboshki/api/models.dart';
 import 'package:uiboshki/main.dart';
+import 'package:uiboshki/screens/login.dart';
 import 'package:uiboshki/screens/shell.dart';
 import 'package:uiboshki/screens/week.dart';
 import 'package:uiboshki/theme/app_theme.dart';
@@ -13,6 +14,32 @@ import 'util.dart';
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({'uib_toured': true}));
+
+  testWidgets('вход через VK: окно провайдера → токен из адреса возврата', (t) async {
+    phone(t);
+    final api = fakeApi(token: null);
+    String? opened;
+    Future<String> webAuth(String url) async {
+      opened = url;
+      return 'ru.uiboshki.app://auth#token=tok-123';
+    }
+
+    await t.pumpWidget(
+      AppStyle(
+        p: Palette.depth,
+        font: FontChoice.book,
+        child: MaterialApp(
+          home: LoginScreen(api: api, onDone: () {}, webAuth: webAuth),
+        ),
+      ),
+    );
+    await settle(t);
+    expect(find.text('Войти через Яндекс ID'), findsOneWidget);
+    await t.tap(find.text('Войти через VK ID'));
+    await settle(t);
+    expect(opened, startsWith('https://id.vk.com/authorize'));
+    expect(api.token, 'tok-123');
+  });
 
   testWidgets('без токена — экран входа через бота', (t) async {
     await t.pumpWidget(UiboApp(api: fakeApi(token: null)));

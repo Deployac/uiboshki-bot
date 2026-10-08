@@ -211,11 +211,12 @@ async def _check_one(row: dict, bot=None, now: datetime | None = None):
         await set_sdo_next_check(uid, _utc(now + timedelta(minutes=next_interval(left))), max(0, left - 1))
     elif bot:
         try:
+            from delivery import deliver
             from keyboards import app_button
-            await bot.send_message(uid,
-                "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
-                "Подключи заново: приложение → СДО → Вход.",
-                reply_markup=app_button("🎓 Подключить СДО", "sdo"))
+            await deliver(bot, uid,
+                          "🎓 Вход в СДО устарел — баллы и сдача работ в приложении пока не работают.\n"
+                          "Подключи заново: приложение → СДО → Вход.",
+                          kind="sdo", tab="sdo", reply_markup=app_button("🎓 Подключить СДО", "sdo"))
         except Exception as e:
             logger.info(f"СДО: не смог сказать {uid}, что вход устарел: {e!r}")
 

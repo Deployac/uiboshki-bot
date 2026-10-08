@@ -7,6 +7,12 @@ const tg = window.Telegram ? window.Telegram.WebApp : null;
 const IN_TG = !!(tg && tg.initData);
 function readToken() { try { return localStorage.getItem("uib_token") || ""; } catch (e) { return ""; } }
 function saveToken(t) { try { if (t) localStorage.setItem("uib_token", t); else localStorage.removeItem("uib_token"); } catch (e) {} }
+// Вход через VK/Яндекс: сервер вернул сюда с токеном во фрагменте (/app#token=…,
+// webapp/routes/auth.py) — сохранить и убрать из адреса, чтобы не остался в истории.
+if (!IN_TG && location.hash.startsWith("#token=")) {
+  saveToken(decodeURIComponent(location.hash.slice(7)));
+  history.replaceState(null, "", location.pathname + location.search);
+}
 const APP_TOKEN = IN_TG ? "" : readToken();
 // Корень открыли в обычном браузере без входа — это гость по ссылке
 // www.uiboshki.ru: ему нужен сайт-презентация, а не приложение без входа.
@@ -329,7 +335,29 @@ function showLogin() {
   box.innerHTML = '<div class="login-card"><svg class="login-capy" aria-hidden="true"><use href="#i-capy"/></svg>' +
     '<h2>УИБО-бот</h2><p>Расписание, дедлайны, баллы СДО и лекции твоей группы.</p>' +
     '<button class="primary" id="login-btn" onclick="startLogin()">Войти через Telegram</button>' +
-    '<p class="hint" id="login-hint">Бот спросит «Это ты?» — нажми «Да». Один раз на этом устройстве.</p></div>';
+    '<p class="hint" id="login-hint">Бот спросит «Это ты?» — нажми «Да». Один раз на этом устройстве.</p>' +
+    '<div id="login-more"></div></div>';
+  // VK ID и Яндекс ID — если на сервере есть их ключи (/api/auth/providers)
+  fetch("/api/auth/providers").then(r => r.json()).then(res => {
+    const box = document.getElementById("login-more");
+    if (!box || !res.items || !res.items.length) return;
+    box.innerHTML = '<p class="hint">или</p>' + res.items.map(p =>
+      '<button class="ghost" onclick="startOAuth(\'' + p.id + '\')">Войти через ' + escapeHtml(p.name) + '</button>').join("") +
+      '<p class="hint">Уже пользуешься через Telegram? Войди им, а VK или Яндекс привяжи в «Ещё → Безопасность» — ' +
+      'иначе получится второй, пустой аккаунт.</p>';
+  }).catch(() => {});
+}
+
+// VK/Яндекс: уходим к провайдеру в этом же окне, назад — /app#token=…
+async function startOAuth(provider) {
+  try {
+    const res = await fetch("/api/auth/" + provider + "/start", { method: "POST", headers: { "Content-Type": "application/json" },
+                                                                   body: JSON.stringify({ client: "web" }) });
+    if (!res.ok) throw new Error();
+    location.href = (await res.json()).url;
+  } catch (e) {
+    document.getElementById("login-hint").textContent = "Не получилось начать вход — попробуй через минуту.";
+  }
 }
 
 async function startLogin() {
