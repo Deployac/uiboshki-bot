@@ -2,11 +2,13 @@
 // выбору, календарь в телефоне, шрифт, тема, выход.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/api.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
+import '../api/links.dart';
 import 'notify.dart';
 import 'security.dart';
 
@@ -144,6 +146,7 @@ class MoreScreen extends StatelessWidget {
                     sub: 'ссылка на бота — для одногруппников',
                     onTap: () => _invite(context),
                   ),
+                  _LinkRows(api: api),
                 ],
               ),
             ),
@@ -464,4 +467,43 @@ class _AdminRequestState extends State<_AdminRequest> {
       ),
     );
   }
+}
+
+/// «Канал бота» и «Написать нам» — если сервер их знает (/api/meta → links).
+class _LinkRows extends StatelessWidget {
+  final Api api;
+  const _LinkRows({required this.api});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    return FutureBuilder<Map<String, String>>(
+      future: appLinks(api),
+      builder: (context, snap) {
+        final l = snap.data ?? const {};
+        final rows = [
+          if ((l['channel'] ?? '').isNotEmpty)
+            (Icons.campaign_outlined, 'Канал бота', 'новости и как всё устроено', _url(l['channel']!)),
+          if ((l['contact'] ?? '').isNotEmpty)
+            (Icons.chat_bubble_outline_rounded, 'Написать нам', 'идея, ошибка, вопрос', _url(l['contact']!)),
+        ];
+        return Column(
+          children: [
+            for (final (icon, title, sub, url) in rows) ...[
+              Divider(height: 1, color: p.line),
+              _MenuRow(
+                icon: icon,
+                title: title,
+                sub: sub,
+                onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  /// «@имя» → https://t.me/имя
+  static String _url(String v) => v.startsWith('@') ? 'https://t.me/${v.substring(1)}' : v;
 }

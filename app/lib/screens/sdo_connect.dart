@@ -3,12 +3,14 @@
 // делиться заданиями с группой, отключить.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/api.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import 'files.dart';
+import '../api/links.dart';
 
 /// Что даёт свой вход — без него экран объясняет, зачем подключаться.
 const sdoPerks = [
@@ -264,6 +266,7 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
         ],
         const Section('Как подключить'),
         Padding(padding: pad, child: const _Steps()),
+        _GuideLink(api: widget.api, pad: pad),
         Padding(
           padding: const EdgeInsets.fromLTRB(Space.l, Space.l, Space.l, 0),
           child: TextField(
@@ -442,6 +445,36 @@ class _Steps extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// «Гайд со скринами — в канале», если пост-гайд уже выпущен (/api/meta).
+class _GuideLink extends StatelessWidget {
+  final Api api;
+  final EdgeInsets pad;
+  const _GuideLink({required this.api, required this.pad});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    return FutureBuilder<Map<String, String>>(
+      future: appLinks(api),
+      builder: (context, snap) {
+        final url = snap.data?['sdo_guide'] ?? '';
+        if (url.isEmpty) return const SizedBox.shrink();
+        return Padding(
+          padding: pad,
+          child: TextButton.icon(
+            onPressed: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+            icon: Icon(Icons.photo_library_outlined, color: s.p.accent),
+            label: Text(
+              'Гайд со скринами — в канале',
+              style: s.body(15, weight: FontWeight.w600, color: s.p.accent),
+            ),
+          ),
+        );
+      },
     );
   }
 }
