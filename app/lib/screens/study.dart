@@ -9,6 +9,8 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
+import 'chat.dart';
+import 'files.dart';
 
 class Course {
   final int id;
@@ -58,6 +60,30 @@ class StudyScreen extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 120),
       children: [
         ScreenTitle(eyebrow: 'баллы БРС · текущий семестр', title: 'Учёба'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.l),
+          child: Row(
+            children: [
+              Expanded(
+                child: _Door(
+                  icon: Icons.auto_awesome_outlined,
+                  title: 'Помощник',
+                  text: 'ИИ по лекциям',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChatScreen(api: api))),
+                ),
+              ),
+              const SizedBox(width: Space.s),
+              Expanded(
+                child: _Door(
+                  icon: Icons.folder_outlined,
+                  title: 'Файлы',
+                  text: 'лекции, практики',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => FilesScreen(api: api))),
+                ),
+              ),
+            ],
+          ),
+        ),
         if (d.problem != null)
           Notice(title: 'Баллы не видны', text: d.problem!)
         else if (d.courses.isEmpty)
@@ -77,6 +103,32 @@ class StudyScreen extends StatelessWidget {
       ],
     ),
   );
+}
+
+/// Вход в «Помощника» и «Файлы» — две плитки над баллами.
+class _Door extends StatelessWidget {
+  final IconData icon;
+  final String title, text;
+  final VoidCallback onTap;
+  const _Door({required this.icon, required this.title, required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    return Tile(
+      onTap: onTap,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: s.p.accent),
+          const SizedBox(height: Space.m),
+          Text(title, style: s.title(19)),
+          const SizedBox(height: 2),
+          Text(text, style: s.body(13, color: s.p.muted)),
+        ],
+      ),
+    );
+  }
 }
 
 /// Кольцо: доля набранного от высшей отметки, цвет — цвет предмета.
