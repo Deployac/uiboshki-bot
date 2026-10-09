@@ -55,32 +55,48 @@ async def cmd_backup(message: Message):
 
 # ── Понятные названия файлов (/tidyfiles) ───────────────────────────────────
 
+async def _tidy_plan() -> tuple[list[dict], dict[int, str], set[int]]:
+    """Файлы, все переименования и какие из них — темы из текста лекций."""
+    from database import get_text_heads
+    from file_categories import category_of
+    from file_names import text_titles, tidy_titles
+    files = await get_files()
+    names = tidy_titles(files)
+    lectures = [f["id"] for f in files if category_of(f) == "lecture"]
+    topics = text_titles(files, names, await get_text_heads(lectures))
+    return files, {**names, **topics}, set(topics)
+
+
 @router.message(Command("tidyfiles"))
 async def cmd_tidyfiles(message: Message):
-    """«ЛК3_бизнес.pdf» → «Лекция 3. Бизнес» по всем предметам: сначала
-    показать, что поменяется; «/tidyfiles undo» — вернуть как было."""
+    """«ЛК3_бизнес.pdf» → «Лекция 3. Бизнес» по всем предметам, «Лекция 8» →
+    «Лекция 8. Тема» из текста файла: сначала показать, что поменяется;
+    «/tidyfiles undo» — вернуть как было."""
     if not is_starosta(message.from_user.id):
         await message.answer("❌ Только для старосты.")
         return
     from database import undo_file_renames
-    from file_names import preview, tidy_titles
+    from file_names import preview
     if (message.text or "").split()[1:2] == ["undo"]:
         n = await undo_file_renames()
         await message.answer(f"↩️ Вернул прежние названия: {n} файлов." if n else "Нечего возвращать.")
         return
-    files = await get_files()
-    changes = tidy_titles(files)
+    files, changes, from_text = await _tidy_plan()
     if not changes:
         await message.answer("✨ Все названия уже понятные — менять нечего.")
         return
-    lines = preview(files, changes)
+    lines = preview(files, changes, marked=from_text)
     more = len(changes) - min(len(changes), 25)
-    kb = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=f"✅ Переименовать ({len(changes)})", callback_data="tidy:yes"),
-        InlineKeyboardButton(text="Отмена", callback_data="tidy:no"),
-    ]])
+    names_only = len(changes) - len(from_text)
+    row = [InlineKeyboardButton(text=f"✅ Переименовать ({len(changes)})", callback_data="tidy:yes")]
+    if from_text and names_only:
+        row.append(InlineKeyboardButton(text=f"Без 📄 ({names_only})", callback_data="tidy:names"))
+    kb = InlineKeyboardMarkup(inline_keyboard=[row, [InlineKeyboardButton(text="Отмена", callback_data="tidy:no")]])
     await message.answer(
-        "🧹 <b>Понятные названия файлов</b>\nТип и номер по названию, тема — если есть. Вот что поменяется:"
+        "🧹 <b>Понятные названия файлов</b>\nТип и номер по названию, тема — если есть."
+        + (f"\n📄 — тема из текста самой лекции или её пары PDF ↔ PPTX ({len(from_text)}), проверь их."
+           if from_text else "")
+        + " Вот что поменяется:"
         + "\n".join(lines) + (f"\n\n…и ещё {more}" if more > 0 else "")
         + ("\n\nПолный список — в файле ниже." if more > 0 else "")
         + "\n\nВернуть как было — <code>/tidyfiles undo</code>.",
@@ -88,8 +104,9 @@ async def cmd_tidyfiles(message: Message):
     if more > 0:
         from aiogram.types import BufferedInputFile
         from file_names import full_list
-        await message.answer_document(BufferedInputFile(full_list(files, changes).encode("utf-8"), "tidyfiles.txt"),
-                                      caption=f"Все {len(changes)} переименований: было → стало")
+        await message.answer_document(
+            BufferedInputFile(full_list(files, changes, marked=from_text).encode("utf-8"), "tidyfiles.txt"),
+            caption=f"Все {len(changes)} переименований: было → стало")
 
 
 @router.callback_query(F.data.startswith("tidy:"))
@@ -97,13 +114,15 @@ async def tidy_confirm(callback: CallbackQuery):
     if not is_starosta(callback.from_user.id):
         await callback.answer("Только для старосты", show_alert=True)
         return
-    if callback.data != "tidy:yes":
+    if callback.data not in ("tidy:yes", "tidy:names"):
         await callback.message.edit_reply_markup(reply_markup=None)
         await callback.answer("Отменено")
         return
     from database import rename_files
-    from file_names import tidy_titles
-    n = await rename_files(tidy_titles(await get_files()))     # заново: файлы могли измениться
+    _, changes, from_text = await _tidy_plan()                 # заново: файлы могли измениться
+    if callback.data == "tidy:names":
+        changes = {fid: t for fid, t in changes.items() if fid not in from_text}
+    n = await rename_files(changes)
     await callback.message.edit_reply_markup(reply_markup=None)
     await callback.message.answer(f"✅ Переименовал {n} файлов. Вернуть — <code>/tidyfiles undo</code>.",
                                   parse_mode="HTML")

@@ -148,6 +148,13 @@ class Api {
   Future<dynamic> post(String path, [Object? body]) async =>
       _noCacheZone() ?? _decode(await _client.post(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
 
+  /// Файл по подписанной ссылке сервера (/dl/…) — байтами, для «Скачать».
+  Future<Uint8List> download(String url) async {
+    final r = await _client.get(Uri.parse(url)).timeout(const Duration(minutes: 2));
+    if (r.statusCode != 200) throw ApiError('Не скачалось — нажми ещё раз');
+    return r.bodyBytes;
+  }
+
   // ── вход через бота: код → ссылка в бота → «Да, это я» → токен ──
   /// pick — число, которое надо нажать в боте (из трёх), как у Google.
   Future<({String code, String link, int? pick})> startLogin() async {

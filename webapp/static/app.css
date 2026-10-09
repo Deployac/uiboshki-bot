@@ -372,6 +372,7 @@
   }
   .file-card .ic { font-size: 22px; }
   .file-card .ft { font-weight: 700; }
+  .file-card .ftopic { font-size: 13.5px; margin-top: 1px; word-break: break-word; }
   .file-card .fs { color: var(--hint); font-size: 12.5px; }
   .file-card button {
     margin-left: auto;
