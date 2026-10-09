@@ -104,6 +104,30 @@ def test_theme_follows_telegram_live():
     assert ':root[data-theme="light"]' in css and "var(--switch-off)" in css
 
 
+@pytest.mark.skipif(not shutil.which("node"), reason="нужен node")
+def test_desktop_leaves_fullscreen_phone_enters_it():
+    # «Open» в списке чатов Telegram Desktop открывал главное приложение бота на
+    # весь монитор (режим из BotFather), закрыть было нечем (владелец, 09.10).
+    # Desktop при запуске говорит isFullscreen = false — выходим всё равно.
+    got = _front("js/core.js", ["fitFullscreen"], "", """
+      const run = (platform, isFullscreen) => {
+        const log = [];
+        tg = { platform: platform, isFullscreen: isFullscreen,
+               requestFullscreen: () => log.push("request"), exitFullscreen: () => log.push("exit") };
+        fitFullscreen();
+        return log.join(",");
+      };
+      console.log(JSON.stringify([run("tdesktop", false), run("tdesktop", true), run("macos", false),
+        run("weba", false), run("webk", false), run("ios", false), run("ios", true), run("android", false),
+        run("android_x", false), run("unknown", false)]));
+    """)
+    assert got == ["exit", "exit", "exit", "exit", "exit", "request", "", "request", "", ""]
+    # события полного экрана и отступов — на всех платформах, а не только на телефоне
+    core = JS["js/core.js"]
+    setup = core.split('if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0")) {')[1].split("\n}\n")[0]
+    assert 'tg.onEvent("fullscreenChanged", syncFullscreen)' in setup and "fitFullscreen();" in setup
+
+
 def test_onboarding_once_and_not_on_deep_links():
     more, main = JS["js/more.js"], JS["js/main.js"]
     assert "CloudStorage" in more and "onboarded_v1" in more        # один раз, и на другом телефоне тоже
