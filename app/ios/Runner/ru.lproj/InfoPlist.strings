@@ -1,0 +1,2 @@
+/* Имя под иконкой. В Info.plist — латиницей: Apple (AltServer, бесплатный Apple ID) не принимает кириллицу в имени App ID. */
+"CFBundleDisplayName" = "Капибара";

@@ -2422,6 +2422,14 @@ Run workflow) — **APK для Android** и **IPA без подписи для i
   Тест — `test_pwa_home_screen_header_below_clock` (Chromium).
 - Пост 22 (тизер): две строки-намёка на своё приложение.
 
+### v5.55.1 «Кнорозов»
+- iPhone: IPA не ставилась через AltServer с бесплатным Apple ID — Apple
+  отвечала «The name for this app is invalid» на кириллицу в имени. В
+  `Info.plist` имя теперь латиницей (`Kapibara`), а «Капибара» под иконкой —
+  из `en.lproj` и `ru.lproj/InfoPlist.strings` (подключены в Xcode-проект).
+  Проверено на телефоне владельца исправленной сборкой №7. Тест —
+  `tests/test_app_ios_name.py`.
+
 ## Как будет дальше
 
 Новую версию = новый тег `vX.Y.Z` на нужном коммите + запись сюда.
