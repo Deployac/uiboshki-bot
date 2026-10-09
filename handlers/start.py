@@ -105,17 +105,43 @@ async def ask_login(message: Message, code: str):
         InlineKeyboardButton(text="Нет", callback_data=f"login:no:{code}"),
     ]])
     await message.answer(f"🔐 Войти в приложение УИБО-бота на устройстве <b>{esc(login['device'] or 'браузер')}</b>?\n\n"
-                         "Если это не ты нажал «Войти» — жми «Нет».", parse_mode="HTML", reply_markup=kb)
+                         "Если это не ты нажал «Войти» — жми «Нет». Дальше попрошу нажать число с экрана устройства.",
+                         parse_mode="HTML", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("login:"))
 async def login_decision(callback: CallbackQuery):
-    from database.sessions import decide_login
-    _, verdict, code = callback.data.split(":", 2)
-    ok = await decide_login(code, callback.from_user.id, verdict == "ok")
-    await callback.answer()
-    text = ("✅ Готово — возвращайся в приложение." if verdict == "ok" else "Вход отклонён.") if ok \
-        else "Ссылка для входа устарела."
+    """«Да, это я» → три числа (как у Google): нажать то, что на экране
+    устройства; другое число — вход отклонён. Иначе вход по чужой ссылке
+    подтверждался одним нажатием (ревью безопасности 09.10)."""
+    from database.sessions import decide_login, get_login, pick_options
+    _, verdict, rest = callback.data.split(":", 2)
+    if verdict == "ok":                       # шаг 1 → выбрать число
+        login = await get_login(rest)
+        await callback.answer()
+        if not login or login["status"] != "wait":
+            await callback.message.edit_text("Ссылка для входа устарела.")
+            return
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=str(n), callback_data=f"login:n:{n}:{rest}")
+             for n in pick_options(login["pick"] or 0)],
+            [InlineKeyboardButton(text="Это не я", callback_data=f"login:no:{rest}")],
+        ])
+        await callback.message.edit_text("🔢 Какое число на экране устройства? Нажми его.", reply_markup=kb)
+        return
+    if verdict == "n":                        # шаг 2 — выбранное число
+        num, code = rest.split(":", 1)
+        login = await get_login(code)
+        right = bool(login) and str(login.get("pick")) == num
+        ok = await decide_login(code, callback.from_user.id, right)
+        await callback.answer()
+        text = ("✅ Готово — возвращайся в приложение." if right else
+                "Число не то — вход отклонён. Если это был ты, начни вход заново.") if ok \
+            else "Ссылка для входа устарела."
+    else:                                     # «Нет» / «Это не я»
+        ok = await decide_login(rest, callback.from_user.id, False)
+        await callback.answer()
+        text = "Вход отклонён." if ok else "Ссылка для входа устарела."
     try:
         await callback.message.edit_text(text)
     except Exception:

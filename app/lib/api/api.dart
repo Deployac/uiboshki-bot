@@ -128,9 +128,10 @@ class Api {
       _decode(await _client.post(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
 
   // ── вход через бота: код → ссылка в бота → «Да, это я» → токен ──
-  Future<({String code, String link})> startLogin() async {
+  /// pick — число, которое надо нажать в боте (из трёх), как у Google.
+  Future<({String code, String link, int? pick})> startLogin() async {
     final r = await post('/auth/start');
-    return (code: r['code'] as String, link: r['link'] as String);
+    return (code: r['code'] as String, link: r['link'] as String, pick: r['pick'] as int?);
   }
 
   /// null — ещё ждём; иначе статус: ok / denied / expired.

@@ -394,7 +394,8 @@ async function startLogin() {
     const res = await fetch("/api/auth/start", { method: "POST" }).then(r => r.ok ? r.json() : Promise.reject(r));
     loginCode = res.code;
     window.open(res.link, "_blank");
-    hint.textContent = "Открыл бота — нажми там «Да, это я», а потом вернись сюда.";
+    hint.innerHTML = "Открыл бота — нажми там «Да, это я», потом это число:" +
+      '<b class="login-pick">' + escapeHtml(String(res.pick)) + "</b>";
     btn.textContent = "Открыть бота ещё раз";
     btn.disabled = false;
     btn.onclick = () => window.open(res.link, "_blank");

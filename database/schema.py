@@ -114,6 +114,11 @@ async def init_db():
                 expires_at TEXT NOT NULL
             )
         """)
+        # Проверочное число входа (как у Google): устройство показывает одно,
+        # бот предлагает три — нажать то же (ревью безопасности 09.10)
+        cols = {r[1] for r in await (await db.execute("PRAGMA table_info(auth_logins)")).fetchall()}
+        if "pick" not in cols:
+            await db.execute("ALTER TABLE auth_logins ADD COLUMN pick INTEGER")
         # Вход через VK ID / Яндекс ID (oauth.py): кто есть кто у провайдера;
         # oauth_states — начатые входы (state → код входа, PKCE, «привязать к»).
         await db.execute("""

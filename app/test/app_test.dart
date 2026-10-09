@@ -41,6 +41,12 @@ void main() {
     expect(api.token, 'tok-123');
   });
 
+  test('вход через бота отдаёт число для проверки в Telegram (как у Google)', () async {
+    final r = await fakeApi(token: null).startLogin();
+    expect(r.code, 'abc');
+    expect(r.pick, 47);
+  });
+
   testWidgets('без токена — экран входа через бота', (t) async {
     await t.pumpWidget(UiboApp(api: fakeApi(token: null)));
     await settle(t);

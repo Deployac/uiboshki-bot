@@ -33,6 +33,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   Timer? _poll;
   String? _code, _link, _note;
+  int? _pick;
   bool _busy = false;
   List<({String id, String name})> _providers = [];
 
@@ -77,10 +78,13 @@ class _LoginScreenState extends State<LoginScreen> {
       final r = await widget.api.startLogin();
       _code = r.code;
       _link = r.link;
+      _pick = r.pick;
       await launchUrl(Uri.parse(r.link), mode: LaunchMode.externalApplication);
       _poll?.cancel();
       _poll = Timer.periodic(const Duration(seconds: 2), (_) => _check());
-      setState(() => _note = 'Подтверди вход в боте — «Да, это я»');
+      setState(
+        () => _note = _pick == null ? 'Подтверди вход в боте — «Да, это я»' : 'В боте — «Да, это я», потом это число:',
+      );
     } catch (e) {
       setState(() {
         _busy = false;
@@ -150,6 +154,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         Padding(
                           padding: const EdgeInsets.only(bottom: Space.m),
                           child: Text(_note!, style: s.body(14, color: p.muted)),
+                        ),
+                      if (_pick != null && _busy)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: Space.m),
+                          child: Text('$_pick', key: const Key('login-pick'), style: s.title(48)),
                         ),
                       SizedBox(
                         width: double.infinity,

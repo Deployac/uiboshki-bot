@@ -43,11 +43,14 @@ def _client_ip(request: Request) -> str:
 async def auth_start(request: Request):
     import ratelimit
     from config import BOT_USERNAME
-    from database.sessions import create_login
+    from database.sessions import create_login, get_login
     if not ratelimit.allow("auth_start", _client_ip(request)):
         raise HTTPException(429, "Слишком много попыток — подожди минуту")
     code = await create_login(_device(request))
-    return {"code": code, "link": f"https://t.me/{BOT_USERNAME}?start=login_{code}", "expires_in": 600}
+    # pick — число на экране устройства: в боте его надо выбрать из трёх, иначе
+    # вход по чужой ссылке подтверждался одним «Да, это я» (ревью безопасности 09.10)
+    return {"code": code, "link": f"https://t.me/{BOT_USERNAME}?start=login_{code}", "expires_in": 600,
+            "pick": (await get_login(code))["pick"]}
 
 
 class PollBody(BaseModel):

@@ -1163,3 +1163,10 @@ def test_token_from_url_only_after_own_oauth_start():
     head = core.split("const APP_TOKEN")[0]
     assert "if (oauthPending()) saveToken(" in head
     assert 'localStorage.setItem("uib_oauth_at"' in core.split("async function startOAuth")[1].split("\n}\n")[0]
+
+
+def test_pwa_login_shows_pick_number():
+    """Вход через бота: экран «Войти» показывает число, которое надо нажать в Telegram."""
+    body = JS["js/core.js"].split("async function startLogin")[1].split("async function pollLogin")[0]
+    assert "login-pick" in body and "res.pick" in body
+    assert ".login-pick" in CSS

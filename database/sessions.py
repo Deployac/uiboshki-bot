@@ -29,10 +29,18 @@ async def create_login(device: str) -> str:
     code = secrets.token_urlsafe(18)
     async with connect() as db:
         await db.execute("DELETE FROM auth_logins WHERE expires_at < ?", (_ts(_now()),))
-        await db.execute("INSERT INTO auth_logins (code, device, expires_at) VALUES (?, ?, ?)",
-                         (code, device[:120], _ts(_now() + LOGIN_TTL)))
+        await db.execute("INSERT INTO auth_logins (code, device, expires_at, pick) VALUES (?, ?, ?, ?)",
+                         (code, device[:120], _ts(_now() + LOGIN_TTL), 10 + secrets.randbelow(90)))
         await db.commit()
     return code
+
+
+def pick_options(pick: int) -> list[int]:
+    """Три числа для кнопок в боте: верное и два других, вразнобой."""
+    out = {pick}
+    while len(out) < 3:
+        out.add(10 + secrets.randbelow(90))
+    return sorted(out, key=lambda _: secrets.randbelow(1000))
 
 
 async def get_login(code: str) -> dict | None:

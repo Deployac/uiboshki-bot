@@ -1220,3 +1220,5 @@
     .fab { right: calc(var(--col-side) + 18px); }
     .toast { left: calc(var(--col-side) + 14px); right: calc(var(--col-side) + 14px); }
   }
+  /* вход через бота: число, которое надо нажать в Telegram (ревью безопасности 09.10) */
+  .login-pick { display: block; margin-top: 10px; font-size: 44px; font-weight: 800; letter-spacing: 4px; color: var(--text); }
