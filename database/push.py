@@ -38,3 +38,11 @@ async def delete_push_sub(endpoint: str, user_id: int | None = None) -> int:
         cur = await db.execute(sql, args)
         await db.commit()
         return cur.rowcount
+
+
+async def delete_user_push_subs(user_id: int) -> int:
+    """«Выйти везде» — и пуши со всех устройств."""
+    async with connect() as db:
+        cur = await db.execute("DELETE FROM push_subs WHERE user_id = ?", (user_id,))
+        await db.commit()
+        return cur.rowcount

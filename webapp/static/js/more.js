@@ -467,7 +467,8 @@ async function loadDevices() {
     '<div class="dev-row"><div><b>' + escapeHtml(d.device || "Браузер") + (d.current ? " · это" : "") + '</b><span>заходил ' +
     escapeHtml(humanDate((d.last_seen || "").slice(0, 10))) + '</span></div>' +
     '<button class="ghost danger" onclick="revokeDevice(' + d.id + ', ' + !!d.current + ')">Выйти</button></div>').join("") +
-    (res.items.length > 1 ? '<button class="ghost danger" onclick="revokeDevice(0, true)">Выйти везде</button>' : '');
+    (res.items.length > 1 ? '<button class="ghost danger" onclick="revokeDevice(0, true)">Выйти везде</button>' +
+      '<p class="sheet-hint">Выйдут все устройства и выключатся пуши. Вход через VK или Яндекс останется, пока не отвяжешь его выше.</p>' : '');
 }
 
 async function revokeDevice(id, current) {

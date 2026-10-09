@@ -176,3 +176,17 @@ async def test_submit_checks_size_before_decoding(people, monkeypatch):
     big = [{"name": "big.pdf", "data": "A" * (sdo_submit.MAX_BYTES * 4 // 3 + 8)}]
     assert c.post("/api/sdo/submit", headers=h, json={"cmid": 7, "files": big}).status_code == 413
     assert called == []
+
+
+
+# ── 6. «Выйти везде» — и пуши ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_logout_everywhere_drops_push_subs(people, monkeypatch):
+    from database.push import get_push_subs, save_push_sub
+    from database.sessions import create_session
+    await save_push_sub(HOME_USER, "https://fcm.googleapis.com/fcm/send/old", "k", "a")
+    token = await create_session(HOME_USER, "Chrome · Android")
+    c, _ = _client(monkeypatch, HOME_USER)
+    r = c.post("/api/auth/logout?everywhere=true", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200 and await get_push_subs(HOME_USER) == []

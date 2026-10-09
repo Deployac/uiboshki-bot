@@ -99,6 +99,11 @@ async def auth_logout(request: Request, everywhere: bool = False, user: dict = C
     from database.sessions import revoke_session
     token = request.headers.get("authorization", "")[7:].strip()
     n = await revoke_session(user["id"]) if everywhere else await revoke_session(user["id"], token=token or "-")
+    if everywhere:
+        # и пуши: отозванное устройство продолжало получать тексты уведомлений
+        # (сроки, новые баллы) — ревью безопасности 09.10
+        from database.push import delete_user_push_subs
+        await delete_user_push_subs(user["id"])
     return {"ok": True, "revoked": n}
 
 

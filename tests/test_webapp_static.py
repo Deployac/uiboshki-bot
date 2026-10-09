@@ -1153,3 +1153,13 @@ def test_target_week_arrows_off_until_weeks_loaded():
     # экран «МИРЭА не отвечает»: стрелки недели горели, а нажатие ничего не делало
     fn = JS["js/search.js"].split("async function openTarget(")[1].split("const data = await api(")[0]
     assert 'getElementById("tw-prev").disabled = document.getElementById("tw-next").disabled = true' in fn
+
+
+# ── Ревью безопасности 09.10: токен из адреса — только своему входу ──
+def test_token_from_url_only_after_own_oauth_start():
+    """/app#token=<чужой> по присланной ссылке переключал человека в чужой аккаунт.
+    Токен из адреса берётся, только если startOAuth начат в этом браузере."""
+    core = JS["js/core.js"]
+    head = core.split("const APP_TOKEN")[0]
+    assert "if (oauthPending()) saveToken(" in head
+    assert 'localStorage.setItem("uib_oauth_at"' in core.split("async function startOAuth")[1].split("\n}\n")[0]

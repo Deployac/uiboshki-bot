@@ -419,3 +419,45 @@ async def test_layout_safe_area_narrow_and_wide(db, monkeypatch):
         assert r["desktop_main"] <= 680, r
     finally:
         await bot.stop_webapp(server, task)
+
+
+# ── Ревью безопасности 09.10: токен из адреса ──
+def _token_in_url(url: str, token: str, pending: bool) -> bool:
+    """Открыть /app#token=… (pending — вход начат в этом браузере) → токен сохранён?"""
+    import json
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page()
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script(TG_STUB % json.dumps(""))
+        if pending:
+            page.add_init_script("if (!sessionStorage.getItem('x')) { sessionStorage.setItem('x', 1);"
+                                 " localStorage.setItem('uib_oauth_at', String(Date.now())); }")
+        page.goto(f"{url}#token={token}")
+        page.wait_for_timeout(600)
+        saved = page.evaluate("localStorage.getItem('uib_token')") == token
+        clean = "#token" not in page.url
+        browser.close()
+    return saved and clean
+
+
+@pytest.mark.asyncio
+async def test_foreign_token_link_is_ignored(db, monkeypatch):
+    import bot
+    import webapp.deps as deps
+    from database.sessions import create_session
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    await db.upsert_user(222, "", "Alice")
+    token = await create_session(222, "test")
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        url = f"http://127.0.0.1:{port}/app"
+        assert not await asyncio.to_thread(_token_in_url, url, token, False)   # чужая ссылка — мимо
+        assert await asyncio.to_thread(_token_in_url, url, token, True)        # свой вход — принят
+    finally:
+        await bot.stop_webapp(server, task)
