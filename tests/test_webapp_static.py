@@ -1147,3 +1147,9 @@ def test_wide_screen_keeps_phone_column():
     for sel in ("header.top, main { max-width: var(--col)", "nav.tabs { padding-left: calc(var(--col-side)",
                 ".sheet { max-width: var(--col)", ".fab { right: calc(var(--col-side)"):
         assert sel in block
+
+
+def test_target_week_arrows_off_until_weeks_loaded():
+    # экран «МИРЭА не отвечает»: стрелки недели горели, а нажатие ничего не делало
+    fn = JS["js/search.js"].split("async function openTarget(")[1].split("const data = await api(")[0]
+    assert 'getElementById("tw-prev").disabled = document.getElementById("tw-next").disabled = true' in fn
