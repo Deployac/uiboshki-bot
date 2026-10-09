@@ -21,6 +21,14 @@
 .cal-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin-top:22px;padding-top:18px;border-top:1px solid var(--line);font-size:11px;color:var(--secondary)}.cal-sub{display:inline-flex;align-items:center;padding:8px 14px;border-radius:999px;background:var(--ink);color:var(--paper);font-size:12px;font-weight:550;transition:opacity .2s}.cal-sub:hover{opacity:.85}.cal-copy{background:none;padding:0;font-size:11px;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
 .share-site{background:none;padding:0;margin-top:22px;font-size:12px}
 .share-site[hidden]{display:none}
+/* Ночь 09.10: длинные названия в поиске не распирают сетку; номера возможностей одной ширины */
+.search-results{grid-template-columns:repeat(2,minmax(0,1fr))}.search-results button>span{min-width:0;overflow-wrap:anywhere}
+.feature-number{font-variant-numeric:tabular-nums}
+/* узкая сцена демо: кнопка «в отдельной вкладке» пряталась под телефоном — опускаем к подписи */
+@media(min-width:681px) and (max-width:820px){.demo-expand{bottom:21px}}
+@media(max-width:400px){.demo-expand{bottom:21px}}
+/* телефон: длинное ФИО в заголовке расписания рвалось посреди фамилии — метка «Актуальное» уходит под него */
+@media(max-width:680px){.search-results{grid-template-columns:minmax(0,1fr)}.schedule-heading{flex-wrap:wrap}}
 /* dark:start — tools/site_dark.py */
 @media (prefers-color-scheme:dark){
 :root{--paper:#24211a;--ink:#d3d2c8;--secondary:#a19d95;--line:#423d30;--accent:#d17e67;--peach:#373028}
@@ -57,7 +65,7 @@ img[src$="capy.svg"]{filter:invert(.84) sepia(.12)}
 .search-results button{background:#24221a;border:1px solid #4b4637}
 .search-results button:hover,.search-results button.selected{background:#312a23}
 .error-message{color:#da9481}
-.spinner{border:1px solid #60594a}
+.spinner{border:1px solid #60594a;border-top-color:var(--accent)}
 .schedule-result{border-top:1px solid #504a3a}
 .live-label{color:#95a38a}
 .live-label i{background:#95a38a}

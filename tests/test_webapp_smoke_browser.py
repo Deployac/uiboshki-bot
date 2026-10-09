@@ -205,3 +205,76 @@ async def test_pwa_home_screen_header_below_clock(db, monkeypatch):
         assert home
     finally:
         await bot.stop_webapp(server, task)
+
+
+# ── Ночь 09.10: сайт ──
+SITE_FIO = "Константинопольский-Великорецкий Александр Владимирович"
+
+
+def _site_layout(url: str, width: int) -> dict:
+    """/about на узком экране: поиск с длинными названиями и расписание преподавателя."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": width, "height": 800})
+        page.goto(url + "/about")
+        page.fill("#schedule-query", "иванов")
+        page.wait_for_selector(".search-results button")
+        page.click(".search-results button[data-i='1']")
+        page.wait_for_selector(".schedule-heading h3")
+        res = page.evaluate("""() => {
+          const r = (q) => document.querySelector(q).getBoundingClientRect();
+          const ph = r('.phone'), ex = r('.demo-expand');
+          // слово заголовка (до пробела или дефиса) не рвётся на две строки: один прямоугольник
+          const t = document.querySelector('.schedule-heading h3').firstChild, words = [];
+          for (const m of t.textContent.matchAll(/[^\\s-]+/g)) {
+            const rg = document.createRange(); rg.setStart(t, m.index); rg.setEnd(t, m.index + m[0].length);
+            words.push([m[0], rg.getClientRects().length]);
+          }
+          return {scroll: document.documentElement.scrollWidth, inner: innerWidth, words,
+                  expandUnderPhone: ex.left < ph.right && ex.right > ph.left && ex.top < ph.bottom && ex.bottom > ph.top};
+        }""")
+        browser.close()
+    return res
+
+
+@pytest.mark.asyncio
+async def test_site_narrow_layout(db, monkeypatch):
+    """Баги сайта на узком экране: длинное название в поиске давало прокрутку
+    вбок, кнопка «демо в отдельной вкладке» пряталась под телефоном, фамилия в
+    заголовке расписания рвалась посреди слова."""
+    import bot
+    import ratelimit
+    import schedule_index
+    import webapp.routes.schedule as sched
+
+    async def search(q="", type=0, user=None):
+        return {"items": [{"type": 1, "id": 1, "title": "УИБО-03-24", "hint": "Группа"},
+                          {"type": 2, "id": 2, "title": SITE_FIO, "hint": "Преподаватель"},
+                          {"type": 1, "id": 3, "title": "ОченьДлинноеНазваниеБезПробелов" * 2, "hint": "Группа"}]}
+
+    async def target(t, i, user=None):
+        return {"type": t, "id": i, "title": SITE_FIO, "today": "2026-10-09", "stale": False, "weeks": []}
+
+    async def ready():
+        return False
+
+    monkeypatch.setattr(sched, "api_search", search)
+    monkeypatch.setattr(sched, "api_target", target)
+    monkeypatch.setattr(schedule_index, "is_ready", ready)
+    ratelimit.reset()
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        for width in (320, 375, 700):
+            res = await asyncio.to_thread(_site_layout, f"http://127.0.0.1:{port}", width)
+            assert res["scroll"] <= res["inner"], (width, res)
+            assert not res["expandUnderPhone"], width
+            if width < 700:
+                assert all(n == 1 for _, n in res["words"]), (width, res["words"])
+    finally:
+        await bot.stop_webapp(server, task)
+        ratelimit.reset()

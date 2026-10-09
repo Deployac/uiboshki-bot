@@ -16,6 +16,7 @@ CSS = Path(__file__).resolve().parent.parent / "webapp/static/site/site.css"
 START, END = "/* dark:start — tools/site_dark.py */", "/* dark:end */"
 SKIP = ("phone", "demo-loading", "iframe", "::selection")
 COLOR = re.compile(r"#[0-9a-fA-F]{3,8}\b|(?<![-\w])(?:white|black)(?![-\w])")   # не white-space
+BORDER_COLOR = re.compile(r"border(-(top|right|bottom|left))?-color\s*:")
 NAMED = {"white": "#ffffff", "black": "#000000"}
 
 
@@ -66,7 +67,14 @@ def build(css: str) -> str:
     for media, sel, body in rules(css):
         if sel.startswith(":root") or any(s in sel for s in SKIP):
             continue
-        decls = [d.strip() for d in body.split(";") if COLOR.search(d) and ":" in d and "url(" not in d]
+        decls = []
+        for d in (d.strip() for d in body.split(";")):
+            if COLOR.search(d) and ":" in d and "url(" not in d:
+                decls.append(d)
+            elif BORDER_COLOR.match(d) and any(x.startswith("border") for x in decls):
+                # «border:1px solid #…» в тёмном правиле сбросил бы border-top-color:var(--accent)
+                # после него (так у .spinner пропадал бегущий кусок) — повторяем и его
+                decls.append(d)
         if not decls:
             continue
         rule = sel + "{" + ";".join(COLOR.sub(lambda m: flip(m.group(0)), d) for d in decls) + "}"
