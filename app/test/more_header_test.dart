@@ -31,12 +31,12 @@ Api failingApi(Map<String, (int, String)> errors) {
   )..token = 't';
 }
 
-Widget host(Api api) => AppStyle(
+Widget host(Api api, {VoidCallback? onSdo}) => AppStyle(
   p: Palette.depth,
   font: FontChoice.book,
   child: MaterialApp(
     home: Scaffold(
-      body: MoreScreen(api: api, onFont: (_) {}, onLogout: () {}),
+      body: MoreScreen(api: api, onFont: (_) {}, onLogout: () {}, onSdo: onSdo),
     ),
   ),
 );
@@ -122,7 +122,8 @@ void main() {
   testWidgets('без своего входа в СДО — «Подключи СДО», ведёт на вход', (t) async {
     phone(t);
     final api = failingApi({'GET /api/sdo/grades': (403, 'подключи СДО, чтобы видеть свои баллы')});
-    await t.pumpWidget(host(api));
+    var sdo = 0;
+    await t.pumpWidget(host(api, onSdo: () => sdo++));
     await settle(t);
     expect(find.text('Подключи СДО — тут будут баллы'), findsOneWidget);
     expect(find.text('Баллы БРС, в среднем'), findsNothing);
@@ -130,6 +131,10 @@ void main() {
     await t.tap(find.byKey(const Key('more:sdo')));
     await settle(t);
     expect(find.text('Вход в СДО'), findsOneWidget);
+    // вернулся со входа — оболочка перестроит «Учёбу», чтобы там не висело «Подключить СДО»
+    Navigator.of(t.element(find.text('Вход в СДО'))).pop();
+    await settle(t);
+    expect(sdo, 1);
   });
 
   testWidgets('вход в СДО устарел — «подключи заново»', (t) async {

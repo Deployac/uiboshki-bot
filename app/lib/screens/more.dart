@@ -28,6 +28,10 @@ class MoreScreen extends StatelessWidget {
 
   /// Карточка баллов → вкладка «Учёба» (её переключает оболочка).
   final VoidCallback? onStudy;
+
+  /// Подключил СДО отсюда — оболочка перезагрузит «Учёбу» (иначе там висит
+  /// «Подключить СДО», пока не потянешь экран).
+  final VoidCallback? onSdo;
   const MoreScreen({
     super.key,
     required this.api,
@@ -36,6 +40,7 @@ class MoreScreen extends StatelessWidget {
     this.onUnauthorized,
     this.onGroup,
     this.onStudy,
+    this.onSdo,
   });
 
   @override
@@ -50,7 +55,7 @@ class MoreScreen extends StatelessWidget {
         children: [
           _Profile(me: me),
           // баллы грузятся сами по себе: СДО не отвечает — остальной экран работает
-          _PointsCard(api: api, me: me, onOpen: onStudy),
+          _PointsCard(api: api, me: me, onOpen: onStudy, onSdo: onSdo),
           const SizedBox(height: Space.m),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
@@ -351,8 +356,8 @@ class _PointsCard extends StatefulWidget {
 
   /// Ответ /me: пришёл новый (потянул экран вниз) — баллы тоже заново.
   final Object me;
-  final VoidCallback? onOpen;
-  const _PointsCard({required this.api, required this.me, this.onOpen});
+  final VoidCallback? onOpen, onSdo;
+  const _PointsCard({required this.api, required this.me, this.onOpen, this.onSdo});
 
   @override
   State<_PointsCard> createState() => _PointsCardState();
@@ -409,6 +414,7 @@ class _PointsCardState extends State<_PointsCard> {
 
   Future<void> _connect() async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SdoConnectScreen(api: widget.api)));
+    widget.onSdo?.call();
     if (mounted) await _load(cache: false);
   }
 
