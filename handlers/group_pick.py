@@ -55,9 +55,12 @@ async def group_query(message: Message, state: FSMContext):
 async def group_chosen(callback: CallbackQuery, state: FSMContext):
     import groups
     gid = callback.data.split(":", 1)[1]
-    g = await groups.choose(callback.from_user.id, int(gid)) if gid.isdigit() else None
+    g = await groups.choose(callback.from_user.id, int(gid), callback.bot) if gid.isdigit() else None
     if not g:
         await callback.answer("Такой группы нет", show_alert=True)
+        return
+    if g.get("denied"):
+        await callback.answer(g["denied"].capitalize(), show_alert=True)
         return
     await state.clear()
     await callback.answer()
