@@ -1,5 +1,5 @@
-// Оболочка: пять вкладок и меню-капсула; при первом запуске — короткое
-// знакомство «что где».
+// Оболочка: пять вкладок и меню-капсула; при первом запуске — короткий тур
+// по приложению (tour.dart).
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +15,7 @@ import 'group_pick.dart';
 import 'more.dart';
 import 'study.dart';
 import 'today.dart';
+import 'tour.dart';
 import 'week.dart';
 
 const tabs = [
@@ -33,14 +34,6 @@ int tabByName(String? name) => switch (name) {
   'more' => 4,
   _ => 0,
 };
-
-const _tour = [
-  'пары сегодня: что идёт, сколько осталось, куда дальше',
-  'вся неделя лентой, сверху — дни: нажми, и лента приедет',
-  'что сдать и до какого срока, отметка «сдал»',
-  'баллы, цель по предмету, посещения',
-  'баллы в среднем, настройки, шрифт, группа и выход',
-];
 
 class Shell extends StatefulWidget {
   final Api api;
@@ -130,62 +123,24 @@ class _ShellState extends State<Shell> {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('uib_toured') == true || !mounted) return;
     await prefs.setBool('uib_toured', true);
-    if (!mounted) return;
-    final s = AppStyle.of(context);
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: s.p.cardSolid,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Что где', style: s.title(28)),
-              const SizedBox(height: Space.l),
-              for (var i = 0; i < tabs.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: Space.m),
-                  child: Row(
-                    children: [
-                      Icon(tabs[i].icon, color: s.p.accent),
-                      const SizedBox(width: Space.m),
-                      Expanded(
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: '${tabs[i].label} — ',
-                                style: s.body(15, weight: FontWeight.w600),
-                              ),
-                              TextSpan(
-                                text: _tour[i],
-                                style: s.body(15, color: s.p.muted),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: Space.s),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: s.p.accent, foregroundColor: s.p.onAccent),
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Понятно'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (mounted) await tour();
+  }
+
+  final _bar = GlobalKey();
+
+  /// Где меню-капсула: верх её коробки, по бокам — отступ Space.l, высота 64
+  /// (capsule_tabbar.dart); снизу у коробки ещё отступ до края экрана.
+  Rect? _barRect() {
+    final box = _bar.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    final at = box.localToGlobal(Offset.zero);
+    return Rect.fromLTWH(at.dx + Space.l, at.dy, box.size.width - 2 * Space.l, 64);
+  }
+
+  /// Короткий тур по приложению — при первом запуске и из «Ещё».
+  Future<void> tour() {
+    _open(tourSteps.first.tab);
+    return showTour(context, onStep: _open, barRect: _barRect);
   }
 
   @override
@@ -208,6 +163,7 @@ class _ShellState extends State<Shell> {
         onGroup: () => pickGroup(),
         onStudy: () => _open(tabByName('study')),
         onSdo: () => setState(() => _sdo++),
+        onTour: tour,
       ),
     ];
     return Scaffold(
@@ -225,7 +181,7 @@ class _ShellState extends State<Shell> {
           ),
         ),
       ),
-      bottomNavigationBar: CapsuleTabBar(items: tabs, index: _index, onTap: _open),
+      bottomNavigationBar: CapsuleTabBar(key: _bar, items: tabs, index: _index, onTap: _open),
     );
   }
 }

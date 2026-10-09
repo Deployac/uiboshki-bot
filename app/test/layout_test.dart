@@ -556,17 +556,24 @@ void main() {
     });
   }
 
-  // Знакомство «Что где» на маленьком экране с крупным шрифтом.
-  testWidgets('знакомство на маленьком экране', (t) async {
+  // Тур при первом запуске на маленьком экране с крупным шрифтом: каждый шаг
+  // помещается, кнопка — над капсулой и на экране.
+  testWidgets('тур на маленьком экране', (t) async {
     SharedPreferences.setMockInitialValues({});
     useDevice(t, devices.first);
     await t.pumpWidget(UiboApp(api: longApi()));
     await settle(t);
     expect(find.text('Что где'), findsOneWidget);
-    await scrollThrough(t);
-    await t.ensureVisible(find.text('Понятно'));
-    await settle(t);
-    final ok = t.getRect(find.text('Понятно'));
-    expect(ok.bottom, lessThanOrEqualTo(_screen(t).height - devices.first.pad.bottom + 0.5));
+    for (var i = 0; i < 5; i++) {
+      final btn = find.text(i == 4 ? 'Понятно' : 'Дальше');
+      await t.ensureVisible(btn);
+      await settle(t);
+      final r = t.getRect(btn);
+      expect(r.top, greaterThanOrEqualTo(devices.first.pad.top - 0.5));
+      expect(r.bottom, lessThanOrEqualTo(_screen(t).height - devices.first.pad.bottom + 0.5));
+      await t.tap(btn);
+      await settle(t);
+    }
+    expect(find.text('Что где'), findsNothing);
   });
 }

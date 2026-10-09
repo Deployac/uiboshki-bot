@@ -35,6 +35,9 @@ class MoreScreen extends StatelessWidget {
   /// Подключил СДО отсюда — оболочка перезагрузит «Учёбу» (иначе там висит
   /// «Подключить СДО», пока не потянешь экран).
   final VoidCallback? onSdo;
+
+  /// «Как пользоваться» — тур по приложению ещё раз (оболочка).
+  final VoidCallback? onTour;
   const MoreScreen({
     super.key,
     required this.api,
@@ -45,6 +48,7 @@ class MoreScreen extends StatelessWidget {
     this.onGroup,
     this.onStudy,
     this.onSdo,
+    this.onTour,
   });
 
   @override
@@ -128,6 +132,15 @@ class MoreScreen extends StatelessWidget {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
+                  if (onTour != null) ...[
+                    _MenuRow(
+                      icon: Icons.lightbulb_outline_rounded,
+                      title: 'Как пользоваться',
+                      sub: 'короткий тур: что где и какие есть жесты',
+                      onTap: onTour,
+                    ),
+                    Divider(height: 1, color: p.line),
+                  ],
                   _MenuRow(
                     icon: Icons.group_add_outlined,
                     title: 'Позвать',

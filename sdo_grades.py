@@ -572,6 +572,17 @@ def parse_task_page(html: str) -> dict:
     out = parse_assign_page(html)
     out.update(title=_clean(title_el.get_text(" ")) if title_el else "", description=text[:3000],
                files=teacher, mine=mine)
+    # «Редактировать ответ» / «Удалить ответ» (владелец 09.10, 3.3): ответ уже
+    # есть, ещё не оценён, и СДО показывает эти кнопки (срок не прошёл)
+    answered = out["submitted"] or out["draft"] or bool(mine)
+    grading = next((_clean(tr.find("td").get_text(" ")).lower() for tr in soup.find_all("tr")
+                    if tr.find("th") and tr.find("td")
+                    and _clean(tr.find("th").get_text(" ")).lower().startswith("состояние оценивания")), "")
+    graded = bool(out["graded_at"]) or (grading.startswith("оценено") and "не оценено" not in grading)
+    out["can_edit"] = out["can_submit"] and answered and not graded
+    out["can_remove"] = answered and not graded and bool(
+        soup.find(attrs={"name": "action", "value": "removesubmissionconfirm"})
+        or "action=removesubmissionconfirm" in html)
     return out
 
 
@@ -615,6 +626,6 @@ async def task_detail(cookie: str, cmid: int, module: str = "assign") -> dict:
                 page["maxfiles"] = edit["maxfiles"]
                 page["maxbytes"] = edit["maxbytes"]
             except sdo_submit.SubmitError:
-                page["can_submit"] = False
+                page["can_submit"] = page["can_edit"] = False
     page.update(cmid=cmid, url=url, limit=min(sdo_submit.MAX_FILES, page["maxfiles"] or sdo_submit.MAX_FILES))
     return page

@@ -1,5 +1,5 @@
 // ДЗ группы (доска старосты, /addhw в боте) и заметки к парам на сегодня
-// и завтра (/note в боте) — входы плитками на вкладке «Сдать».
+// и завтра (/note в боте, «+» — здесь же) — входы плитками на вкладке «Сдать».
 import 'package:flutter/material.dart';
 
 import '../api/api.dart';
@@ -175,18 +175,65 @@ class _HomeworkCard extends StatelessWidget {
 }
 
 class Note {
+  final int id;
   final String subject, text;
-  Note.fromJson(Map<String, dynamic> j) : subject = j['subject'] as String? ?? '', text = j['text'] as String? ?? '';
+
+  /// Своя заметка — её можно убрать отсюда (сервер: mine).
+  final bool mine;
+  Note.fromJson(Map<String, dynamic> j)
+    : id = (j['id'] as num?)?.toInt() ?? 0,
+      subject = j['subject'] as String? ?? '',
+      text = j['text'] as String? ?? '',
+      mine = j['mine'] == true;
 }
 
-/// Заметки к парам: сегодня и завтра — как /note в боте.
-class NotesScreen extends StatelessWidget {
+/// Заметки к парам: сегодня и завтра — как /note в боте; «+» — своя заметка
+/// к паре или дню прямо отсюда (владелец, 09.10, 2.9), её видит вся группа.
+class NotesScreen extends StatefulWidget {
   final Api api;
   const NotesScreen({super.key, required this.api});
+
+  @override
+  State<NotesScreen> createState() => _NotesScreenState();
+}
+
+class _NotesScreenState extends State<NotesScreen> {
+  int _epoch = 0; // добавили или убрали — список заново
+
+  Api get api => widget.api;
 
   Future<List<Note>> _day(DateTime d) async {
     final j = await api.get('/notes?date=${iso(d)}');
     return [for (final n in (j['items'] as List? ?? [])) Note.fromJson(n)];
+  }
+
+  Future<void> _add() async {
+    tick();
+    final saved = await appSheet<String>(context, (_) => NoteSheet(api: api));
+    if (saved == null || !mounted) return;
+    showToast(context, saved, kind: ToastKind.done);
+    setState(() => _epoch++);
+  }
+
+  Future<void> _delete(Note n) async {
+    final ok = await confirmSheet(
+      context,
+      title: 'Убрать заметку?',
+      text: 'Она пропадёт у всей группы.',
+      action: 'Убрать',
+      danger: true,
+    );
+    if (!ok || !mounted) return;
+    try {
+      await api.delete('/notes/${n.id}');
+    } on ApiError catch (e) {
+      if (mounted) showToast(context, e.message, kind: ToastKind.error);
+      return;
+    } catch (e) {
+      if (mounted) showToast(context, errorText(e), kind: ToastKind.error);
+      return;
+    }
+    if (mounted) setState(() => _epoch++);
   }
 
   @override
@@ -194,7 +241,9 @@ class NotesScreen extends StatelessWidget {
     final t = now();
     final today = DateTime(t.year, t.month, t.day);
     final tomorrow = DateTime(t.year, t.month, t.day + 1);
+    final p = AppStyle.of(context).p;
     return _Page<List<List<Note>>>(
+      key: ValueKey(_epoch),
       load: () => Future.wait([_day(today), _day(tomorrow)]),
       builder: (context, days) {
         final s = AppStyle.of(context);
@@ -203,11 +252,20 @@ class NotesScreen extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: Space.xxl),
           children: [
             const BackRow(),
-            const ScreenTitle(title: 'Заметки'),
+            ScreenTitle(
+              title: 'Заметки',
+              trailing: IconButton.filled(
+                key: const Key('notes:add'),
+                tooltip: 'Новая заметка',
+                style: IconButton.styleFrom(backgroundColor: p.accent, foregroundColor: p.onAccent),
+                onPressed: _add,
+                icon: const Icon(Icons.add_rounded),
+              ),
+            ),
             if (total == 0)
               const Notice(
                 title: 'Заметок нет',
-                text: 'Пометку к паре добавляют в боте: /note завтра Матан: контрольная в 401',
+                text: 'Пометку к паре или дню добавь кнопкой «+» — её увидит вся группа под расписанием.',
                 pose: CapyPose.joy,
               ),
             for (final (i, notes) in days.indexed)
@@ -217,6 +275,7 @@ class NotesScreen extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
                     child: Tile(
+                      padding: EdgeInsets.fromLTRB(Space.l, Space.l, n.mine ? Space.xs : Space.l, Space.l),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -231,19 +290,218 @@ class NotesScreen extends StatelessWidget {
                               ],
                             ),
                           ),
+                          if (n.mine && n.id > 0)
+                            IconButton(
+                              tooltip: 'Убрать заметку',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => _delete(n),
+                              icon: Icon(Icons.delete_outline_rounded, size: 20, color: s.p.muted),
+                            ),
                         ],
                       ),
                     ),
                   ),
               ],
-            if (total > 0)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(Space.xl, Space.l, Space.xl, 0),
-                child: Text('Добавить — в боте: /note завтра Предмет: текст', style: s.body(13, color: s.p.muted)),
-              ),
           ],
         );
       },
+    );
+  }
+}
+
+/// Лист «Новая заметка»: день (сегодня, завтра или другой), пара этого дня
+/// (по желанию) и текст. Сохранил — лист закрывается с подписью для плашки.
+class NoteSheet extends StatefulWidget {
+  final Api api;
+  const NoteSheet({super.key, required this.api});
+
+  @override
+  State<NoteSheet> createState() => _NoteSheetState();
+}
+
+class _NoteSheetState extends State<NoteSheet> {
+  final _text = TextEditingController();
+  late DateTime _date;
+  String _subject = '';
+  List<String> _subjects = [];
+  int _asked = 0; // ответ о парах прошлого выбранного дня не подменит нынешний
+  String? _error;
+  bool _busy = false;
+
+  static const maxLen = 500; // как NOTE_MAX в боте
+
+  @override
+  void initState() {
+    super.initState();
+    final t = now();
+    _date = DateTime(t.year, t.month, t.day + 1);
+    _loadSubjects();
+  }
+
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  /// Пары выбранного дня — чипами: заметка «к паре» одним нажатием.
+  Future<void> _loadSubjects() async {
+    final asked = ++_asked;
+    List<String> got = [];
+    try {
+      final j = await widget.api.get('/day?date=${iso(_date)}');
+      for (final l in (j['lessons'] as List? ?? [])) {
+        final t = '${l['title'] ?? ''}'.trim();
+        if (t.isNotEmpty && !got.contains(t)) got.add(t);
+      }
+    } catch (_) {
+      got = [];
+    }
+    if (!mounted || asked != _asked) return;
+    setState(() {
+      _subjects = got;
+      if (!got.contains(_subject)) _subject = '';
+    });
+  }
+
+  void _setDate(DateTime d) {
+    tick();
+    setState(() => _date = d);
+    _loadSubjects();
+  }
+
+  Future<void> _pickDate() async {
+    tick();
+    final t = now();
+    final got = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(t.year, t.month, t.day),
+      lastDate: DateTime(t.year, t.month + 6, t.day),
+    );
+    if (got != null) _setDate(got);
+  }
+
+  Future<void> _save() async {
+    final text = _text.text.trim();
+    if (text.isEmpty) {
+      setState(() => _error = 'Напиши, что запомнить');
+      return;
+    }
+    tick();
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await widget.api.post('/notes', {'date': iso(_date), 'subject': _subject, 'text': text});
+      if (mounted) Navigator.pop(context, 'Заметка на ${shortDay(iso(_date))} — видна всей группе');
+    } on ApiError catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Widget _chip(String label, bool selected, VoidCallback onTap) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return ChoiceChip(
+      label: Text(label, softWrap: true, maxLines: 2),
+      selected: selected,
+      showCheckmark: false,
+      selectedColor: p.accent,
+      labelStyle: s.body(14, weight: FontWeight.w600, color: selected ? p.onAccent : p.text),
+      backgroundColor: p.card,
+      side: BorderSide(color: p.line),
+      shape: const StadiumBorder(),
+      onSelected: (_) => onTap(),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final t = now();
+    final today = DateTime(t.year, t.month, t.day);
+    final tomorrow = DateTime(t.year, t.month, t.day + 1);
+    final other = iso(_date) != iso(today) && iso(_date) != iso(tomorrow);
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl + MediaQuery.viewInsetsOf(context).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Новая заметка', style: s.title(24)),
+            const SizedBox(height: Space.s),
+            Text('Увидит вся группа — под расписанием этого дня.', style: s.body(13, color: p.muted)),
+            const SizedBox(height: Space.l),
+            Text('Когда', style: s.eyebrow()),
+            const SizedBox(height: Space.s),
+            Wrap(
+              spacing: Space.s,
+              runSpacing: Space.s,
+              children: [
+                _chip('Сегодня', iso(_date) == iso(today), () => _setDate(today)),
+                _chip('Завтра', iso(_date) == iso(tomorrow), () => _setDate(tomorrow)),
+                _chip(other ? shortDay(iso(_date)) : 'Другой день', other, _pickDate),
+              ],
+            ),
+            if (_subjects.isNotEmpty) ...[
+              const SizedBox(height: Space.l),
+              Text('К паре', style: s.eyebrow()),
+              const SizedBox(height: Space.s),
+              Wrap(
+                spacing: Space.s,
+                runSpacing: Space.s,
+                children: [
+                  _chip('Ко всему дню', _subject.isEmpty, () {
+                    tick();
+                    setState(() => _subject = '');
+                  }),
+                  for (final subj in _subjects)
+                    _chip(subj, _subject == subj, () {
+                      tick();
+                      setState(() => _subject = subj);
+                    }),
+                ],
+              ),
+            ],
+            const SizedBox(height: Space.l),
+            TextField(
+              key: const Key('note:text'),
+              controller: _text,
+              autofocus: true,
+              minLines: 2,
+              maxLines: 5,
+              maxLength: maxLen,
+              textCapitalization: TextCapitalization.sentences,
+              style: s.body(16),
+              cursorColor: p.accent,
+              decoration: fieldDecoration(s, 'Контрольная, принести ноутбук…'),
+            ),
+            if (_error != null) ...[const SizedBox(height: Space.s), Text(_error!, style: s.body(14, color: p.danger))],
+            const SizedBox(height: Space.m),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: p.accent,
+                  foregroundColor: p.onAccent,
+                  shape: const StadiumBorder(),
+                ),
+                onPressed: _busy ? null : _save,
+                child: const Text('Сохранить'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

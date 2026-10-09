@@ -114,7 +114,9 @@ void main() {
     await settle(t);
     await t.tap(find.bySemanticsLabel('Ещё'));
     await settle(t);
-    await t.ensureVisible(find.text('Позвать'));
+    // список «Ещё» — до конца: строка не под меню-капсулой
+    await t.drag(find.byType(MoreScreen), const Offset(0, -2000));
+    await settle(t);
     await t.tap(find.text('Позвать'));
     await settle(t);
     expect(copied.single, contains('/about'));
@@ -135,7 +137,9 @@ void main() {
     await settle(t);
     await t.tap(find.bySemanticsLabel('Ещё'));
     await settle(t);
-    await t.ensureVisible(find.text('Выйти'));
+    // список «Ещё» — до конца: строка не под меню-капсулой
+    await t.drag(find.byType(MoreScreen), const Offset(0, -2000));
+    await settle(t);
     await t.tap(find.text('Выйти'));
     await settle(t);
     expect(find.byType(AlertDialog), findsNothing);

@@ -182,7 +182,7 @@ class _WeekScreenState extends State<WeekScreen> {
           const SizedBox(height: 120),
           Notice(
             title: 'Не загрузилось',
-            text: 'Нет связи с сервером — проверь интернет.',
+            text: errorText(_error!),
             onRetry: _fetch,
             pose: CapyPose.sad,
           ),

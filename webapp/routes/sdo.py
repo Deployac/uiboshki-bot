@@ -34,6 +34,11 @@ class SdoSubmit(BaseModel):
     name: str = ""
     data: str = ""  # base64 — один файл (старый формат)
     files: list[SdoFile] = []
+    replace: bool = False  # «Редактировать ответ»: новые файлы вместо прежних
+
+
+class SdoRemove(BaseModel):
+    cmid: int
 
 
 @router.get("/api/sdo/status")
@@ -162,7 +167,7 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     except Exception:
         raise HTTPException(status_code=400, detail="файл повреждён")
     try:
-        result = await sdo_submit.submit_file(cookie, cmid, files=files)
+        result = await sdo_submit.submit_file(cookie, cmid, files=files, replace=body.replace)
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
         raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
@@ -184,6 +189,33 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
             await sdo_done.mark(user["id"], [cmid])
     except Exception as e:
         logger.info(f"отметка «сдал» после сдачи: {e}")
+    return result
+
+
+@router.post("/api/sdo/submission/remove")
+async def api_sdo_remove_submission(body: SdoRemove, user: dict = CurrentUser):
+    """«Удалить ответ» на задание — своим входом, как кнопка в СДО (пока ответ
+    не оценён и срок не прошёл — иначе СДО сам не даст)."""
+    import ratelimit
+    import sdo_accounts
+    import sdo_grades
+    import sdo_submit
+    from database import set_sdo_status
+    from sdo_parser import SdoSessionExpired
+    if not ratelimit.allow("submit", user["id"]):
+        raise HTTPException(status_code=429, detail="слишком много действий подряд — попробуй через 10 минут")
+    cookie = await sdo_accounts.cookie_for(user["id"])
+    if not cookie:
+        raise HTTPException(status_code=403, detail="сначала подключи СДО: вкладка СДО → Вход")
+    try:
+        result = await sdo_submit.remove_submission(cookie, body.cmid)
+    except SdoSessionExpired:
+        await set_sdo_status(user["id"], "expired")
+        raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
+    except sdo_submit.SubmitError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    logger.info(f"СДО: {user['id']} удалил ответ в задании {body.cmid}")
+    sdo_grades.forget(user["id"])
     return result
 
 

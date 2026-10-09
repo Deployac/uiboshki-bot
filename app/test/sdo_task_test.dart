@@ -127,7 +127,8 @@ void main() {
     await settle(t);
     expect(asked, contains('GET /api/sdo/task/105'));
     final task = demoFixtures()['GET /api/sdo/task/105'] as Map;
-    expect(find.text(task['title'] as String), findsOneWidget);
+    // в заголовке после дефиса — невидимый «не переносить» (U+2060)
+    expect(find.text((task['title'] as String).replaceAll('-', '-\u2060')), findsOneWidget);
     expect(find.text('четверг, 8 октября 2026, 23:59'), findsOneWidget);
     expect(find.text('ждёт оценки'), findsOneWidget);
     expect(find.text('Сдано, ждёт оценки'), findsOneWidget);

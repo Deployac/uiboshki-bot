@@ -56,8 +56,8 @@ class _GroupPickScreenState extends State<GroupPickScreen> {
       if (mounted) setState(() => _adminNote = 'Запрос отправлен — ответ придёт в бота.');
     } on ApiError catch (e) {
       if (mounted) setState(() => _adminNote = e.message);
-    } catch (_) {
-      if (mounted) setState(() => _adminNote = 'Нет связи с сервером.');
+    } catch (e) {
+      if (mounted) setState(() => _adminNote = errorText(e));
     }
   }
 

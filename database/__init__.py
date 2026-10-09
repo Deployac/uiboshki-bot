@@ -127,6 +127,7 @@ from database.social import (
     get_feed_reaction_counts,
     add_lesson_note,
     get_lesson_notes,
+    get_lesson_note,
     delete_lesson_note,
 )
 from database.service import (
@@ -267,6 +268,7 @@ __all__ = ["DATABASE_PATH",
     "get_feed_reaction_counts",
     "add_lesson_note",
     "get_lesson_notes",
+    "get_lesson_note",
     "delete_lesson_note",
     "add_solver_history",
     "get_solver_history",

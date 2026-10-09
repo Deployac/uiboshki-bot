@@ -163,6 +163,14 @@ async def get_lesson_notes(date_str: str, group_id: int | None = None) -> list[d
         return [dict(r) for r in await cursor.fetchall()]
 
 
+async def get_lesson_note(note_id: int) -> dict | None:
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM lesson_notes WHERE id=?", (note_id,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
 async def delete_lesson_note(note_id: int):
     async with connect() as db:
         await db.execute("DELETE FROM lesson_notes WHERE id=?", (note_id,))

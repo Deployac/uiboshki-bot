@@ -56,6 +56,7 @@ class SubmitRules {
 }
 
 /// Открыть лист сдачи. Задание — по сроку (deadlineId) или из работ предмета (cmid).
+/// replace — «Редактировать ответ»: новые файлы заменят прежние (как в СДО).
 Future<bool?> showSubmitSheet(
   BuildContext context,
   Api api, {
@@ -63,6 +64,7 @@ Future<bool?> showSubmitSheet(
   int deadlineId = 0,
   int cmid = 0,
   PickFiles pick = systemPick,
+  bool replace = false,
 }) {
   final s = AppStyle.of(context);
   return showModalBottomSheet<bool>(
@@ -70,7 +72,8 @@ Future<bool?> showSubmitSheet(
     backgroundColor: s.p.cardSolid,
     showDragHandle: true,
     isScrollControlled: true,
-    builder: (_) => SubmitSheet(api: api, title: title, deadlineId: deadlineId, cmid: cmid, pick: pick),
+    builder: (_) =>
+        SubmitSheet(api: api, title: title, deadlineId: deadlineId, cmid: cmid, pick: pick, replace: replace),
   );
 }
 
@@ -79,6 +82,7 @@ class SubmitSheet extends StatefulWidget {
   final String title;
   final int deadlineId, cmid;
   final PickFiles pick;
+  final bool replace;
   const SubmitSheet({
     super.key,
     required this.api,
@@ -86,6 +90,7 @@ class SubmitSheet extends StatefulWidget {
     this.deadlineId = 0,
     this.cmid = 0,
     this.pick = systemPick,
+    this.replace = false,
   });
 
   @override
@@ -143,6 +148,7 @@ class _SubmitSheetState extends State<SubmitSheet> {
       final r = await widget.api.post('/sdo/submit', {
         'deadline_id': widget.deadlineId,
         'cmid': widget.cmid,
+        if (widget.replace) 'replace': true,
         'files': [
           for (final f in _files) {'name': f.name, 'data': base64Encode(f.bytes)},
         ],
@@ -175,7 +181,7 @@ class _SubmitSheetState extends State<SubmitSheet> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Сдать файлом', style: s.eyebrow()),
+                    Text(widget.replace ? 'Редактировать ответ' : 'Сдать файлом', style: s.eyebrow()),
                     const SizedBox(height: 4),
                     Text(widget.title, style: s.name(20)),
                     const SizedBox(height: Space.l),
@@ -193,6 +199,18 @@ class _SubmitSheetState extends State<SubmitSheet> {
                           ),
                         ],
                       ),
+                      if (widget.replace) ...[
+                        const SizedBox(height: Space.s),
+                        Row(
+                          children: [
+                            Icon(Icons.swap_horiz_rounded, size: 18, color: p.muted),
+                            const SizedBox(width: Space.s),
+                            Expanded(
+                              child: Text('Новые файлы заменят прежние', style: s.body(14, color: p.muted)),
+                            ),
+                          ],
+                        ),
+                      ],
                       const SizedBox(height: Space.m),
                       for (final f in _files)
                         Padding(
@@ -249,7 +267,7 @@ class _SubmitSheetState extends State<SubmitSheet> {
                                 child: CircularProgressIndicator(strokeWidth: 2, color: p.onAccent),
                               )
                             : const Icon(Icons.upload_rounded),
-                        label: Text(_sending ? 'Отправляю…' : 'Сдать'),
+                        label: Text(_sending ? 'Отправляю…' : (widget.replace ? 'Заменить' : 'Сдать')),
                       ),
                     ),
                   ],

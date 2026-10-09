@@ -13,6 +13,12 @@
    и подтверждение (галочку «это моя работа» человек ставит в WebApp:
    экран «Файл уйдёт преподавателю от твоего имени»).
 
+«Редактировать ответ» (владелец 09.10, 3.3) — тот же путь, но перед загрузкой
+черновая область очищается от прежних файлов (draftfiles_ajax.php dir/delete):
+новые файлы заменяют старые. «Удалить ответ» — action=removesubmissionconfirm
+и POST формы подтверждения (action=removesubmission, sesskey), как кнопка
+«Продолжить» в браузере.
+
 Ошибки — SubmitError с понятным текстом для WebApp.
 """
 
@@ -279,10 +285,36 @@ async def _upload(client: httpx.AsyncClient, page: dict, name: str, data: bytes)
             raise SubmitError("не вышло заменить старый файл: " + str(res["error"])[:200])
 
 
+async def _clear_draft(client: httpx.AsyncClient, page: dict):
+    """Убрать из черновой области ответа прежние файлы: Moodle кладёт туда уже
+    сданные файлы, и без этого новые добавились бы к старым."""
+    base = {"sesskey": page["sesskey"], "client_id": page["client_id"], "itemid": page["itemid"]}
+    resp = await client.post(f"{SDO_BASE_URL}/repository/draftfiles_ajax.php?action=dir",
+                             data=dict(base, filepath="/"))
+    try:
+        listing = resp.json()
+    except ValueError:
+        listing = None
+    if not isinstance(listing, dict) or not isinstance(listing.get("list"), list):
+        raise SubmitError("СДО не показал прежние файлы ответа — замени их на сайте")
+    for f in listing["list"]:
+        if not isinstance(f, dict):
+            continue
+        resp = await client.post(f"{SDO_BASE_URL}/repository/draftfiles_ajax.php?action=delete", data=dict(
+            base, filepath=f.get("filepath") or "/", filename=f.get("filename") or "."))
+        try:
+            res = resp.json()
+        except ValueError:
+            res = None
+        if res is False or (isinstance(res, dict) and res.get("error")):
+            raise SubmitError(f"не вышло убрать старый файл «{f.get('filename', '')}» — замени на сайте")
+
+
 async def submit_file(cookie: str, cmid: int, name: str = "", data: bytes = b"",
-                      files: list[tuple[str, bytes]] | None = None) -> dict:
+                      files: list[tuple[str, bytes]] | None = None, replace: bool = False) -> dict:
     """Загрузить файл(ы) в задание cmid одним ответом (до MAX_FILES за раз, но
-    не больше, чем разрешает задание). → {"status": текст статуса в СДО, "url": ...}"""
+    не больше, чем разрешает задание); replace — прежние файлы ответа убрать
+    («Редактировать ответ»). → {"status": текст статуса в СДО, "url": ...}"""
     from sdo_parser import SdoSessionExpired, get_checked
     files = files or [(name, data)]
     if not files or any(not d for _, d in files):
@@ -310,6 +342,8 @@ async def submit_file(cookie: str, cmid: int, name: str = "", data: bytes = b"",
             bad = [n for n, _ in files if not ext_ok(n, page["accepted"])]
             if bad:
                 raise SubmitError(f"«{bad[0]}» не подойдёт: {only_text(page['accepted'])}")
+            if replace:
+                await _clear_draft(client, page)
             for fname, fdata in files:
                 await _upload(client, page, fname, fdata)
             form = dict(page["fields"], submitbutton="Сохранить")
@@ -336,6 +370,38 @@ async def submit_file(cookie: str, cmid: int, name: str = "", data: bytes = b"",
             logger.warning(f"СДО: сдача в задание {cmid} оборвалась: {type(e).__name__}")
             raise SdoUnavailable(UNAVAILABLE)
     return {"status": status_text(resp.text), "url": url}
+
+
+async def remove_submission(cookie: str, cmid: int) -> dict:
+    """«Удалить ответ» в задании cmid: страница подтверждения → её форма
+    (action=removesubmission, sesskey). → {"status": состояние ответа после}."""
+    from sdo_grades import parse_assign_page
+    from sdo_parser import SdoSessionExpired, get_checked
+    url = f"{SDO_BASE_URL}/mod/assign/view.php?id={cmid}"
+    async with httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=30) as client:
+        try:
+            resp = await get_checked(client, url + "&action=removesubmissionconfirm")
+            soup = BeautifulSoup(resp.text, "html.parser")
+            btn = soup.find("input", attrs={"name": "action", "value": "removesubmission"})
+            if not btn or not btn.find_parent("form"):
+                why = _notice(soup)
+                raise SubmitError("СДО не даёт удалить ответ" + (f": {why}" if why else
+                                                               " — ответ уже оценён или срок прошёл"))
+            form = btn.find_parent("form")
+            fields = form_fields(form)
+            if not fields.get("sesskey"):
+                raise SubmitError("не разобрал подтверждение в СДО — удали ответ на сайте")
+            resp = await client.post(form.get("action") or f"{SDO_BASE_URL}/mod/assign/view.php", data=fields)
+            if "/login/index.php" in str(resp.url):
+                raise SdoSessionExpired("вход устарел")
+            view = await get_checked(client, url)
+        except httpx.HTTPError:
+            raise SubmitError("СДО не отвечает — попробуй позже")
+    page = parse_assign_page(view.text)
+    if page["submitted"] or "action=removesubmissionconfirm" in view.text:
+        raise SubmitError("СДО не удалил ответ: " + (_notice(BeautifulSoup(resp.text, "html.parser"))
+                                                     or "проверь задание на сайте"))
+    return {"status": page["status"], "url": url}
 
 
 def can_submit(deadline: dict) -> bool:
