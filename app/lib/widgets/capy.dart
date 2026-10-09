@@ -3,11 +3,15 @@
 // кофе, день за ноутбуком, вечер с книгой и лампой, ночь — спит на мяче;
 // радуется, когда сдал или всё хорошо, грустит, когда не загрузилось;
 // на сёрфе (на четырёх лапах, владелец 09.10) — пока обновляется экран.
+// Нажал на неё на «Сегодня» — крупно по центру с подписью (К5, 09.10).
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
 import 'common.dart';
 
 enum CapyPose { morning, day, evening, night, joy, sad, splash, surf }
@@ -20,12 +24,60 @@ CapyPose poseAt(int hour) {
   return CapyPose.night;
 }
 
-const _poseText = {
-  CapyPose.morning: 'Доброе утро. Кофе уже тут',
-  CapyPose.day: 'Работаем',
-  CapyPose.evening: 'Вечер. Лампа горит, дела тают',
-  CapyPose.night: 'Тсс, капибара спит',
+/// Подписи капибары по позе — выбрал владелец (09.10) из вариантов; при
+/// каждом нажатии — следующая по кругу.
+const capyLines = {
+  CapyPose.morning: [
+    'Сначала кофе, потом пары',
+    'Глаза открыты наполовину. Этого хватит',
+    'Проснулась раньше будильника. Почти',
+    'Кофе горячий, дедлайны пока холодные',
+    'Утро начинается с кружки, а не с СДО',
+    'Ещё глоток, и можно в метро',
+    'Утро доброе, если пары не с девяти',
+    'Капибара и кофе: лучший старт дня',
+    'Сделай вид, что ты жаворонок',
+  ],
+  CapyPose.day: [
+    'Пишу лабу. Не отвлекай, пожалуйста',
+    'Ctrl+S каждые пять минут',
+    'Капибара в потоке',
+    'Ещё одна вкладка, и точно всё пойму',
+    'Обед был? Если нет, иди поешь',
+    'Компилируется… можно моргнуть',
+  ],
+  CapyPose.evening: [
+    'Вечер. Лампа горит, дела тают',
+    'Ещё одна глава, и спать',
+    'Читаю лекцию, которую проспала',
+    'Тёплый свет и ни одного дедлайна. Мечта',
+    'Пары кончились, учёба нет',
+    'Сегодня ты молодец. Даже если нет',
+  ],
+  CapyPose.night: [
+    'Тсс, капибара спит',
+    'Zzz… дедлайны подождут до утра',
+    'Спит и видит зачёт автоматом',
+    'Сон тоже подготовка к экзамену',
+    'Пять минут… ещё пять минут…',
+    'Снится, что СДО не упал',
+    'Мяч мягкий, сон крепкий',
+  ],
 };
+
+/// Подписи по случаю — идут первыми, перед подписями позы.
+enum CapyMoment { dayOver, weekOver, dayOff, rain }
+
+const momentLines = {
+  CapyMoment.dayOver: 'На сегодня всё. Свобода',
+  // после последней пары недели, а не «в пятницу»: бывает и суббота (владелец)
+  CapyMoment.weekOver: 'Неделя закончилась, а капибара нет',
+  CapyMoment.dayOff: 'Выходной. Отдыхаю и тебе советую',
+  CapyMoment.rain: 'Зонт не забудь',
+};
+
+/// Пятое нажатие подряд.
+const tickleLine = 'Ну хватит щекотать';
 
 /// Поза — силуэт-маска: цвет даёт тема (как CSS в WebApp), поэтому одна
 /// картинка годится и для «Глубины», и для «Тетради».
@@ -52,10 +104,14 @@ class CapyImage extends StatelessWidget {
 }
 
 /// Капибара в углу «Сегодня»: поза по времени суток и мягкое «дыхание».
+/// Нажал или зажал — она по центру, фон размыт, подпись печатается (К5).
 class CapyBadge extends StatefulWidget {
   final int hour;
   final double size;
-  const CapyBadge({super.key, required this.hour, this.size = 64});
+
+  /// Что сейчас за случай (пары кончились, дождь…) — его подписи первыми.
+  final List<CapyMoment> moments;
+  const CapyBadge({super.key, required this.hour, this.size = 64, this.moments = const []});
 
   @override
   State<CapyBadge> createState() => _CapyBadgeState();
@@ -63,6 +119,9 @@ class CapyBadge extends StatefulWidget {
 
 class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMixin {
   late final _breath = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200))..repeat();
+  int? _at; // какая подпись была последней
+  int _taps = 0;
+  DateTime? _lastTap;
 
   @override
   void dispose() {
@@ -70,19 +129,41 @@ class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMix
     super.dispose();
   }
 
+  List<String> _lines(CapyPose pose) => [for (final m in widget.moments) momentLines[m]!, ...capyLines[pose]!];
+
+  /// Следующая подпись: сначала случай, потом подписи позы по кругу (начиная
+  /// со случайной); пятое нажатие подряд — «хватит щекотать».
+  String _next(CapyPose pose) {
+    final t = DateTime.now();
+    final last = _lastTap;
+    _taps = last != null && t.difference(last) < const Duration(seconds: 12) ? _taps + 1 : 1;
+    _lastTap = t;
+    if (_taps >= 5) {
+      _taps = 0;
+      return tickleLine;
+    }
+    final lines = _lines(pose);
+    final first = widget.moments.isEmpty ? math.Random().nextInt(lines.length) : 0;
+    final i = _at == null ? first : (_at! + 1) % lines.length;
+    _at = i;
+    return lines[i];
+  }
+
+  void _open(CapyPose pose) {
+    tick();
+    showCapy(context, pose, _next(pose));
+  }
+
   @override
   Widget build(BuildContext context) {
     final pose = poseAt(widget.hour);
     final sleepy = pose == CapyPose.night;
     return Semantics(
-      label: _poseText[pose],
+      button: true,
+      label: 'Капибара',
       child: GestureDetector(
-        onTap: () {
-          tick();
-          ScaffoldMessenger.of(context)
-            ..hideCurrentSnackBar()
-            ..showSnackBar(SnackBar(content: Text(_poseText[pose]!), duration: const Duration(seconds: 2)));
-        },
+        onTap: () => _open(pose),
+        onLongPress: () => _open(pose),
         child: AnimatedBuilder(
           animation: _breath,
           builder: (context, child) {
@@ -96,6 +177,147 @@ class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMix
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 600),
             child: CapyImage(key: ValueKey(pose), pose: pose, size: widget.size),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Капибара крупно по центру поверх размытого экрана, подпись печатается по
+/// буквам (владелец, 09.10, К5). Закрывается нажатием в любом месте.
+Future<void> showCapy(BuildContext context, CapyPose pose, String text) => showGeneralDialog(
+  context: context,
+  barrierDismissible: true,
+  barrierLabel: 'Закрыть',
+  barrierColor: Colors.transparent,
+  transitionDuration: const Duration(milliseconds: 380),
+  // Material — иначе у текста в диалоге жёлтое подчёркивание «нет темы»
+  pageBuilder: (context, appear, _) => Material(
+    type: MaterialType.transparency,
+    child: CapyOverlay(pose: pose, text: text, appear: appear),
+  ),
+);
+
+class CapyOverlay extends StatefulWidget {
+  final CapyPose pose;
+  final String text;
+  final Animation<double> appear;
+  const CapyOverlay({super.key, required this.pose, required this.text, required this.appear});
+
+  @override
+  State<CapyOverlay> createState() => _CapyOverlayState();
+}
+
+class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin {
+  late final _bob = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
+  late final _caret = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
+  Timer? _typing;
+  int _shown = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_typing != null || _shown > 0) return;
+    if (MediaQuery.of(context).disableAnimations) {
+      _shown = widget.text.length;
+      return;
+    }
+    _bob.repeat();
+    _caret.repeat();
+    // печатать начинает, когда капибара уже выпрыгнула
+    _typing = Timer.periodic(const Duration(milliseconds: 45), (t) {
+      if (t.tick < 6) return;
+      setState(() => _shown++);
+      if (_shown >= widget.text.length) t.cancel();
+    });
+  }
+
+  @override
+  void dispose() {
+    _typing?.cancel();
+    _bob.dispose();
+    _caret.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final size = math.min(190.0, MediaQuery.sizeOf(context).width * 0.5);
+    final style = s.title(24, color: p.text);
+    return Semantics(
+      label: widget.text,
+      button: true,
+      hint: 'Закрыть',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).maybePop(),
+        child: AnimatedBuilder(
+          animation: widget.appear,
+          builder: (context, child) {
+            final v = widget.appear.value;
+            return BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14 * v, sigmaY: 14 * v),
+              child: ColoredBox(
+                color: p.bg.withValues(alpha: 0.45 * v),
+                child: child,
+              ),
+            );
+          },
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Space.xxl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ScaleTransition(
+                    scale: CurvedAnimation(parent: widget.appear, curve: Curves.easeOutBack),
+                    child: AnimatedBuilder(
+                      animation: _bob,
+                      builder: (context, child) =>
+                          Transform.translate(offset: Offset(0, -7 * math.sin(_bob.value * math.pi)), child: child),
+                      child: CapyImage(pose: widget.pose, size: size),
+                    ),
+                  ),
+                  const SizedBox(height: Space.l),
+                  ExcludeSemantics(
+                    // ненапечатанное — прозрачным: строка не прыгает, пока печатается
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(text: widget.text.substring(0, _shown)),
+                          WidgetSpan(
+                            alignment: PlaceholderAlignment.middle,
+                            child: FadeTransition(
+                              opacity: _caret.drive(
+                                TweenSequence([
+                                  TweenSequenceItem(tween: ConstantTween(1.0), weight: 1),
+                                  TweenSequenceItem(tween: ConstantTween(0.0), weight: 1),
+                                ]),
+                              ),
+                              child: Container(
+                                width: 2,
+                                height: 24,
+                                margin: const EdgeInsets.only(left: 2),
+                                color: p.accent,
+                              ),
+                            ),
+                          ),
+                          TextSpan(
+                            text: widget.text.substring(_shown),
+                            style: const TextStyle(color: Colors.transparent),
+                          ),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                      style: style,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

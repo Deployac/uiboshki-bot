@@ -27,7 +27,20 @@ class TodayData {
   /// может не быть: экран всё равно показывается, просто без них.
   final String name, group;
   final int? week;
-  TodayData(this.lessons, this.tomorrowFirst, this.soon, this.weather, {this.name = '', this.group = '', this.week});
+
+  /// Будут ли ещё пары на этой неделе после сегодня (null — не знаем):
+  /// после последней пары недели у капибары своя подпись.
+  final bool? moreThisWeek;
+  TodayData(
+    this.lessons,
+    this.tomorrowFirst,
+    this.soon,
+    this.weather, {
+    this.name = '',
+    this.group = '',
+    this.week,
+    this.moreThisWeek,
+  });
 }
 
 const _ordinal = ['первая', 'вторая', 'третья', 'четвёртая', 'пятая', 'шестая', 'седьмая', 'восьмая'];
@@ -69,6 +82,27 @@ int minutesTo(DateTime from, DateTime to) {
   if (parts.isEmpty) return null;
   return (temp: parts.first, sky: parts.length > 1 ? shortSky(parts[1]) : '', full: full);
 }
+
+/// Погода по частям для карточки под чипом: «Переменная облачность»,
+/// «ощущается +2°» и совет «куртка не помешает» (пустые — если их нет).
+({String temp, String desc, String feels, String advice})? weatherDetails(String raw) {
+  final w = weatherBrief(raw);
+  if (w == null) return null;
+  final halves = w.full.split(' · ');
+  var desc = '', feels = '';
+  for (final x in halves.first.split(',').skip(1)) {
+    final v = x.trim();
+    if (v.startsWith('ощущается')) {
+      feels = v;
+    } else if (desc.isEmpty && v.isNotEmpty) {
+      desc = v[0].toUpperCase() + v.substring(1);
+    }
+  }
+  return (temp: w.temp, desc: desc, feels: feels, advice: halves.skip(1).join(' · ').trim());
+}
+
+/// Дождь по погоде — капибара напомнит про зонт.
+bool rainy(String raw) => const {'дождь', 'ливень', 'морось', 'гроза'}.contains(weatherBrief(raw)?.sky);
 
 /// «Переменная облачность» → «облачно», «Лёгкий дождь» → «дождь».
 String shortSky(String desc) {
@@ -143,6 +177,8 @@ class _TodayScreenState extends State<TodayScreen> {
     final me = res[1] is Map ? res[1] as Map : const {};
     final group = me['group'] is Map ? '${me['group']['name'] ?? ''}' : '';
     final week = res[2] is Map ? res[2]['week'] : null;
+    final days = res[2] is Map && res[2]['days'] is List ? res[2]['days'] as List : null;
+    final today = iso(now());
     return TodayData(
       lessons,
       tf == null ? null : Lesson.fromJson(tf),
@@ -151,6 +187,9 @@ class _TodayScreenState extends State<TodayScreen> {
       name: '${me['first_name'] ?? ''}'.trim(),
       group: group,
       week: week is int ? week : null,
+      moreThisWeek: days == null || days.isEmpty
+          ? null
+          : days.any((d) => d is Map && '${d['date']}'.compareTo(today) > 0 && (d['dots'] as List? ?? []).isNotEmpty),
     );
   }
 
@@ -168,8 +207,9 @@ class _TodayScreenState extends State<TodayScreen> {
 }
 
 /// Шапка: группа с неделей и погода одной строкой (не влезает — погода
-/// только температурой, совсем узко — второй строкой).
-class TodayTop extends StatelessWidget {
+/// только температурой, совсем узко — второй строкой). Нажал на погоду —
+/// чип раскрывается карточкой на месте и сдвигает экран вниз (П5, 09.10).
+class TodayTop extends StatefulWidget {
   final TodayData data;
   const TodayTop({super.key, required this.data});
 
@@ -177,9 +217,21 @@ class TodayTop extends StatelessWidget {
   static const _gap = 5.0, _pad = 8.0, _padV = 4.5;
 
   @override
+  State<TodayTop> createState() => _TodayTopState();
+}
+
+class _TodayTopState extends State<TodayTop> {
+  static const _gap = TodayTop._gap, _pad = TodayTop._pad;
+  bool _open = false;
+
+  void _toggle() => setState(() => _open = !_open);
+
+  @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
+    final data = widget.data;
     final wx = weatherBrief(data.weather);
+    final details = weatherDetails(data.weather);
     final head = [if (data.group.isNotEmpty) data.group, if (data.week != null) '${data.week} неделя'].join(' · ');
     // меряем тем же стилем, каким рисует Text (с межбуквенным из темы); подписи
     // в шапке растут с системным шрифтом не больше чем на 15 % — иначе на
@@ -219,21 +271,32 @@ class TodayTop extends StatelessWidget {
                 }
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Wrap(
-                    spacing: _gap,
-                    runSpacing: _gap,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (head.isNotEmpty) _Chip(head, style: style, scaler: scaler),
-                      if (sky != null)
-                        _Chip(
-                          sky,
-                          style: style,
-                          scaler: scaler,
-                          label: 'Погода: ${wx!.full}',
-                          onTap: () => ScaffoldMessenger.maybeOf(context)
-                            ?..hideCurrentSnackBar()
-                            ..showSnackBar(SnackBar(content: Text(wx.full), duration: const Duration(seconds: 3))),
-                        ),
+                      Wrap(
+                        spacing: _gap,
+                        runSpacing: _gap,
+                        children: [
+                          if (head.isNotEmpty) _Chip(head, style: style, scaler: scaler),
+                          if (sky != null)
+                            _Chip(
+                              sky,
+                              style: style,
+                              scaler: scaler,
+                              label: _open ? 'Свернуть погоду' : 'Погода: ${wx!.full}',
+                              onTap: _toggle,
+                            ),
+                        ],
+                      ),
+                      AnimatedSize(
+                        duration: const Duration(milliseconds: 320),
+                        curve: Curves.easeOutCubic,
+                        alignment: Alignment.topCenter,
+                        child: _open && details != null
+                            ? _WeatherCard(details, onTap: _toggle)
+                            : const SizedBox(width: double.infinity),
+                      ),
                     ],
                   ),
                 );
@@ -241,6 +304,89 @@ class TodayTop extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Погода целиком карточкой под чипом: температура крупно, небо, «ощущается»
+/// и совет плашкой. Нажал — свернулась.
+class _WeatherCard extends StatelessWidget {
+  final ({String temp, String desc, String feels, String advice}) w;
+  final VoidCallback onTap;
+  const _WeatherCard(this.w, {required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Semantics(
+      button: true,
+      label: 'Свернуть погоду',
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          tick();
+          onTap();
+        },
+        child: TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 260),
+          builder: (context, v, child) => Opacity(opacity: v, child: child),
+          child: Container(
+            key: const ValueKey('today:weather'),
+            margin: const EdgeInsets.only(top: Space.s),
+            padding: const EdgeInsets.fromLTRB(Space.l, Space.m, Space.l, Space.m),
+            decoration: BoxDecoration(
+              color: p.card,
+              borderRadius: BorderRadius.circular(Radii.tile),
+              border: Border.all(color: p.line),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(w.temp, style: s.number(40)),
+                    const SizedBox(width: Space.m),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (w.desc.isNotEmpty) Text(w.desc, style: s.body(15, weight: FontWeight.w600)),
+                          if (w.feels.isNotEmpty) Text(w.feels, style: s.body(13, color: p.muted)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                if (w.advice.isNotEmpty) ...[
+                  const SizedBox(height: Space.s),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: p.accent.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(Radii.chip),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.checkroom_rounded, size: 15, color: p.accent),
+                        const SizedBox(width: 6),
+                        Flexible(
+                          child: Text(
+                            w.advice,
+                            style: s.body(13, weight: FontWeight.w600, color: p.accent),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -286,6 +432,19 @@ class _MainView extends StatelessWidget {
   final Api api;
   final Widget top;
   const _MainView({super.key, required this.data, required this.api, required this.top});
+
+  /// Случай для подписи капибары: выходной, пары кончились (последняя пара
+  /// недели — своя подпись), дождь. Ночью капибара спит — только выходной.
+  List<CapyMoment> _moments(DateTime t, Lesson? current, Lesson? next) {
+    final awake = poseAt(t.hour) != CapyPose.night;
+    return [
+      if (data.lessons.isEmpty)
+        CapyMoment.dayOff
+      else if (awake && current == null && next == null)
+        data.moreThisWeek == false ? CapyMoment.weekOver : CapyMoment.dayOver,
+      if (awake && rainy(data.weather)) CapyMoment.rain,
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -344,7 +503,7 @@ class _MainView extends StatelessWidget {
             children: [
               Expanded(child: FitWords(title, style: s.title(30))),
               const SizedBox(width: Space.s),
-              CapyBadge(hour: t.hour, size: 62),
+              CapyBadge(hour: t.hour, size: 62, moments: _moments(t, current, next)),
             ],
           ),
         ),
