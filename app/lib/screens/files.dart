@@ -12,6 +12,7 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
+import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import '../widgets/tg_html.dart';
 
@@ -796,12 +797,7 @@ class _PageSheetState extends State<_PageSheet> {
         SizedBox(width: double.infinity, child: whole),
       ];
     } else if (d == null) {
-      children = [
-        Padding(
-          padding: const EdgeInsets.all(Space.xxl),
-          child: Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5)),
-        ),
-      ];
+      children = [Padding(padding: const EdgeInsets.all(Space.xxl), child: const CapyLoading())];
     } else {
       final page = (d['page'] as num?)?.toInt() ?? _page;
       final pages = (d['pages'] as num?)?.toInt() ?? page;

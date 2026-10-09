@@ -155,10 +155,7 @@ class _TaskScreenState extends State<TaskScreen> {
                     },
                   )
                 else
-                  Padding(
-                    padding: const EdgeInsets.all(Space.xxl),
-                    child: Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5)),
-                  ),
+                  Padding(padding: const EdgeInsets.all(Space.xxl), child: const CapyLoading()),
                 // вход устарел или не подключён — сразу к подключению, потом задание заново
                 if (t == null && _error != null && needsSdo(_error!))
                   Padding(

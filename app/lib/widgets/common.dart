@@ -322,7 +322,6 @@ class _LoaderState<T> extends State<Loader<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final p = AppStyle.of(context).p;
     if (_data != null) {
       return CapyRefresh(onRefresh: _reload, child: widget.builder(context, _data as T, _reload));
     }
@@ -339,6 +338,6 @@ class _LoaderState<T> extends State<Loader<T>> {
         ],
       );
     }
-    return Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5));
+    return const CapyLoading();
   }
 }

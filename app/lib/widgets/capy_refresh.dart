@@ -1,7 +1,7 @@
-// Капибара при обновлении (владелец, 09.10, пункт 26 — «все это»): потянул
-// экран вниз — сверху выезжает карточка с капибарой, отпустил — она занята
-// своим делом, пока не придут данные. Сцены идут по кругу: сёрф, ноутбук,
-// лампа, мяч, мандарин; ночью — спит.
+// Капибара, пока грузится (владелец, 09.10, пункт 26 — «все это»): на месте
+// крутилки при первой загрузке экрана — сцена с подписью (`CapyLoading`);
+// потянул экран вниз — маленькая капибара сверху, без плашки (`CapyRefresh`).
+// Сцены идут по кругу: сёрф, ноутбук, лампа, мяч, мандарин; ночью — спит.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -44,16 +44,18 @@ class CapyRefresh extends StatefulWidget {
   final int? hour;
   const CapyRefresh({super.key, required this.onRefresh, required this.child, this.hour});
 
-  /// Высота карточки со сценой.
-  static const cardHeight = 112.0;
+  /// Высота маленькой сцены сверху.
+  static const cardHeight = 56.0;
 
   @override
   State<CapyRefresh> createState() => _CapyRefreshState();
 }
 
-class _CapyRefreshState extends State<CapyRefresh> with SingleTickerProviderStateMixin {
+class _CapyRefreshState extends State<CapyRefresh> with TickerProviderStateMixin {
   // 0 — карточка спрятана над экраном, 1 — видна целиком
   late final _pos = AnimationController(vsync: this, duration: const Duration(milliseconds: 280));
+  // пока грузится, экран чуть съезжает вниз — капибара в просвете, а не поверх строк
+  late final _gap = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
   RefreshIndicatorStatus? _status;
   CapyScene _scene = CapyScene.surf;
   double _drag = 0;
@@ -62,6 +64,7 @@ class _CapyRefreshState extends State<CapyRefresh> with SingleTickerProviderStat
   @override
   void dispose() {
     _pos.dispose();
+    _gap.dispose();
     super.dispose();
   }
 
@@ -78,6 +81,7 @@ class _CapyRefreshState extends State<CapyRefresh> with SingleTickerProviderStat
         if (was == RefreshIndicatorStatus.drag) tick();
       case RefreshIndicatorStatus.snap:
         _pos.animateTo(1, curve: Curves.easeOutBack);
+        _gap.animateTo(1, curve: Curves.easeOutCubic);
       case RefreshIndicatorStatus.canceled:
         if (!_busy) _pos.animateTo(0, curve: Curves.easeIn);
       case RefreshIndicatorStatus.done:
@@ -95,6 +99,7 @@ class _CapyRefreshState extends State<CapyRefresh> with SingleTickerProviderStat
       if (mounted) {
         _busy = false;
         _pos.animateTo(0, duration: const Duration(milliseconds: 320), curve: Curves.easeInCubic);
+        _gap.animateTo(0, duration: const Duration(milliseconds: 320), curve: Curves.easeInCubic);
       }
     }
   }
@@ -123,7 +128,12 @@ class _CapyRefreshState extends State<CapyRefresh> with SingleTickerProviderStat
       onNotification: _onScroll,
       child: Stack(
         children: [
-          RefreshIndicator.noSpinner(onRefresh: _run, onStatusChange: _onStatus, child: widget.child),
+          AnimatedBuilder(
+            animation: _gap,
+            builder: (context, child) =>
+                Transform.translate(offset: Offset(0, (CapyRefresh.cardHeight + 8) * _gap.value), child: child),
+            child: RefreshIndicator.noSpinner(onRefresh: _run, onStatusChange: _onStatus, child: widget.child),
+          ),
           Positioned(
             top: 0,
             left: 0,
@@ -152,47 +162,57 @@ class _CapyRefreshState extends State<CapyRefresh> with SingleTickerProviderStat
   }
 }
 
+/// Маленькая сцена при «потянуть»: без плашки и подписи (владелец, 09.10).
 class _Card extends StatelessWidget {
   final CapyScene scene;
   const _Card({required this.scene});
 
   @override
+  Widget build(BuildContext context) => Semantics(
+    liveRegion: true,
+    label: 'Обновляю',
+    child: Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: SizedBox(
+          key: const Key('capy:refresh'),
+          width: 132,
+          height: CapyRefresh.cardHeight,
+          child: FittedBox(
+            child: SizedBox(width: 220, height: 94, child: CapySceneView(scene: scene)),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// Вместо крутилки, пока экран грузится первый раз: сцена и подпись.
+class CapyLoading extends StatefulWidget {
+  /// Час для выбора сцены (тесты, стенд); по умолчанию — сейчас.
+  final int? hour;
+  const CapyLoading({super.key, this.hour});
+
+  @override
+  State<CapyLoading> createState() => _CapyLoadingState();
+}
+
+class _CapyLoadingState extends State<CapyLoading> {
+  late final _scene = CapyScenes.next(widget.hour ?? now().hour);
+
+  @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
-    final p = s.p;
-    return Semantics(
-      liveRegion: true,
-      label: 'Обновляю',
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.only(top: 8),
-          child: Container(
-            key: const Key('capy:refresh'),
-            width: 220,
-            height: CapyRefresh.cardHeight,
-            decoration: BoxDecoration(
-              color: p.cardSolid,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: p.line),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: p.dark ? .35 : .12),
-                  blurRadius: 18,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                Expanded(child: CapySceneView(scene: scene)),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8, top: 2),
-                  child: Text(sceneText[scene]!, style: s.body(12, color: p.muted)),
-                ),
-              ],
-            ),
-          ),
+    return Center(
+      child: Semantics(
+        label: 'Загружаю',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(width: 220, height: 110, child: CapySceneView(scene: _scene)),
+            const SizedBox(height: 6),
+            Text(sceneText[_scene]!, style: s.body(13, color: s.p.muted)),
+          ],
         ),
       ),
     );
@@ -255,10 +275,10 @@ class _CapySceneViewState extends State<CapySceneView> with SingleTickerProvider
     final wave = math.sin(t * 2 * math.pi);
     switch (widget.scene) {
       case CapyScene.surf:
-        const size = 92.0;
+        const size = 112.0;
         const sea = Color(0xFF4F8CFF);
-        // доска в картинке — на 0,79 высоты: ставим её на гребни волн
-        final top = h - 18 - size * 0.79;
+        // доска в картинке — на 0,81 высоты: ставим её на гребни волн
+        final top = h - 18 - size * 0.81;
         final lift = math.cos(t * 4 * math.pi).abs();
         return [
           Positioned.fill(child: CustomPaint(painter: _Waves(t, sea, front: false))),
@@ -268,7 +288,7 @@ class _CapySceneViewState extends State<CapySceneView> with SingleTickerProvider
             top: top - lift * 5,
             child: Transform.rotate(
               angle: wave * 7 * math.pi / 180,
-              alignment: const Alignment(0, 0.58),
+              alignment: const Alignment(0, 0.62),
               child: const CapyImage(pose: CapyPose.surf, size: size),
             ),
           ),

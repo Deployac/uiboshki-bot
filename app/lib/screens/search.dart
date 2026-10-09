@@ -520,7 +520,7 @@ class _TargetScreenState extends State<TargetScreen> {
       );
     }
     final d = _data;
-    if (d == null) return Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5));
+    if (d == null) return const CapyLoading();
     final (kind, _) = _kinds[widget.type] ?? ('Расписание', Icons.calendar_today_outlined);
     final week = _weeks.isEmpty ? null : _weeks[_week] as Map;
     final days = week == null ? const [] : week['days'] as List;

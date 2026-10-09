@@ -10,6 +10,7 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
+import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import 'lesson.dart';
 import 'today.dart';
@@ -203,10 +204,7 @@ class _TodayDaysState extends State<TodayDays> {
           pose: CapyPose.sad,
         );
       }
-      return Padding(
-        padding: const EdgeInsets.all(Space.xl),
-        child: Center(child: CircularProgressIndicator(color: AppStyle.of(context).p.accent, strokeWidth: 2.5)),
-      );
+      return Padding(padding: const EdgeInsets.all(Space.xl), child: const CapyLoading());
     }
     if (lessons.isEmpty) return const Notice(title: 'Пар нет', text: 'Свободный день.', pose: CapyPose.joy);
     return Column(

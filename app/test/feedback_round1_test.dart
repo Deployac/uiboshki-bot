@@ -12,6 +12,7 @@ import 'package:uiboshki/screens/notify.dart';
 import 'package:uiboshki/screens/study.dart';
 import 'package:uiboshki/screens/week.dart';
 import 'package:uiboshki/theme/app_theme.dart';
+import 'package:uiboshki/widgets/capy_refresh.dart';
 import 'package:uiboshki/widgets/common.dart';
 
 import 'fake_api.dart';
@@ -149,7 +150,7 @@ void main() {
     );
     await t.pump();
     await t.pump();
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(CapyLoading), findsNothing); // данные из запаса — без «загружаю»
     await settle(t);
     expect(find.text('новое'), findsOneWidget);
     expect(Api.base, isNotEmpty);
