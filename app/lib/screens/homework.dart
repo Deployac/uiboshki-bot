@@ -24,11 +24,17 @@ class Homework {
       hasFile = j['has_file'] == true;
 }
 
-/// «чт, 9 октября»
+/// «пт, 9 окт» — везде на доске ДЗ и в заметках один формат (владелец, 2.14).
 String shortDay(String isoDate) {
   final d = DateTime.tryParse(isoDate);
   if (d == null) return isoDate;
-  return '${weekdaysShort[d.weekday - 1].toLowerCase()}, ${d.day} ${monthsGen[d.month - 1]}';
+  return '${weekdaysShort[d.weekday - 1].toLowerCase()}, ${d.day} ${monthsShort[d.month - 1]}';
+}
+
+/// Задание к прошедшей паре (срок раньше сегодня) — вниз, под «Прошло».
+bool homeworkPast(Homework h, DateTime today) {
+  final d = DateTime.tryParse(h.lessonDate);
+  return d != null && d.isBefore(DateTime(today.year, today.month, today.day));
 }
 
 /// Экран поверх вкладок: фон, «назад», загрузка.
@@ -67,36 +73,46 @@ class HomeworkScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => _Page<List<Homework>>(
     load: () async => [for (final h in (await api.get('/homework'))['items'] as List) Homework.fromJson(h)],
-    builder: (context, items) => ListView(
-      padding: const EdgeInsets.only(bottom: Space.xxl),
-      children: [
-        const BackRow(),
-        ScreenTitle(
-          eyebrow: items.isEmpty ? null : '${items.length} ${_tasks(items.length)} от старосты',
-          title: 'ДЗ группы',
+    builder: (context, items) {
+      final t = now();
+      final past = [for (final h in items) if (homeworkPast(h, t)) h];
+      final ahead = [for (final h in items) if (!homeworkPast(h, t)) h];
+      Widget card(Homework h, {bool past = false}) => Padding(
+        padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+        child: Opacity(
+          opacity: past ? 0.55 : 1,
+          child: _HomeworkCard(h: h, past: past, onSend: () => _send(context, h)),
         ),
-        if (items.isEmpty)
-          const Notice(
-            title: 'Доска ДЗ пока пустая',
-            text: 'Староста добавит задания — они появятся тут.',
-            pose: CapyPose.joy,
-          ),
-        for (final h in items)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-            child: _HomeworkCard(h: h, onSend: () => _send(context, h)),
-          ),
-      ],
-    ),
+      );
+      return ListView(
+        padding: const EdgeInsets.only(bottom: Space.xxl),
+        children: [
+          const BackRow(),
+          const ScreenTitle(title: 'ДЗ группы'),
+          if (items.isEmpty)
+            const Notice(
+              title: 'Доска ДЗ пока пустая',
+              text: 'Староста добавит задания — они появятся тут.',
+              pose: CapyPose.joy,
+            ),
+          for (final h in ahead) card(h),
+          if (past.isNotEmpty) ...[
+            const Section('Прошло'),
+            for (final h in past) card(h, past: true),
+          ],
+        ],
+      );
+    },
   );
 }
-
-String _tasks(int n) => plural(n, 'задание', 'задания', 'заданий');
 
 class _HomeworkCard extends StatelessWidget {
   final Homework h;
   final VoidCallback onSend;
-  const _HomeworkCard({required this.h, required this.onSend});
+
+  /// Пара уже была — дата без «горящего» цвета.
+  final bool past;
+  const _HomeworkCard({required this.h, required this.onSend, this.past = false});
 
   @override
   Widget build(BuildContext context) {
@@ -125,11 +141,11 @@ class _HomeworkCard extends StatelessWidget {
                     const SizedBox(height: Space.s),
                     Row(
                       children: [
-                        Icon(Icons.event_outlined, size: 14, color: p.warn),
+                        Icon(Icons.event_outlined, size: 14, color: past ? p.muted : p.warn),
                         const SizedBox(width: 4),
                         Text(
                           'к паре · ${shortDay(h.lessonDate)}',
-                          style: s.body(12, weight: FontWeight.w600, color: p.warn),
+                          style: s.body(12, weight: FontWeight.w600, color: past ? p.muted : p.warn),
                         ),
                       ],
                     ),

@@ -1,6 +1,8 @@
 // «Из какой ты группы?» — поиск по справочнику групп МИРЭА (как лист в
 // WebApp и /group в боте). Без группы приложение не показывает данные:
-// расписание, сроки и файлы у каждой группы свои (этап 1).
+// расписание, сроки и файлы у каждой группы свои (этап 1). Из «Ещё →
+// Группа» — сверху «Сейчас: УИБО-03-24», под поиском «Я староста этой
+// группы» (владелец, 2.7).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -27,6 +29,37 @@ class _GroupPickScreenState extends State<GroupPickScreen> {
   List<Map<String, dynamic>> _items = [];
   String? _note;
   int _seq = 0;
+
+  /// Текущая группа из /me (только не при первом выборе).
+  Map<String, dynamic>? _current;
+  String? _adminNote;
+
+  @override
+  void initState() {
+    super.initState();
+    if (!widget.required) _loadCurrent();
+  }
+
+  Future<void> _loadCurrent() async {
+    try {
+      final me = await widget.api.get('/me');
+      final g = me is Map ? me['group'] : null;
+      if (g is Map && mounted) setState(() => _current = Map<String, dynamic>.from(g));
+    } catch (_) {} // нет сети — просто без строки «Сейчас»
+  }
+
+  /// «Я староста этой группы» — запрос владельцу бота, ответ придёт в бота.
+  Future<void> _askAdmin() async {
+    tick();
+    try {
+      await widget.api.post('/me/group/admin');
+      if (mounted) setState(() => _adminNote = 'Запрос отправлен — ответ придёт в бота.');
+    } on ApiError catch (e) {
+      if (mounted) setState(() => _adminNote = e.message);
+    } catch (_) {
+      if (mounted) setState(() => _adminNote = 'Нет связи с сервером.');
+    }
+  }
 
   @override
   void dispose() {
@@ -95,6 +128,23 @@ class _GroupPickScreenState extends State<GroupPickScreen> {
                 else
                   const SizedBox(height: Space.xl),
                 const ScreenTitle(title: 'Из какой ты группы?'),
+                if (_current != null)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.m),
+                    child: Text.rich(
+                      TextSpan(
+                        children: [
+                          const TextSpan(text: 'Сейчас: '),
+                          TextSpan(
+                            text: '${_current!['name']}',
+                            style: s.body(17, weight: FontWeight.w700),
+                          ),
+                        ],
+                      ),
+                      key: const Key('group:current'),
+                      style: s.body(17, color: p.muted),
+                    ),
+                  ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: Space.l),
                   child: TextField(
@@ -143,6 +193,33 @@ class _GroupPickScreenState extends State<GroupPickScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: Space.xl, vertical: Space.s),
                     child: Text(_note!, style: s.body(14, color: p.muted)),
+                  ),
+                // своей группой у бота заведует владелец — там просить нечего
+                if (_current != null && _current!['own'] != true)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(Space.l, Space.m, Space.l, 0),
+                    child: Tile(
+                      onTap: _adminNote == null ? _askAdmin : null,
+                      padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+                      child: Row(
+                        children: [
+                          Icon(Icons.verified_user_outlined, color: p.accent),
+                          const SizedBox(width: Space.m),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Я староста этой группы', style: s.body(16, weight: FontWeight.w600)),
+                                Text(
+                                  _adminNote ?? 'спрошу владельца бота — сможешь вести общие сроки и ДЗ',
+                                  style: s.body(13, color: p.muted),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
               ],
             ),

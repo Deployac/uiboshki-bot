@@ -140,7 +140,7 @@ class _TaskScreenState extends State<TaskScreen> {
               children: [
                 const BackRow(),
                 ScreenTitle(
-                  eyebrow: [if (widget.course.isNotEmpty) widget.course, _quiz ? 'тест' : 'задание'].join(' · '),
+                  sub: [if (widget.course.isNotEmpty) widget.course, if (_quiz) 'тест'].join(' · '),
                   title: '${t?['title'] ?? w['name']}',
                 ),
                 if (t != null)

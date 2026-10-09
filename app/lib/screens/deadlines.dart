@@ -384,8 +384,13 @@ class _Entry extends StatelessWidget {
         children: [
           Icon(icon, size: 20, color: s.p.accent),
           const SizedBox(width: Space.s),
+          // одной строкой: на узком экране с крупным шрифтом — мельче (2.17)
           Expanded(
-            child: Text(text, style: s.body(15, weight: FontWeight.w600)),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(text, style: s.body(15, weight: FontWeight.w600), maxLines: 1, softWrap: false),
+            ),
           ),
           Icon(Icons.chevron_right_rounded, size: 20, color: s.p.muted),
         ],

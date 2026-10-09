@@ -122,16 +122,20 @@ class Tile extends StatelessWidget {
 }
 
 /// Заголовок экрана: крупное название с короткой прямой чертой под ним (без
-/// дуги — решение владельца). Строка над ним — только с данными (дата,
-/// неделя, сколько файлов); фразы-пояснения убраны (владелец, 09.10, 14А).
+/// дуги — решение владельца). Мелких курсивных подписей над ним нет
+/// (владелец, 2.4): нужное по смыслу («экзамен», предмет задания) — строкой
+/// [sub] под названием обычным шрифтом. Длинное название — мельче, до трёх
+/// строк (2.3).
 class ScreenTitle extends StatelessWidget {
-  final String? eyebrow;
   final String title;
   final Widget? trailing;
 
-  /// Строка над заголовком вместо [eyebrow], если в ней не только текст.
+  /// Строка под названием: «экзамен», «Анализ данных · тест».
+  final String? sub;
+
+  /// Строка над заголовком, если в ней не только текст (даты недели со стрелками).
   final Widget? lead;
-  const ScreenTitle({super.key, this.eyebrow, required this.title, this.trailing, this.lead});
+  const ScreenTitle({super.key, required this.title, this.trailing, this.lead, this.sub});
 
   @override
   Widget build(BuildContext context) {
@@ -145,14 +149,12 @@ class ScreenTitle extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (lead != null) ...[
-                  lead!,
-                  const SizedBox(height: 6),
-                ] else if (eyebrow != null) ...[
-                  Text(eyebrow!, style: s.eyebrow()),
-                  const SizedBox(height: 6),
+                if (lead != null) ...[lead!, const SizedBox(height: 6)],
+                FitWords(title, style: s.title(titleSize(title, 34)), maxLines: 3),
+                if (sub != null && sub!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(sub!, style: s.body(15, color: s.p.muted)),
                 ],
-                FitWords(title, style: s.title(34)),
                 const SizedBox(height: 10),
                 Container(
                   width: 34,
@@ -169,9 +171,21 @@ class ScreenTitle extends StatelessWidget {
   }
 }
 
+/// Кегль заголовка по длине: длинные названия предметов («Анализ и
+/// диагностика финансово-хозяйственной…») — мельче (владелец, 2.3).
+double titleSize(String text, double base) {
+  final n = text.length;
+  if (n > 60) return base * 0.62;
+  if (n > 40) return base * 0.72;
+  if (n > 26) return base * 0.86;
+  return base;
+}
+
 /// Крупный заголовок без разрыва слов посередине («Безопасн/ость»,
-/// «хозяйственн/ой»): если самое длинное слово не влезает в строку (узкий
-/// экран, крупный системный шрифт), шрифт уменьшается ровно до влезания.
+/// «хозяйственн/ой») и после дефиса («финансово-/хозяйственной»): если самое
+/// длинное слово не влезает в строку (узкий экран, крупный системный шрифт),
+/// шрифт уменьшается ровно до влезания; с [maxLines] — ещё и пока текст
+/// не уляжется в столько строк.
 class FitWords extends StatelessWidget {
   final String text;
   final TextStyle style;
@@ -179,24 +193,52 @@ class FitWords extends StatelessWidget {
   /// Ширина строки, если известна заранее (внутри IntrinsicHeight
   /// LayoutBuilder нельзя); без неё — по месту.
   final double? width;
-  const FitWords(this.text, {super.key, required this.style, this.width});
+  final int? maxLines;
+  const FitWords(this.text, {super.key, required this.style, this.width, this.maxLines});
 
-  static final _gaps = RegExp(r'[\s\-‐–—/]+');
+  static final _gaps = RegExp(r'[\s/]+');
+
+  /// Слово через дефис не рвётся: после дефиса — «соединитель слов» (U+2060).
+  static String glue(String text) => text.replaceAllMapped(RegExp(r'(\S)-(?=\S)'), (m) => '${m[1]}-\u2060');
 
   Widget _fit(BuildContext context, double max) {
     final scaler = MediaQuery.textScalerOf(context);
-    var widest = 0.0;
-    for (final w in text.split(_gaps)) {
-      final tp = TextPainter(
-        text: TextSpan(text: w, style: style),
-        textScaler: scaler,
-        textDirection: Directionality.of(context),
-      )..layout();
-      if (tp.width > widest) widest = tp.width;
-      tp.dispose();
+    final dir = Directionality.of(context);
+    final shown = glue(text);
+    var size = style.fontSize ?? 14;
+    if (max.isFinite) {
+      var widest = 0.0;
+      for (final w in shown.split(_gaps)) {
+        final tp = TextPainter(
+          text: TextSpan(text: w, style: style),
+          textScaler: scaler,
+          textDirection: dir,
+        )..layout();
+        if (tp.width > widest) widest = tp.width;
+        tp.dispose();
+      }
+      if (widest > max) size = size * max / widest * 0.98;
+      // в [maxLines] строк — мельче, но не меньше 60 % от начального
+      final floor = (style.fontSize ?? 14) * 0.6;
+      while (maxLines != null && size > floor) {
+        final tp = TextPainter(
+          text: TextSpan(text: shown, style: style.copyWith(fontSize: size)),
+          textScaler: scaler,
+          textDirection: dir,
+          maxLines: maxLines,
+        )..layout(maxWidth: max);
+        final over = tp.didExceedMaxLines;
+        tp.dispose();
+        if (!over) break;
+        size *= 0.93;
+      }
     }
-    if (!max.isFinite || widest <= max) return Text(text, style: style);
-    return Text(text, style: style.copyWith(fontSize: (style.fontSize ?? 14) * max / widest * 0.98));
+    return Text(
+      shown,
+      style: size == style.fontSize ? style : style.copyWith(fontSize: size),
+      maxLines: maxLines,
+      overflow: maxLines == null ? null : TextOverflow.ellipsis,
+    );
   }
 
   @override

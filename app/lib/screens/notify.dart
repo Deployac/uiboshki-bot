@@ -150,7 +150,7 @@ class _NotifyBodyState extends State<_NotifyBody> {
               const SizedBox(width: Space.s),
               Expanded(
                 child: Text(
-                  'Уведомления в Telegram и пушами PWA; пуши приложения — скоро.',
+                  'Уведомления — в Telegram и в браузере; в приложении — скоро.',
                   style: s.body(13, color: p.muted),
                 ),
               ),

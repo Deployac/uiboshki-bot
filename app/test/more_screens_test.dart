@@ -43,7 +43,7 @@ void main() {
     await settle(t);
     expect(asked, contains('GET /api/notify'));
     expect(find.text('Утреннее расписание'), findsOneWidget);
-    expect(find.textContaining('пуши приложения — скоро'), findsOneWidget);
+    expect(find.textContaining('в браузере; в приложении — скоро'), findsOneWidget);
 
     await t.tap(find.byKey(const Key('notify:weather')));
     await settle(t);

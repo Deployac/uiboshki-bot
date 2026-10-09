@@ -135,8 +135,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Spacer(),
                       CapyImage(pose: CapyPose.splash, size: 120, color: p.accent),
                       const SizedBox(height: Space.xl),
-                      Text('учёба МИРЭА · расписание · сроки · баллы', style: s.eyebrow()),
-                      const SizedBox(height: 6),
                       FitWords('Капибара', style: s.title(54), width: box.maxWidth - 2 * Space.xl),
                       const SizedBox(height: 10),
                       Container(
@@ -146,7 +144,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: Space.l),
                       Text(
-                        'Без паролей и кодов из SMS: через бота в Telegram, VK или Яндекс.',
+                        'Расписание, сроки и баллы МИРЭА. Без паролей и кодов из SMS: '
+                        'через бота в Telegram, VK или Яндекс.',
                         style: s.body(16, color: p.muted),
                       ),
                       const Spacer(),

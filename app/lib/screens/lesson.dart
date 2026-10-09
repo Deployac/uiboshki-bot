@@ -85,25 +85,39 @@ class LessonScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          [
-                            if (lesson.kind.isNotEmpty) lesson.kind[0].toUpperCase() + lesson.kind.substring(1),
-                            if (live) 'идёт',
-                          ].join(' · '),
-                          style: s.eyebrow(color: c),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: Space.s),
-                    FitWords(lesson.title, style: s.title(30)),
+                    // длинное название — мельче, до трёх строк (2.3); вид пары —
+                    // строкой под ним обычным шрифтом, не курсивом сверху (2.4)
+                    FitWords(lesson.title, style: s.title(titleSize(lesson.title, 30)), maxLines: 3),
+                    if (lesson.kind.isNotEmpty || live) ...[
+                      const SizedBox(height: Space.xs),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  if (lesson.kind.isNotEmpty)
+                                    TextSpan(text: lesson.kind[0].toUpperCase() + lesson.kind.substring(1)),
+                                  if (lesson.kind.isNotEmpty && live) const TextSpan(text: ' · '),
+                                  if (live)
+                                    TextSpan(
+                                      text: 'идёт',
+                                      style: TextStyle(color: c, fontWeight: FontWeight.w700),
+                                    ),
+                                ],
+                              ),
+                              style: s.body(15, color: p.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: Space.l),
                     Row(
                       children: [

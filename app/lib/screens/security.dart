@@ -233,7 +233,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                   ),
                 ],
                 const Section('Как защищены данные'),
-                for (final (icon, title, text) in _facts(d.security))
+                for (final (icon, title, text, meaning) in _facts(d.security))
                   Padding(
                     padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
                     child: Tile(
@@ -249,6 +249,8 @@ class _SecurityScreenState extends State<SecurityScreen> {
                                 Text(title, style: s.body(15, weight: FontWeight.w600)),
                                 const SizedBox(height: 2),
                                 Text(text, style: s.body(13, color: p.muted)),
+                                const SizedBox(height: 4),
+                                Text(meaning, style: s.body(13, weight: FontWeight.w600)),
                               ],
                             ),
                           ),
@@ -276,49 +278,50 @@ String _seen(String? at) {
   return '${t.day} ${monthsGen[t.month - 1]}';
 }
 
-/// Коротко о защите — смысл как в листе WebApp, цифры с сервера.
-List<(IconData, String, String)> _facts(Map s) {
-  final key =
-      {
-        'passphrase': 'из секретной фразы старосты',
-        'key': 'отдельный ключ старосты',
-        'bot_token': 'производный от ключа бота',
-      }[s['key_source']] ??
-      'в настройках сервера';
+/// Коротко о защите: что сделано и что это значит для тебя — простыми
+/// словами, без названий шифров и ключей (владелец, 2.11); цифры с сервера.
+List<(IconData, String, String, String)> _facts(Map s) {
   final lim = (s['limits'] as Map?) ?? const {};
   final ai = (lim['ai'] as Map?)?['count'] ?? 15;
   final sub = (lim['submit'] as Map?) ?? const {};
+  final minutes = s['link_minutes'] ?? 10;
   return [
     (
       Icons.lock_outline_rounded,
       'Вход в СДО зашифрован',
-      '${s['sdo'] == 'ok' ? 'Твой вход подключён. ' : ''}Хранится не пароль, а только «оставаться в системе» — '
-          'зашифрованным (Fernet). Ключ — $key, отдельно от базы.',
+      '${s['sdo'] == 'ok' ? 'Твой вход подключён. ' : ''}Пароль не хранится — только «оставаться в системе», '
+          'и тот зашифрован. Ключ лежит отдельно от базы.',
+      'Даже если базу украдут, без ключа вход не прочитать.',
     ),
     (
       Icons.phonelink_lock_outlined,
       'Вход в приложение',
-      'Через бота: на телефоне — ключ этого устройства, на сервере — только его отпечаток. Выйти — выше.',
+      'Через бота, без пароля. Ключ входа есть только на этом телефоне, на сервере — его отпечаток.',
+      'Потерял телефон — выйди на нём кнопкой выше, и ключ перестанет работать.',
     ),
     (
       Icons.download_outlined,
       'Файлы — по коротким ссылкам',
-      'Ссылка на скачивание подписана и живёт ${s['link_minutes'] ?? 10} минут.',
+      'Ссылка на скачивание подписана и живёт $minutes минут.',
+      'Переслал ссылку — через $minutes минут по ней уже ничего не скачать.',
     ),
     (
       Icons.auto_awesome_outlined,
       'ИИ (Gemini от Google)',
-      'Уходит только вопрос, история чата и нужные куски лекций. Имя и вход в СДО — нет. Личное туда не пиши.',
+      'Уходит только вопрос, история чата и нужные куски лекций. Имя и вход в СДО — нет.',
+      'Google не узнает, кто спрашивал. Но личное в вопросы лучше не писать.',
     ),
     (
       Icons.insights_outlined,
       'Статистика — без содержимого',
       'Только «кто, что открыл и когда». Через ${s['events_days'] ?? 180} дней удаляется сама.',
+      'Что ты спрашивал и какие файлы смотрел, никто не видит.',
     ),
     (
       Icons.speed_outlined,
       'Защита от перегруза',
       'Не больше $ai вопросов ИИ в минуту и ${sub['count'] ?? 6} сдач за ${sub['minutes'] ?? 10} минут.',
+      'Никто не завалит бота запросами — он не тормозит ни у кого.',
     ),
   ];
 }

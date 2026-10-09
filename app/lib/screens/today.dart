@@ -501,7 +501,11 @@ class _MainView extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.m, 0),
           child: Row(
             children: [
-              Expanded(child: FitWords(title, style: s.title(30))),
+              // «Идёт первая пара», «Перемена» — одной строкой, на узком экране
+              // мельче (2.17); приветствие с именем — в две строки, как было
+              Expanded(
+                child: title.contains('\n') ? FitWords(title, style: s.title(30)) : _fitLine(title, s.title(30)),
+              ),
               const SizedBox(width: Space.s),
               CapyBadge(hour: t.hour, size: 62, moments: _moments(t, current, next)),
             ],
@@ -612,11 +616,14 @@ class _LiveFocus extends StatelessWidget {
       final known = from.isNotEmpty && to.isNotEmpty;
       final moving = known && from != to;
       final room = splitRoom(n.room).code;
+      final stay = room.isNotEmpty && room == splitRoom(lesson.room).code;
       after = _InfoTile(
         label: 'дальше в ${n.start}',
         value: room.isNotEmpty ? room : n.title,
         fit: room.isNotEmpty,
-        sub: moving
+        sub: stay
+            ? 'тот же кабинет, никуда не идти'
+            : moving
             ? 'другой корпус, $to'
             : known
             ? 'тот же корпус'
@@ -1065,8 +1072,20 @@ class LessonList extends StatelessWidget {
   }
 }
 
-/// «А-332 (МП-1)» → «А-332 · МП-1»; несколько кабинетов через запятую — так же.
-String roomText(String room) => room.trim().replaceAllMapped(RegExp(r'\s*\(([^)]+)\)'), (m) => ' · ${m[1]!.trim()}');
+/// Кабинет с корпусом в скобках (владелец, 2.2): «А-332 (МП-1)»; у
+/// нескольких кабинетов в одном корпусе он один раз: «А-332, Б-304 (МП-1)».
+String roomText(String room) {
+  final parts = room.trim().split(RegExp(r',\s*')).where((r) => r.isNotEmpty).toList();
+  String one(String r) {
+    final code = r.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+    final c = campusOf(r);
+    return c.isEmpty ? code : '$code ($c)';
+  }
+
+  final r = splitRoom(room);
+  final shared = parts.length > 1 && !r.campus.contains(',') && parts.every((x) => campusOf(x) == r.campus);
+  return shared && r.campus.isNotEmpty ? '${r.code} (${r.campus})' : parts.map(one).join(', ');
+}
 
 /// Кабинет плашкой цвета предмета — крупнее и ярче преподавателя, видно с
 /// одного взгляда (владелец, 09.10, 12А).

@@ -10,7 +10,7 @@ import '../theme/tokens.dart';
 import '../widgets/capy.dart';
 import '../widgets/common.dart';
 import 'today.dart' show LessonCard;
-import 'week.dart' show WeekData;
+import 'week.dart' show WeekData, dayHead, noLessonsText, noLessonsTitle;
 
 class WeekDays extends StatefulWidget {
   final WeekData data;
@@ -61,9 +61,7 @@ class _WeekDaysState extends State<WeekDays> {
     final key = iso(date);
     final lessons = _lessons(_selected);
     final n = lessons.length;
-    final day = key == _today
-        ? 'сегодня'
-        : '${weekdays[date.weekday - 1].toLowerCase()}, ${date.day} ${monthsGen[date.month - 1]}';
+    final day = dayHead(date, today: key == _today);
     return ListView(
       padding: const EdgeInsets.only(bottom: 120),
       physics: const AlwaysScrollableScrollPhysics(),
@@ -110,7 +108,7 @@ class _WeekDaysState extends State<WeekDays> {
           child: KeyedSubtree(
             key: ValueKey(key),
             child: lessons.isEmpty
-                ? const Notice(title: 'Пар нет', text: 'Свободный день.', pose: CapyPose.joy)
+                ? const Notice(title: noLessonsTitle, text: noLessonsText, pose: CapyPose.joy)
                 : Column(
                     children: [
                       for (final l in lessons)

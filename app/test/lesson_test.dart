@@ -78,7 +78,7 @@ void main() {
     await t.tap(find.text('Сиганьков А. А.'));
     await settle(t);
     expect(asked.any((k) => k.startsWith('GET /api/target/2/77')), isTrue);
-    expect(find.text('преподаватель'), findsOneWidget);
+    expect(find.text('преподаватель'), findsNothing); // без курсивной подписи над именем (2.4)
     expect(find.textContaining('УИБО-01-24, УИБО-02-24'), findsOneWidget); // чьи это пары
   });
 }

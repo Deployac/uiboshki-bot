@@ -27,6 +27,12 @@ class WeekData {
   WeekData(this.number, this.monday, this.days);
 }
 
+/// Пустой день — одинаково в обоих видах недели (владелец, 2.13).
+const noLessonsTitle = 'Пар нет', noLessonsText = 'Свободный день';
+
+/// Подпись дня в обоих видах: «Вторник, 6 октября · сегодня».
+String dayHead(DateTime date, {bool today = false}) => today ? '${dayTitle(date)} · сегодня' : dayTitle(date);
+
 DateTime mondayOf(DateTime d) => DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
 
 class WeekScreen extends StatefulWidget {
@@ -472,19 +478,16 @@ class _DayBlock extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: Space.s, bottom: Space.s),
-            child: Text(
-              today ? '${dayTitle(date)} · сегодня' : dayTitle(date),
-              style: s.eyebrow(color: today ? p.text : p.muted),
-            ),
+            child: Text(dayHead(date, today: today), style: s.eyebrow(color: today ? p.text : p.muted)),
           ),
           if (lessons.isEmpty)
             Tile(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(today ? 'Сегодня пар нет' : 'Пар нет', style: s.body(17, weight: FontWeight.w600)),
+                  Text(noLessonsTitle, style: s.body(17, weight: FontWeight.w600)),
                   const SizedBox(height: 3),
-                  Text('отдыхай', style: s.body(13, color: p.muted)),
+                  Text(noLessonsText, style: s.body(13, color: p.muted)),
                 ],
               ),
             )
