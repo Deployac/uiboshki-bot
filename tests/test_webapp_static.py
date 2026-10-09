@@ -502,7 +502,7 @@ def test_more_menu_tiles_with_actions():
     menu = _more_menu()
     labels = re.findall(r'<span class="lbl">([^<]+)</span>', menu)
     assert labels == ["Файлы", "Дедлайны", "ДЗ", "Календарь", "Уведомления", "Безопасность",
-                      "Ярлык", "Что нового", "Канал бота", "Написать нам", "Моя группа", "Позвать"]
+                      "Установить", "Что нового", "Канал бота", "Написать нам", "Моя группа", "Позвать"]
     for call in ("openHomework()", "showWhatsNew()", "openConfigLink(CHANNEL_URL)", "openConfigLink(CONTACT_URL)",
                  "shareBot()", "openGroup()"):
         assert f'toggleMore(false); {call}"' in menu, call
@@ -992,3 +992,18 @@ async def test_sdo_guide_link_from_published_post(db, monkeypatch):
     assert await server._guide_link() == "https://t.me/uiboshki_dev/23"
     assert "(GUIDE_URL ?" in JS["js/more.js"] and "const GUIDE_URL = APP_CONFIG.guide" in JS["js/core.js"]
     assert (server.STATIC_DIR.parent.parent / "channel" / "posts" / server.GUIDE_SLUG).is_dir()
+
+
+# ── Ночь 09.10: Капибара везде ──
+def test_more_install_sheet_tells_about_pwa():
+    """«Ещё → Установить» — лист про Telegram, PWA (uiboshki.ru/app), компьютер
+    и своё приложение, а не только ярлык Telegram (владелец, 09.10)."""
+    assert 'toggleMore(false); openPlatforms()"' in _more_menu()
+    assert 'id="platforms-sheet"' in HTML and 'id="platforms-body"' in HTML
+    js = JS["js/more.js"]
+    body = js.split("function openPlatforms()")[1].split("async function copyAppLink")[0]
+    for text in ("uiboshki.ru/app", "Telegram", "На компьютере", "Android и iPhone", "addToHome()", "copyAppLink()"):
+        assert text in body, text
+    assert 'APP_URL = "https://www.uiboshki.ru/app"' in js
+    assert "laptop:" in JS["js/icons.js"]
+    assert 'id: "v5.50"' in js and "uiboshki.ru/app" in js.split("const NEWS")[1].split("};")[0]

@@ -5,16 +5,20 @@
 ![aiogram](https://img.shields.io/badge/aiogram-3-2CA5E0?logo=telegram&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Mini_App-009688?logo=fastapi&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-FTS5_+_sqlite--vec-003B57?logo=sqlite&logoColor=white)
-![tests](https://img.shields.io/badge/tests-700+-brightgreen)
+![Flutter](https://img.shields.io/badge/Flutter-Android_·_iOS-02569B?logo=flutter&logoColor=white)
+![PWA](https://img.shields.io/badge/PWA-uiboshki.ru%2Fapp-5A0FC8?logo=pwa&logoColor=white)
+![tests](https://img.shields.io/badge/tests-770+-brightgreen)
 
-**Вся учёба группы — в одном Telegram-приложении.** Расписание всего
+**Вся учёба — в Telegram, в браузере и в своём приложении.** Расписание всего
 университета, баллы и сдача работ из СДО, дедлайны с напоминаниями, файлы
 курсов с поиском внутри лекций и ИИ, который отвечает по лекциям группы и
-показывает слайд, откуда взял ответ. Бот [@UiboshkiBot](https://t.me/UiboshkiBot)
-группы УИБО-03-24, РТУ МИРЭА.
+показывает слайд, откуда взял ответ. Начинался как бот
+[@UiboshkiBot](https://t.me/UiboshkiBot) группы УИБО-03-24, теперь — для любой
+группы РТУ МИРЭА.
 
 **[Сайт с живым демо](https://www.uiboshki.ru)** ·
 **[Бот в Telegram](https://t.me/UiboshkiBot)** ·
+**[Без Telegram — uiboshki.ru/app](https://www.uiboshki.ru/app)** ·
 **[Канал о разработке](https://t.me/uiboshki_dev)**
 
 <p align="center"><a href="https://www.uiboshki.ru">
@@ -25,9 +29,12 @@
 > and assignment submission scraped from Moodle, deadline reminders, course
 > files with full-text and semantic search, and an AI assistant grounded in the
 > group's own lecture slides (hybrid RAG: SQLite FTS5/BM25 + sqlite-vec,
-> RRF + MMR, answers cite the exact slide). Python · aiogram 3 · FastAPI ·
-> SQLite · Gemini. Solo project: ~17k lines of Python, ~5k of frontend,
-> 700+ tests, CI on every PR, deployed on Railway.
+> RRF + MMR, answers cite the exact slide). Works in Telegram, as an
+> installable PWA with web push (uiboshki.ru/app, login via Telegram or VK ID)
+> and as a native Flutter app for Android and iOS on the same versioned API.
+> Python · aiogram 3 · FastAPI · SQLite · Gemini · Flutter. Solo project:
+> ~20k lines of Python, ~6k of web frontend, ~10k of Dart, 770+ tests,
+> CI on every PR, deployed on Railway.
 
 <table>
 <tr>
@@ -45,14 +52,26 @@
 
 <sub>Скриншоты — на демо-данных: ничьих настоящих баллов и файлов.</sub>
 
+## Где пользоваться
+
+| | Как открыть | Что особенного |
+|---|---|---|
+| **Telegram** | [@UiboshkiBot](https://t.me/UiboshkiBot) → «Открыть приложение» | бот сам пишет про пары и сроки, inline-режим в любом чате |
+| **Телефон без Telegram (PWA)** | [uiboshki.ru/app](https://www.uiboshki.ru/app) → iPhone: «Поделиться → На экран „Домой“», Android: «Установить приложение» | вход через Telegram или VK ID, уведомления пушем, расписание без сети |
+| **Компьютер** | тот же адрес в Chrome, Edge или Яндекс Браузере → «Установить» | отдельное окно, как обычная программа |
+| **Android и iPhone** | своё приложение «Капибара» на Flutter (`app/`) — сборки APK и IPA в [GitHub Actions](https://github.com/mekit54567/uiboshki-bot/actions/workflows/app-build.yml) | скоро в RuStore; пока — тестовые сборки |
+
+Данные везде одни: что отметил в Telegram — видно в PWA и в приложении.
+
 ## Проект в цифрах
 
 | | |
 |---|---|
 | Срок | апрель 2026 → сейчас, один разработчик |
-| Код | ~17 тыс. строк Python, ~5 тыс. — фронтенд Mini App (без фреймворков и сборки) |
-| Тесты | 700+ автотестов, CI (GitHub Actions) на каждый pull request |
-| История | 380+ коммитов, 100+ pull request'ов, 220+ версий в [CHANGELOG](CHANGELOG.md) |
+| Код | ~20 тыс. строк Python, ~6 тыс. — фронтенд Mini App и PWA (без фреймворков и сборки), ~10 тыс. — приложение на Flutter |
+| Платформы | Telegram (бот + Mini App), PWA с веб-пушами, Android и iOS (Flutter) — одно API `/api/v1` |
+| Тесты | 770+ автотестов бэкенда и фронта, 50+ тестов приложения, CI (GitHub Actions) на каждый pull request |
+| История | 470+ коммитов, 150 pull request'ов, 280+ версий в [CHANGELOG](CHANGELOG.md) |
 | Данные | ~600 файлов курсов, у 535 — текст для поиска и ИИ |
 
 ## Что умеет
@@ -98,6 +117,11 @@
 
 **🌐 Сайт** — живое приложение на выдуманных данных, поиск расписания МИРЭА
 без входа, светлая и тёмная тема.
+
+**📱 Без Telegram** — [uiboshki.ru/app](https://www.uiboshki.ru/app): то же
+приложение ставится на экран телефона или компьютера (PWA), вход через бота или
+VK ID, уведомления — веб-пушем, последнее открытое — без сети. Своё приложение
+«Капибара» для Android и iPhone на Flutter — на том же API.
 
 **👑 Для старосты** — рассылки, статистика (`/stats`), состояние бота
 (`/status`), тревога при всплеске ошибок, посты канала, ночной бэкап базы.
@@ -147,7 +171,9 @@ MMR убирает повторы, ИИ получает куски с номе�
 flowchart LR
     TG[Telegram] --> BOT["bot.py · aiogram 3<br/>handlers/"]
     TG --> APP["Mini App<br/>webapp/static"]
-    APP --> API["FastAPI<br/>webapp/routes"]
+    WEB["PWA<br/>uiboshki.ru/app"] --> API
+    FL["Приложение<br/>Flutter · app/"] --> API
+    APP --> API["FastAPI<br/>webapp/routes · /api/v1"]
     BOT --> SCH["scheduler.py<br/>рассылки · синк · бэкап"]
     BOT & API & SCH --> DB[("SQLite<br/>+ FTS5 + sqlite-vec")]
     API & SCH --> SDO["СДО Moodle<br/>sdo_*.py"]
@@ -156,7 +182,9 @@ flowchart LR
 ```
 
 Бот и Mini App — один процесс и одна база (Railway). Фронтенд — обычные
-скрипты без сборки; авторизация — по `initData` Telegram.
+скрипты без сборки; авторизация — по `initData` Telegram, вне Telegram —
+токен сессии устройства (вход через бота, VK ID или Яндекс ID). PWA и своё
+приложение ходят в версионированное API `/api/v1` (снимок контракта в тестах).
 
 | Слой | Что используется |
 |---|---|
@@ -165,7 +193,9 @@ flowchart LR
 | Поиск | SQLite FTS5 (BM25), sqlite-vec, эмбеддинги Gemini, RRF + MMR |
 | Данные | httpx, BeautifulSoup (Moodle), icalendar, pypdf / python-pptx / python-docx, pypdfium2 |
 | Картинки | Pillow — карточки расписания, статистика, обложки постов |
-| Качество | pytest (700+), ruff, GitHub Actions, дымовой тест Mini App в Chromium |
+| Вне Telegram | PWA (service worker, веб-пуши RFC 8291 + VAPID без внешних библиотек), OAuth VK ID и Яндекс ID |
+| Приложение | Flutter (Android и iOS), общие дизайн-токены с вебом, сборки APK/IPA в GitHub Actions |
+| Качество | pytest (770+), ruff, flutter test, GitHub Actions, дымовой тест Mini App в Chromium |
 
 Подробно для разработки — [CLAUDE.md](CLAUDE.md), история версий —
 [CHANGELOG.md](CHANGELOG.md), план — [PLAN.md](PLAN.md).
