@@ -33,19 +33,19 @@ Finder get card => find.byKey(const Key('capy:refresh'));
 
 void main() {
   test('сцены идут по кругу, ночью — сон', () {
-    CapyScenes.startAt(CapyScene.surf);
+    CapyScenes.startAt(CapyScene.laptop);
     expect(
       [for (var i = 0; i < 6; i++) CapyScenes.next(14)],
-      [CapyScene.surf, CapyScene.laptop, CapyScene.lamp, CapyScene.ball, CapyScene.mandarin, CapyScene.surf],
+      [CapyScene.laptop, CapyScene.lamp, CapyScene.ball, CapyScene.mandarin, CapyScene.laptop, CapyScene.lamp],
     );
     expect(CapyScenes.next(2), CapyScene.sleep);
     expect(CapyScenes.next(23), CapyScene.sleep);
-    expect(CapyScenes.next(5), CapyScene.laptop); // ночь круг не сдвигает
+    expect(CapyScenes.next(5), CapyScene.ball); // ночь круг не сдвигает
   });
 
   testWidgets('потянул — капибара на сёрфе, пока грузится; пришло — уехала', (t) async {
     phone(t);
-    CapyScenes.startAt(CapyScene.surf);
+    CapyScenes.startAt(CapyScene.laptop);
     var calls = 0;
     var done = Completer<void>();
     await t.pumpWidget(
@@ -60,9 +60,9 @@ void main() {
     await settle(t);
     expect(calls, 1);
     expect(card, findsOneWidget);
-    expect(find.text('ловлю волну…'), findsNothing); // маленькая, без подписи
+    expect(find.text('печатаю…'), findsNothing); // маленькая, без подписи
     final img = t.widget<CapyImage>(find.descendant(of: card, matching: find.byType(CapyImage)));
-    expect(img.pose, CapyPose.surf);
+    expect(img.pose, CapyPose.day); // ноутбук
     // карточка целиком на экране, сверху
     final box = t.getRect(card);
     expect(box.top, greaterThanOrEqualTo(0));
@@ -81,7 +81,7 @@ void main() {
     await t.drag(find.byType(ListView), const Offset(0, 400));
     await settle(t);
     final next = t.widget<CapyImage>(find.descendant(of: card, matching: find.byType(CapyImage)));
-    expect(next.pose, CapyPose.day); // ноутбук
+    expect(next.pose, CapyPose.evening); // лампа
     expect(calls, 2);
     done.complete();
     await settle(t);
@@ -115,7 +115,7 @@ void main() {
 
   testWidgets('первая загрузка — капибара с подписью вместо крутилки, потом данные', (t) async {
     phone(t);
-    CapyScenes.startAt(CapyScene.surf);
+    CapyScenes.startAt(CapyScene.laptop);
     final done = Completer<String>();
     await t.pumpWidget(
       host(
@@ -128,7 +128,7 @@ void main() {
     await t.pump();
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.byType(CapyLoading), findsOneWidget);
-    expect(find.text('ловлю волну…'), findsOneWidget);
+    expect(find.text('печатаю…'), findsOneWidget);
     done.complete('пары');
     await settle(t);
     expect(find.byType(CapyLoading), findsNothing);
