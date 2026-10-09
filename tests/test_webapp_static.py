@@ -1093,3 +1093,57 @@ def test_onboarding_fits_short_screen():
     # 320×568 в полном экране: «Дальше» уезжало за нижний край
     css = _night_b_css()
     assert ".onboard { overflow-y: auto; }" in css and "@media (max-height: 640px)" in css
+
+
+# ── Ночь 09.10: WebApp, часть A ──
+
+def test_search_filters_do_not_push_page_sideways():
+    # строка фильтров поиска уходила вправо на 18px при отступе main 14px —
+    # вся вкладка «Поиск» прокручивалась вбок на 4px (стенд, все размеры)
+    main_pad = re.search(r"\n  main \{ padding: \d+px (\d+)px", CSS).group(1)
+    m = re.search(r"#target-types \{[^}]*margin-right: -(\d+)px; padding-right: (\d+)px", CSS)
+    assert m and m.group(1) == m.group(2) == main_pad
+
+
+def test_deadline_sheet_date_and_time_share_row():
+    # 320px: поле времени вылезало за край листа «Новый дедлайн»
+    assert re.search(r"\.sheet \.row2 > \* \{ flex: 1 1 0; min-width: 0; \}", CSS)
+
+
+def test_calm_hero_text_clears_capybara():
+    # «завтра в 14:20»: название пары и преподаватель уезжали под капибару
+    assert re.search(r"\.hero\.calm \.h-title, \.hero\.calm \.h-meta \{ padding-right: 5\dpx; \}", CSS)
+
+
+def test_sheets_respect_telegram_safe_area():
+    # полный экран Telegram: env() пуст — кнопка листа стояла на полоске «Домой»
+    rule = re.search(r"html\.fullscreen \.sheet \{(.*?)\}", CSS, re.S).group(1)
+    assert "var(--safe-bottom" in rule and "var(--safe-top" in rule
+
+
+def test_nav_height_follows_tab_bar_size():
+    # safeAreaChanged приходит после загрузки — --nav-h оставался старым,
+    # «＋» дедлайнов вставал на нижнюю панель
+    core = JS["js/core.js"]
+    assert re.search(r"new ResizeObserver\(\(\) => \{[^}]*syncNavHeight\(\)[^}]*\}\)\s*\.observe\(document\.querySelector\(\"nav\.tabs\"\), \{ box: \"border-box\" \}\)", core)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="нужен node")
+def test_home_deadline_tile_cuts_on_word_with_ellipsis():
+    # плитка «Дедлайны»: было «Лабораторная работа 3 · Анализ и диагнос · просрочен»
+    fn = re.search(r"function shortText\(s, max\) \{.*?\n\}", JS["js/home.js"], re.S).group(0)
+    assert "shortText(dl.soon[0].subject, 40)" in JS["js/home.js"]
+    src = fn + "\nconsole.log(JSON.stringify([" \
+        "shortText('Лабораторная работа 3 · Анализ и диагностика финансово-хозяйственной', 40)," \
+        "shortText('Курсовая: глава 1', 40), shortText('', 40)]));"
+    res = subprocess.run(["node", "-e", src], capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+    assert json.loads(res.stdout) == ["Лабораторная работа 3 · Анализ и…", "Курсовая: глава 1", ""]
+
+
+def test_wide_screen_keeps_phone_column():
+    # PWA на компьютере: пары и нижняя панель растягивались на все 1280px
+    block = CSS.split("@media (min-width: 720px)")[1]
+    for sel in ("header.top, main { max-width: var(--col)", "nav.tabs { padding-left: calc(var(--col-side)",
+                ".sheet { max-width: var(--col)", ".fab { right: calc(var(--col-side)"):
+        assert sel in block

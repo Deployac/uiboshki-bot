@@ -334,3 +334,88 @@ async def test_narrow_phone_chat_code_and_onboarding(db, monkeypatch):
         assert bottom <= 568
     finally:
         await bot.stop_webapp(server, task)
+
+
+# ── Ночь 09.10: WebApp, часть A ──
+
+FULLSCREEN_STUB = TG_STUB.replace('platform: "tdesktop"', 'platform: "ios"').replace('version: "7.0"', 'version: "8.0"').replace(
+    "isVersionAtLeast: () => false", "isVersionAtLeast: () => true, isFullscreen: true, requestFullscreen() {}, "
+    "safeAreaInset: { top: 0, bottom: 0 }, contentSafeAreaInset: { top: 46, bottom: 0 }").replace(
+    "onEvent() {}", "onEvent(n, f) { (window.__ev[n] = window.__ev[n] || []).push(f); }")
+
+
+def _layout(url: str, init_data: str) -> dict:
+    """Геометрия на телефоне в полном экране Telegram и на компьютере → словарь замеров."""
+    import json
+    res = {}
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": 320, "height": 568})
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script("window.__ev = {};")
+        page.add_init_script(FULLSCREEN_STUB % json.dumps(init_data))
+        page.goto(url)
+        page.wait_for_function("document.querySelectorAll('#daychips button').length === 6")
+        page.evaluate("document.getElementById('onboard').classList.remove('open')")
+        # Telegram присылает отступ под полоску «Домой» уже после загрузки
+        page.evaluate("Telegram.WebApp.safeAreaInset = {top: 59, bottom: 34}; (__ev.safeAreaChanged || []).forEach(f => f())")
+        page.wait_for_timeout(200)
+        res["nav"] = page.evaluate("[parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')),"
+                                   " document.querySelector('nav.tabs').offsetHeight]")
+        page.evaluate("openDeadlinesSeg('dl')")
+        page.wait_for_timeout(400)          # пока вкладка въезжает (transform), fixed считается от неё
+        res["fab_gap"] = page.evaluate("document.querySelector('nav.tabs').getBoundingClientRect().top"
+                                       " - document.getElementById('fab-add').getBoundingClientRect().bottom")
+        page.evaluate("openAddSheet()")
+        page.wait_for_timeout(300)
+        res["sheet_pad"] = page.evaluate("parseFloat(getComputedStyle(document.querySelector('#add-sheet .sheet')).paddingBottom)")
+        res["time_over"] = page.evaluate("document.getElementById('nd-time').getBoundingClientRect().right"
+                                         " - document.getElementById('nd-subject').getBoundingClientRect().right")
+        page.evaluate("closeAddSheet(); switchTab('search')")
+        res["search_hscroll"] = page.evaluate("document.documentElement.scrollWidth - innerWidth")
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.evaluate("switchTab('today')")
+        res["desktop_main"] = page.evaluate("document.querySelector('main').getBoundingClientRect().width")
+        browser.close()
+    return res
+
+
+@pytest.mark.asyncio
+async def test_layout_safe_area_narrow_and_wide(db, monkeypatch):
+    """Ночь 09.10: «＋» дедлайнов вставал на нижнюю панель (отступ пришёл
+    safeAreaChanged после загрузки), кнопка листа — на полоску «Домой», поле
+    времени вылезало за лист на 320px, «Поиск» ездил вбок, на компьютере всё
+    тянулось на 1280px."""
+    import bot
+    import config
+    import handlers.weather
+    import schedule_parser
+    import webapp.deps as deps
+
+    async def mirea_down(*a, **k):
+        raise RuntimeError("МИРЭА не отвечает")
+
+    async def no_weather(*a, **k):
+        return ""
+
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    await db.upsert_user(222, "", "Alice")
+    await db.set_user_group(222, config.HOME_GROUP_ID)
+    monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", mirea_down)
+    monkeypatch.setattr(handlers.weather, "get_weather_for_morning", no_weather)
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        r = await asyncio.to_thread(_layout, f"http://127.0.0.1:{port}/", _make_init_data())
+        assert r["nav"][0] == r["nav"][1], r
+        assert r["fab_gap"] >= 8, r
+        assert r["sheet_pad"] >= 18 + 34, r
+        assert r["time_over"] <= 0.5, r
+        assert r["search_hscroll"] <= 0, r
+        assert r["desktop_main"] <= 680, r
+    finally:
+        await bot.stop_webapp(server, task)

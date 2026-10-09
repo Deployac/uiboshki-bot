@@ -126,6 +126,15 @@ if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0") && ["ios", "android"
   } catch (e) {}
 }
 
+// Высота нижней панели (--nav-h, chat.js: syncNavHeight) меняется и без
+// resize: Telegram присылает отступ под полоску «Домой» уже после загрузки
+// (safeAreaChanged) — панель вырастала, а «＋», тост и низ страницы
+// оставались под ней (ночь 09.10). Следим за самой панелью.
+if (window.ResizeObserver) {
+  new ResizeObserver(() => { if (typeof syncNavHeight === "function") syncNavHeight(); })
+    .observe(document.querySelector("nav.tabs"), { box: "border-box" });   // отступ — это padding
+}
+
 function initData() {
   return tg ? tg.initData : "";
 }
