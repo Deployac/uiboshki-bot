@@ -42,9 +42,20 @@ class Api {
 
   Uri _uri(String path) => Uri.parse('$base/api/v1$path');
 
+  /// Своё приложение называет себя серверу: в боте «Войти… на Капибара · iPhone»,
+  /// а не «Браузер» (у Dart в User-Agent только «Dart/3»). В вебе — браузер и так виден.
+  static String? get platform => kIsWeb
+      ? null
+      : switch (defaultTargetPlatform) {
+          TargetPlatform.iOS => 'ios',
+          TargetPlatform.android => 'android',
+          _ => null,
+        };
+
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
     if (token != null) 'Authorization': 'Bearer $token',
+    'X-App': ?platform,
   };
 
   dynamic _decode(http.Response r) {

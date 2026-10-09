@@ -21,6 +21,11 @@ router = APIRouter()
 
 def _device(request: Request) -> str:
     """«Chrome · Android» из User-Agent — чтобы в боте было видно, что за вход."""
+    # своё приложение называет себя заголовком X-App (app/lib/api/api.dart): у Dart
+    # в User-Agent только «Dart/3», и бот спрашивал «Войти… на устройстве Браузер»
+    app = {"ios": "iPhone", "android": "Android"}.get(request.headers.get("x-app", ""))
+    if app:
+        return f"Капибара · {app}"
     ua = request.headers.get("user-agent", "")
     browser = next((b for b in ("Edg", "YaBrowser", "Chrome", "Firefox", "Safari") if b in ua), "Браузер")
     browser = {"Edg": "Edge", "YaBrowser": "Яндекс Браузер"}.get(browser, browser)

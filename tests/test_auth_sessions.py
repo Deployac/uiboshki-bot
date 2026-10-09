@@ -83,3 +83,14 @@ async def test_logout_everywhere(db, client):
     assert len(client.get("/api/auth/sessions", headers=h1).json()["items"]) == 2
     assert client.post("/api/auth/logout?everywhere=true", headers=h1).json()["revoked"] == 2
     assert client.get("/api/me", headers={"Authorization": f"Bearer {t2}"}).status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_app_login_names_device(db, client):
+    """Вход из своего приложения: у Dart нет браузера в User-Agent — бот спрашивал
+    «на устройстве Браузер»; приложение шлёт X-App, и устройство — «Капибара · iPhone»."""
+    from database.sessions import get_login
+    res = client.post("/api/auth/start", headers={"User-Agent": "Dart/3.9 (dart:io)", "X-App": "ios"}).json()
+    assert (await get_login(res["code"]))["device"] == "Капибара · iPhone"
+    res = client.post("/api/auth/start", headers={"User-Agent": "Dart/3.9 (dart:io)", "X-App": "android"}).json()
+    assert (await get_login(res["code"]))["device"] == "Капибара · Android"
