@@ -1,6 +1,7 @@
 // «Неделя» — повестка: вся неделя одной лентой, сверху полоса дней с
 // точками пар. Нажал день — лента плавно едет к нему; по умолчанию выбран
-// сегодняшний, даже если пар нет. Сроки сдачи — прямо в дне.
+// сегодняшний, даже если пар нет. Соседняя неделя — свайпом вбок или стрелками.
+// Сроки сдачи тут не показываем — для них вкладка «Сдать» (владелец, 09.10).
 import 'package:flutter/material.dart';
 
 import '../api/api.dart';
@@ -16,8 +17,7 @@ class WeekData {
   final int? number;
   final DateTime monday;
   final Map<String, List<Lesson>> days;
-  final Map<String, List<Deadline>> due;
-  WeekData(this.number, this.monday, this.days, this.due);
+  WeekData(this.number, this.monday, this.days);
 }
 
 DateTime mondayOf(DateTime d) => DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
@@ -33,40 +33,64 @@ class WeekScreen extends StatefulWidget {
 
 class _WeekScreenState extends State<WeekScreen> {
   int _shift = 0;
+  int _dir = 1; // куда уехала неделя: 1 — вперёд, -1 — назад
+
+  void _shiftBy(int k) {
+    tick();
+    setState(() {
+      _dir = k.sign;
+      _shift += k;
+    });
+  }
 
   Future<WeekData> _load() async {
     final monday = mondayOf(now()).add(Duration(days: 7 * _shift));
     final dates = [for (var i = 0; i < 7; i++) monday.add(Duration(days: i))];
     final res = await Future.wait([
       widget.api.get('/week?start=${iso(monday)}'),
-      widget.api.get('/deadlines'),
       for (final d in dates) widget.api.get('/day?date=${iso(d)}'),
     ]);
     final days = <String, List<Lesson>>{};
     for (var i = 0; i < 7; i++) {
-      days[iso(dates[i])] = [for (final l in (res[i + 2]['lessons'] as List? ?? [])) Lesson.fromJson(l)];
+      days[iso(dates[i])] = [for (final l in (res[i + 1]['lessons'] as List? ?? [])) Lesson.fromJson(l)];
     }
-    final due = <String, List<Deadline>>{};
-    for (final x in res[1]['items'] as List) {
-      final d = Deadline.fromJson(x);
-      if (!d.done && days.containsKey(d.dueDate)) (due[d.dueDate] ??= []).add(d);
-    }
-    return WeekData(res[0]['week'] as int?, monday, days, due);
+    return WeekData(res[0]['week'] as int?, monday, days);
   }
 
   @override
-  Widget build(BuildContext context) => Loader<WeekData>(
-    key: ValueKey(_shift),
-    load: _load,
-    onUnauthorized: widget.onUnauthorized,
-    builder: (context, d, _) => _WeekView(
-      onLesson: (l) => openLesson(context, widget.api, l),
-      onSearch: () => openSearch(context, widget.api),
-      data: d,
-      onShift: (k) {
-        tick();
-        setState(() => _shift += k);
+  Widget build(BuildContext context) => GestureDetector(
+    // свайп вбок — соседняя неделя; вертикальную прокрутку ленты не трогает
+    behavior: HitTestBehavior.translucent,
+    onHorizontalDragEnd: (e) {
+      final v = e.primaryVelocity ?? 0;
+      if (v.abs() >= 250) _shiftBy(v < 0 ? 1 : -1);
+    },
+    child: AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, anim) {
+        final incoming = child.key == ValueKey(_shift);
+        final from = Offset((incoming ? 0.18 : -0.18) * _dir, 0);
+        return FadeTransition(
+          opacity: anim,
+          child: SlideTransition(
+            position: Tween(begin: from, end: Offset.zero).animate(anim),
+            child: child,
+          ),
+        );
       },
+      child: Loader<WeekData>(
+        key: ValueKey(_shift),
+        load: _load,
+        onUnauthorized: widget.onUnauthorized,
+        builder: (context, d, _) => _WeekView(
+          onLesson: (l) => openLesson(context, widget.api, l),
+          onSearch: () => openSearch(context, widget.api),
+          data: d,
+          onShift: _shiftBy,
+        ),
+      ),
     ),
   );
 }
@@ -143,10 +167,12 @@ class _WeekViewState extends State<_WeekView> {
                 icon: Icon(Icons.search_rounded, color: p.muted),
               ),
               IconButton(
+                tooltip: 'Прошлая неделя',
                 onPressed: () => widget.onShift(-1),
                 icon: Icon(Icons.chevron_left_rounded, color: p.muted),
               ),
               IconButton(
+                tooltip: 'Следующая неделя',
                 onPressed: () => widget.onShift(1),
                 icon: Icon(Icons.chevron_right_rounded, color: p.muted),
               ),
@@ -189,7 +215,6 @@ class _WeekViewState extends State<_WeekView> {
                     key: _keys[i],
                     date: d.monday.add(Duration(days: i)),
                     lessons: d.days[iso(d.monday.add(Duration(days: i)))] ?? const [],
-                    due: d.due[iso(d.monday.add(Duration(days: i)))] ?? const [],
                     today: iso(d.monday.add(Duration(days: i))) == todayIso,
                     at: t,
                     onLesson: widget.onLesson,
@@ -272,7 +297,6 @@ class _DayCell extends StatelessWidget {
 class _DayBlock extends StatelessWidget {
   final DateTime date;
   final List<Lesson> lessons;
-  final List<Deadline> due;
   final bool today;
   final DateTime at;
   final ValueChanged<Lesson>? onLesson;
@@ -280,7 +304,6 @@ class _DayBlock extends StatelessWidget {
     super.key,
     required this.date,
     required this.lessons,
-    required this.due,
     required this.today,
     required this.at,
     this.onLesson,
@@ -309,39 +332,12 @@ class _DayBlock extends StatelessWidget {
                 children: [
                   Text(today ? 'Сегодня пар нет' : 'Пар нет', style: s.body(17, weight: FontWeight.w600)),
                   const SizedBox(height: 3),
-                  Text(due.isEmpty ? 'отдыхай' : 'зато есть что сдать — ниже', style: s.body(13, color: p.muted)),
+                  Text('отдыхай', style: s.body(13, color: p.muted)),
                 ],
               ),
             )
           else
             LessonList(lessons: lessons, at: at, onTap: onLesson),
-          for (final x in due)
-            Container(
-              margin: const EdgeInsets.only(top: Space.s),
-              padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
-              decoration: BoxDecoration(
-                color: p.danger.withValues(alpha: p.dark ? 0.16 : 0.12),
-                borderRadius: BorderRadius.circular(Radii.tile),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.diamond_rounded, size: 13, color: p.danger),
-                  const SizedBox(width: Space.s),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Сдать до ${x.dueTime.isEmpty ? '23:59' : x.dueTime}',
-                          style: s.body(12, weight: FontWeight.w600, color: p.danger),
-                        ),
-                        Text(x.subject, style: s.body(15, weight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
         ],
       ),
     );

@@ -205,17 +205,32 @@ class _Hero extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('${minutes > 0 ? minutes : 0}', style: s.number(56, color: live ? c : p.text)),
-                const SizedBox(width: 8),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    '${plural(minutes, 'минута', 'минуты', 'минут')}\n${live ? 'до конца' : 'до начала'}',
-                    style: s.body(13, color: p.muted),
-                  ),
-                ),
-              ],
+              // «134 минуты» не читается (владелец, 09.10): от часа — «2 ч 14 мин», как в «Сдать»
+              children: minutes >= 60
+                  ? [
+                      Text('${minutes ~/ 60}', style: s.number(56, color: live ? c : p.text)),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8, left: 3, right: 10),
+                        child: Text('ч', style: s.body(14, color: p.muted)),
+                      ),
+                      Text((minutes % 60).toString().padLeft(2, '0'), style: s.number(56, color: live ? c : p.text)),
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text('мин\n${live ? 'до конца' : 'до начала'}', style: s.body(13, color: p.muted)),
+                      ),
+                    ]
+                  : [
+                      Text('${minutes > 0 ? minutes : 0}', style: s.number(56, color: live ? c : p.text)),
+                      const SizedBox(width: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          '${plural(minutes, 'минута', 'минуты', 'минут')}\n${live ? 'до конца' : 'до начала'}',
+                          style: s.body(13, color: p.muted),
+                        ),
+                      ),
+                    ],
             ),
           ),
           if (live) ...[

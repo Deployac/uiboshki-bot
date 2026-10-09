@@ -217,7 +217,7 @@ class _MenuRow extends StatelessWidget {
   final IconData icon;
   final String title, sub;
   final VoidCallback onTap;
-  const _MenuRow({required this.icon, required this.title, required this.sub, required this.onTap});
+  const _MenuRow({super.key, required this.icon, required this.title, required this.sub, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -469,7 +469,9 @@ class _AdminRequestState extends State<_AdminRequest> {
   }
 }
 
-/// «Канал бота» и «Написать нам» — если сервер их знает (/api/meta → links).
+/// «Новости и связь» — одна строка: лист с каналом бота и «Написать нам», переход
+/// только по кнопке (владелец, 09.10: раньше строки сразу кидали в Telegram).
+/// Ссылки — если сервер их знает (/api/meta → links).
 class _LinkRows extends StatelessWidget {
   final Api api;
   const _LinkRows({required this.api});
@@ -481,23 +483,35 @@ class _LinkRows extends StatelessWidget {
       future: appLinks(api),
       builder: (context, snap) {
         final l = snap.data ?? const {};
-        final rows = [
+        final links = [
           if ((l['channel'] ?? '').isNotEmpty)
-            (Icons.campaign_outlined, 'Канал бота', 'новости и как всё устроено', _url(l['channel']!)),
+            (
+              Icons.campaign_outlined,
+              'Канал бота',
+              'Новости, как всё устроено и что нового',
+              'Открыть канал',
+              _url(l['channel']!),
+            ),
           if ((l['contact'] ?? '').isNotEmpty)
-            (Icons.chat_bubble_outline_rounded, 'Написать нам', 'идея, ошибка, вопрос', _url(l['contact']!)),
+            (
+              Icons.chat_bubble_outline_rounded,
+              'Написать нам',
+              'Идея, ошибка или вопрос — ответим',
+              'Написать',
+              _url(l['contact']!),
+            ),
         ];
+        if (links.isEmpty) return const SizedBox.shrink();
         return Column(
           children: [
-            for (final (icon, title, sub, url) in rows) ...[
-              Divider(height: 1, color: p.line),
-              _MenuRow(
-                icon: icon,
-                title: title,
-                sub: sub,
-                onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-              ),
-            ],
+            Divider(height: 1, color: p.line),
+            _MenuRow(
+              key: const Key('more:links'),
+              icon: Icons.forum_outlined,
+              title: 'Новости и связь',
+              sub: [for (final x in links) x.$2.toLowerCase()].join(' · '),
+              onTap: () => showLinksSheet(context, links),
+            ),
           ],
         );
       },
@@ -506,4 +520,63 @@ class _LinkRows extends StatelessWidget {
 
   /// «@имя» → https://t.me/имя
   static String _url(String v) => v.startsWith('@') ? 'https://t.me/${v.substring(1)}' : v;
+}
+
+/// Лист «Новости и связь»: что за ссылка — и кнопка «Перейти», решает человек.
+Future<void> showLinksSheet(BuildContext context, List<(IconData, String, String, String, String)> links) {
+  final s = AppStyle.of(context);
+  final p = s.p;
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: p.cardSolid,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.l),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Новости и связь', style: s.title(22)),
+            const SizedBox(height: Space.m),
+            for (final (icon, title, sub, button, url) in links)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Space.s),
+                child: Tile(
+                  child: Row(
+                    children: [
+                      Icon(icon, color: p.accent),
+                      const SizedBox(width: Space.m),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: s.body(16, weight: FontWeight.w600)),
+                            Text(sub, style: s.body(13, color: p.muted)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: Space.s),
+                      FilledButton(
+                        key: Key('go:$title'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: p.accent,
+                          foregroundColor: p.onAccent,
+                          shape: const StadiumBorder(),
+                        ),
+                        onPressed: () {
+                          tick();
+                          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                        },
+                        child: Text(button),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

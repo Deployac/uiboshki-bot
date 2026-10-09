@@ -264,7 +264,14 @@ class _LoaderState<T> extends State<Loader<T>> {
   @override
   void initState() {
     super.initState();
+    _fromCache();
     _reload();
+  }
+
+  /// Пока идёт сеть — прошлые данные из запаса телефона, без крутилки.
+  Future<void> _fromCache() async {
+    final d = await Api.fromCache(widget.load);
+    if (d != null && mounted && _data == null) setState(() => _data = d);
   }
 
   Future<void> _reload() async {

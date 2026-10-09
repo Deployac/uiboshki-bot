@@ -8,8 +8,10 @@ import sdo_goal
 EXAM = [{"at": 40, "label": "3"}, {"at": 60, "label": "4"}, {"at": 80, "label": "5"}]
 
 
-def course(score, works, marks=EXAM):
+def course(score, works, marks=EXAM, exam=0):
+    """exam — сколько ещё можно взять на экзамене (по умолчанию уже сдан)."""
     return {"id": 7, "score": score, "marks": marks, "pass_share": 0.75,
+            "categories": [{"name": "Семестровый контроль", "score": 40 - exam, "max": 40}],
             "works": [{"name": f"Работа {i}", "max": mx, "status": st} for i, (st, mx) in enumerate(works)]}
 
 
@@ -50,6 +52,20 @@ def test_tk_rule_lost_works_and_done():
     assert sdo_goal.plan(course(41, [("ok", 5)]), None)["status"] == "done"
     # зачесть нужно все оставшиеся — «впритык», хоть баллов и с запасом
     assert sdo_goal.plan(course(30, [("ok", 9), ("low", 9), ("todo", 9), ("todo", 9)]), ATT)["status"] == "tight"
+
+
+def test_exam_points_count_toward_goal():
+    """Баг 09.10 (владелец): «на 5 не хватит — будет 62 < 80», хотя пороги —
+    по сумме с экзаменом, а на нём ещё до 40."""
+    c = course(10, [("ok", 3), ("ok", 3), ("ok", 4), ("todo", 42)], exam=40)
+    g = sdo_goal.plan(c, {"ok": True, "can_get": 12.5}, "5")
+    assert g["exam_left"] == 40 and g["best"] == 104.5 and g["status"] == "ok"
+    # без экзамена было бы 64,5 — «не хватит»; без категории в журнале — 40 по умолчанию
+    no_cat = dict(c, categories=[])
+    assert sdo_goal.plan(no_cat, None, "5")["exam_left"] == 40
+    # у зачёта экзамена нет
+    credit = course(10, [("todo", 20)], marks=[{"at": 40, "label": "зачёт"}], exam=40)
+    assert sdo_goal.plan(credit, None)["exam_left"] == 0
 
 
 @pytest.mark.asyncio

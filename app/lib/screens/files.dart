@@ -411,46 +411,146 @@ class _SubjectRow extends StatelessWidget {
   }
 }
 
-class SubjectFilesScreen extends StatelessWidget {
+/// Фильтр файлов предмета: «Лабы» отдельно от практик (в базе это один тип).
+const fileFilters = {
+  'lecture': 'Лекции',
+  'practice': 'Практики',
+  'lab': 'Лабы',
+  'control': 'КР и тесты',
+  'method': 'Методички',
+  'exam': 'Экзамен',
+  'other': 'Другое',
+};
+
+String fileFilterOf(FileItem f) =>
+    f.category == 'practice' && RegExp(r'лаб|lab', caseSensitive: false).hasMatch(f.title) ? 'lab' : f.category;
+
+/// Одинаковые названия (одна лекция в PDF и PPTX, повторная выгрузка) — одной
+/// строкой; в группе первым — файл с конспектом или текстом.
+List<List<FileItem>> groupSameTitle(List<FileItem> files) {
+  final groups = <String, List<FileItem>>{};
+  for (final f in files) {
+    (groups[f.title.trim().toLowerCase()] ??= []).add(f);
+  }
+  int rank(FileItem f) => f.hasSummary ? 0 : (f.hasText ? 1 : 2);
+  final out = [for (final g in groups.values) g..sort((a, b) => rank(a).compareTo(rank(b)))];
+  out.sort((a, b) => naturalCompare(a.first.title, b.first.title));
+  return out;
+}
+
+/// «Лекция 2» раньше «Лекция 10»: числа сравниваются как числа.
+int naturalCompare(String a, String b) {
+  final re = RegExp(r'\d+|\D+');
+  final x = re.allMatches(a.toLowerCase()).map((m) => m.group(0)!).toList();
+  final y = re.allMatches(b.toLowerCase()).map((m) => m.group(0)!).toList();
+  for (var i = 0; i < x.length && i < y.length; i++) {
+    final nx = int.tryParse(x[i]), ny = int.tryParse(y[i]);
+    final c = nx != null && ny != null ? nx.compareTo(ny) : x[i].compareTo(y[i]);
+    if (c != 0) return c;
+  }
+  return x.length.compareTo(y.length);
+}
+
+class SubjectFilesScreen extends StatefulWidget {
   final Api api;
   final String subject;
   final List<FileItem> files;
   const SubjectFilesScreen({super.key, required this.api, required this.subject, required this.files});
 
   @override
+  State<SubjectFilesScreen> createState() => _SubjectFilesScreenState();
+}
+
+class _SubjectFilesScreenState extends State<SubjectFilesScreen> {
+  String? _filter; // null — все типы
+
+  @override
   Widget build(BuildContext context) {
-    final byCat = <String, List<FileItem>>{};
+    final files = widget.files;
+    final byKind = <String, List<FileItem>>{};
     for (final f in files) {
-      (byCat[f.category] ??= []).add(f);
+      (byKind[fileFilterOf(f)] ??= []).add(f);
     }
-    final p = AppStyle.of(context).p;
+    final kinds = [
+      for (final k in fileFilters.keys)
+        if (byKind[k] != null) k,
+    ];
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final color = subjectColor(widget.subject);
+    Widget chip(String? key, String label) {
+      final on = _filter == key;
+      return Padding(
+        padding: const EdgeInsets.only(right: Space.s),
+        child: Semantics(
+          button: true,
+          selected: on,
+          child: GestureDetector(
+            onTap: () {
+              tick();
+              setState(() => _filter = key);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: on ? color : p.card,
+                borderRadius: BorderRadius.circular(Radii.pill),
+                border: Border.all(color: on ? color : p.line),
+              ),
+              child: Text(
+                label,
+                style: s.body(14, weight: FontWeight.w600, color: on ? Colors.white : p.text),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget card(List<FileItem> list) {
+      final rows = groupSameTitle(list);
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.l),
+        child: Tile(
+          padding: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (var i = 0; i < rows.length; i++) ...[
+                if (i > 0) Divider(height: 1, color: p.line),
+                _FileRow(api: widget.api, f: rows[i].first, same: rows[i].sublist(1)),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       body: Backdrop(
-        tint: subjectColor(subject),
+        tint: color,
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.only(bottom: Space.xxl),
             children: [
               const BackRow(),
-              ScreenTitle(eyebrow: '${files.length} ${_files(files.length)}', title: subject),
-              for (final cat in categoryLabels.keys)
-                if (byCat[cat] != null) ...[
-                  Section(categoryLabels[cat]!),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: Space.l),
-                    child: Tile(
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          for (var i = 0; i < byCat[cat]!.length; i++) ...[
-                            if (i > 0) Divider(height: 1, color: p.line),
-                            _FileRow(api: api, f: byCat[cat]![i]),
-                          ],
-                        ],
-                      ),
-                    ),
+              ScreenTitle(eyebrow: '${files.length} ${_files(files.length)}', title: widget.subject),
+              if (kinds.length > 1)
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+                  child: Row(
+                    children: [
+                      chip(null, 'Все'),
+                      for (final k in kinds) chip(k, '${fileFilters[k]} · ${byKind[k]!.length}'),
+                    ],
                   ),
-                ],
+                ),
+              if (_filter != null && byKind[_filter] != null) ...[
+                const SizedBox(height: Space.s),
+                card(byKind[_filter]!),
+              ] else
+                for (final k in kinds) ...[Section(fileFilters[k]!), card(byKind[k]!)],
             ],
           ),
         ),
@@ -463,12 +563,15 @@ class _FileRow extends StatelessWidget {
   final Api api;
   final FileItem f;
   final bool withSubject; // в результатах поиска — ещё и предмет
-  const _FileRow({required this.api, required this.f, this.withSubject = false});
+  final List<FileItem> same; // то же название в другом формате — кнопками справа
+  const _FileRow({required this.api, required this.f, this.withSubject = false, this.same = const []});
+
+  static String extOf(FileItem f) => f.fileName.contains('.') ? f.fileName.split('.').last.toUpperCase() : '';
 
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
-    final ext = f.fileName.contains('.') ? f.fileName.split('.').last.toUpperCase() : '';
+    final ext = extOf(f);
     return InkWell(
       onTap: () {
         tick();
@@ -497,6 +600,20 @@ class _FileRow extends StatelessWidget {
                 ],
               ),
             ),
+            for (final o in same)
+              Padding(
+                padding: const EdgeInsets.only(left: Space.s),
+                child: ActionChip(
+                  label: Text(extOf(o).isEmpty ? 'ещё' : extOf(o), style: s.body(12, weight: FontWeight.w600)),
+                  visualDensity: VisualDensity.compact,
+                  side: BorderSide(color: s.p.line),
+                  backgroundColor: s.p.card,
+                  onPressed: () {
+                    tick();
+                    showFileSheet(context, api, o);
+                  },
+                ),
+              ),
           ],
         ),
       ),
