@@ -4,7 +4,10 @@
 // день — лента плавно едет к нему; открывается сразу на сегодняшнем дне,
 // прошедшие — выше, до них можно долистать (19Б). По дням — плитки дней и
 // пары выбранного (week_days.dart). В обоих видах соседняя неделя — свайпом
-// вбок или стрелками у дат недели.
+// вбок или стрелками у дат недели; при этом шапка «Неделя», поиск и
+// переключатель стоят на месте — едут только номер и даты недели, полоса
+// дней и пары (владелец, 3.4). Пока грузится новая неделя, видна прошлая,
+// бледнее, — без мигания всей страницы.
 // Сроки сдачи тут не показываем — для них вкладка «Сдать» (владелец, 09.10).
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
@@ -14,6 +17,8 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy.dart';
+import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import 'lesson.dart';
 import 'search.dart';
@@ -57,10 +62,20 @@ class _WeekScreenState extends State<WeekScreen> {
   /// Вид по дням; null — выбор ещё читается из памяти телефона.
   bool? _days;
 
+  /// Показанная неделя и её сдвиг; пока грузится следующая — видна эта.
+  WeekData? _data;
+  int? _dataShift;
+  Object? _error;
+  int _seq = 0;
+
+  /// Номера уже виденных недель — подпись в шапке меняется сразу при листании.
+  final _numbers = <int, int?>{};
+
   @override
   void initState() {
     super.initState();
     _readView();
+    _fetch();
   }
 
   Future<void> _readView() async {
@@ -87,11 +102,15 @@ class _WeekScreenState extends State<WeekScreen> {
     setState(() {
       _dir = k.sign;
       _shift += k;
+      _error = null;
     });
+    _fetch();
   }
 
-  Future<WeekData> _load() async {
-    final monday = mondayOf(now()).add(Duration(days: 7 * _shift));
+  DateTime _monday(int shift) => mondayOf(now()).add(Duration(days: 7 * shift));
+
+  Future<WeekData> _load(int shift) async {
+    final monday = _monday(shift);
     final dates = [for (var i = 0; i < 7; i++) monday.add(Duration(days: i))];
     final res = await Future.wait([
       widget.api.get('/week?start=${iso(monday)}'),
@@ -104,10 +123,101 @@ class _WeekScreenState extends State<WeekScreen> {
     return WeekData(res[0]['week'] as int?, monday, days);
   }
 
+  /// Неделя пришла: из запаса телефона сразу, из сети — следом (как Loader).
+  void _show(int my, int shift, WeekData d) {
+    if (my != _seq || !mounted) return;
+    setState(() {
+      _numbers[shift] = d.number;
+      _data = d;
+      _dataShift = shift;
+      _error = null;
+    });
+  }
+
+  Future<void> _fetch() async {
+    final my = ++_seq, shift = _shift; // ответ на старую неделю не перетирает новую
+    final cached = await Api.fromCache(() => _load(shift));
+    if (cached != null && _dataShift != shift) _show(my, shift, cached);
+    try {
+      _show(my, shift, await _load(shift));
+    } catch (e) {
+      if (e is Unauthorized) {
+        widget.onUnauthorized?.call();
+        return;
+      }
+      if (my == _seq && mounted && _dataShift != shift) setState(() => _error = e);
+    }
+  }
+
+  /// «6 неделя · 5–11 окт»: даты — сразу, номер — виденный или от соседней.
+  String _label() {
+    final monday = _monday(_shift);
+    final n = _numbers.containsKey(_shift)
+        ? _numbers[_shift]
+        : (_numbers[_shift - _dir] == null ? null : _numbers[_shift - _dir]! + _dir);
+    final range = weekRange(monday);
+    return n != null && n > 0 ? '$n неделя · $range' : range;
+  }
+
+  /// Сдвиг вбок с проявлением — у подписи недели и у содержимого одинаковый.
+  Widget _slide(Widget child, Animation<double> anim, Key current) {
+    final incoming = child.key == current;
+    final from = Offset((incoming ? 0.18 : -0.18) * _dir, 0);
+    return FadeTransition(
+      opacity: anim,
+      child: SlideTransition(
+        position: Tween(begin: from, end: Offset.zero).animate(anim),
+        child: child,
+      ),
+    );
+  }
+
+  Widget _content(bool days) {
+    final d = _data;
+    if (d == null || (_error != null && _dataShift != _shift)) {
+      if (_error == null) return const CapyLoading(key: ValueKey('week:loading'));
+      return ListView(
+        key: ValueKey('week:error:$_shift'),
+        children: [
+          const SizedBox(height: 120),
+          Notice(
+            title: 'Не загрузилось',
+            text: 'Нет связи с сервером — проверь интернет.',
+            onRetry: _fetch,
+            pose: CapyPose.sad,
+          ),
+        ],
+      );
+    }
+    final view = CapyRefresh(
+      onRefresh: _fetch,
+      child: _WeekView(
+        key: ValueKey('week:${iso(d.monday)}'),
+        onLesson: (l) => openLesson(context, widget.api, l),
+        data: d,
+        days: days,
+      ),
+    );
+    // новая неделя ещё грузится — прошлая видна бледнее и не нажимается
+    final waiting = _dataShift != _shift;
+    return KeyedSubtree(
+      key: ValueKey('week:$_dataShift'),
+      child: AnimatedOpacity(
+        opacity: waiting ? 0.45 : 1,
+        duration: const Duration(milliseconds: 200),
+        child: IgnorePointer(ignoring: waiting, child: view),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final days = _days;
     if (days == null) return const SizedBox.shrink();
+    final p = AppStyle.of(context).p;
+    final content = _content(days);
+    final labelKey = ValueKey('label:$_shift');
+    const duration = Duration(milliseconds: 280);
     return GestureDetector(
       // свайп вбок — соседняя неделя в обоих видах; вертикальную прокрутку не трогает
       behavior: HitTestBehavior.translucent,
@@ -115,58 +225,71 @@ class _WeekScreenState extends State<WeekScreen> {
         final v = e.primaryVelocity ?? 0;
         if (v.abs() >= 250) _shiftBy(v < 0 ? 1 : -1);
       },
-      child: AnimatedSwitcher(
-        duration: const Duration(milliseconds: 280),
-        switchInCurve: Curves.easeOutCubic,
-        switchOutCurve: Curves.easeInCubic,
-        transitionBuilder: (child, anim) {
-          final incoming = child.key == ValueKey(_shift);
-          final from = Offset((incoming ? 0.18 : -0.18) * _dir, 0);
-          return FadeTransition(
-            opacity: anim,
-            child: SlideTransition(
-              position: Tween(begin: from, end: Offset.zero).animate(anim),
-              child: child,
+      child: Column(
+        children: [
+          ScreenTitle(
+            title: 'Неделя',
+            lead: _WeekLabel(
+              onShift: _shiftBy,
+              child: AnimatedSwitcher(
+                duration: duration,
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeInCubic,
+                layoutBuilder: (current, previous) =>
+                    Stack(alignment: Alignment.centerLeft, children: [...previous, ?current]),
+                transitionBuilder: (child, anim) => _slide(child, anim, labelKey),
+                child: WeekLabelText(_label(), key: labelKey),
+              ),
             ),
-          );
-        },
-        child: Loader<WeekData>(
-          key: ValueKey(_shift),
-          load: _load,
-          onUnauthorized: widget.onUnauthorized,
-          builder: (context, d, _) => _WeekView(
-            onLesson: (l) => openLesson(context, widget.api, l),
-            onSearch: () => openSearch(context, widget.api),
-            data: d,
-            onShift: _shiftBy,
-            days: days,
-            onView: _setView,
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Поиск расписания',
+                  onPressed: () {
+                    tick();
+                    openSearch(context, widget.api);
+                  },
+                  icon: Icon(Icons.search_rounded, color: p.muted),
+                ),
+                const SizedBox(width: 2),
+                ViewToggle(days: days, onChanged: _setView),
+              ],
+            ),
           ),
-        ),
+          Expanded(
+            child: AnimatedSwitcher(
+              duration: duration,
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              layoutBuilder: (current, previous) => Stack(fit: StackFit.expand, children: [...previous, ?current]),
+              transitionBuilder: (child, anim) => _slide(child, anim, content.key!),
+              child: content,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// «5–11 окт», через месяц — «28 сен – 4 окт»: коротко, чтобы подпись недели
+/// влезала целиком и на узком экране (владелец, Б5).
+String weekRange(DateTime monday) {
+  final sunday = monday.add(const Duration(days: 6));
+  return monday.month == sunday.month
+      ? '${monday.day}–${sunday.day} ${monthsShort[sunday.month - 1]}'
+      : '${monday.day} ${monthsShort[monday.month - 1]} – ${sunday.day} ${monthsShort[sunday.month - 1]}';
+}
+
+/// Содержимое недели под шапкой: полоса дней и лента пар или вид по дням.
 class _WeekView extends StatefulWidget {
   final WeekData data;
-  final ValueChanged<int> onShift;
   final ValueChanged<Lesson> onLesson;
 
-  /// Поиск расписания любой группы, преподавателя, аудитории.
-  final VoidCallback onSearch;
-
-  /// Вид по дням вместо ленты и его переключатель.
+  /// Вид по дням вместо ленты.
   final bool days;
-  final ValueChanged<bool> onView;
-  const _WeekView({
-    required this.data,
-    required this.onShift,
-    required this.onLesson,
-    required this.onSearch,
-    required this.days,
-    required this.onView,
-  });
+  const _WeekView({super.key, required this.data, required this.onLesson, required this.days});
 
   @override
   State<_WeekView> createState() => _WeekViewState();
@@ -213,33 +336,10 @@ class _WeekViewState extends State<_WeekView> {
     final s = AppStyle.of(context);
     final p = s.p;
     final d = widget.data;
-    final sunday = d.monday.add(const Duration(days: 6));
-    final range = d.monday.month == sunday.month
-        ? '${d.monday.day}–${sunday.day} ${monthsGen[sunday.month - 1]}'
-        : '${d.monday.day} ${monthsGen[d.monday.month - 1]} – ${sunday.day} ${monthsGen[sunday.month - 1]}';
     final t = now();
     final todayIso = iso(t);
     return Column(
       children: [
-        ScreenTitle(
-          title: 'Неделя',
-          lead: _WeekLabel(text: d.number != null ? '${d.number} неделя · $range' : range, onShift: widget.onShift),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: 'Поиск расписания',
-                onPressed: () {
-                  tick();
-                  widget.onSearch();
-                },
-                icon: Icon(Icons.search_rounded, color: p.muted),
-              ),
-              const SizedBox(width: 2),
-              ViewToggle(days: widget.days, onChanged: widget.onView),
-            ],
-          ),
-        ),
         if (widget.days)
           Expanded(
             child: WeekDays(data: d, onLesson: widget.onLesson),
@@ -298,11 +398,12 @@ class _WeekViewState extends State<_WeekView> {
   }
 }
 
-/// Номер и даты недели, по бокам стрелки на соседние недели.
+/// Номер и даты недели, по бокам стрелки на соседние недели; стрелки стоят,
+/// подпись между ними едет ([child]).
 class _WeekLabel extends StatelessWidget {
-  final String text;
+  final Widget child;
   final ValueChanged<int> onShift;
-  const _WeekLabel({required this.text, required this.onShift});
+  const _WeekLabel({required this.child, required this.onShift});
 
   @override
   Widget build(BuildContext context) {
@@ -328,14 +429,26 @@ class _WeekLabel extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           arrow(Icons.chevron_left_rounded, 'Прошлая неделя', -1),
-          Flexible(
-            child: Text(text, style: s.eyebrow(), maxLines: 1, overflow: TextOverflow.ellipsis),
-          ),
+          Flexible(child: ClipRect(child: child)),
           arrow(Icons.chevron_right_rounded, 'Следующая неделя', 1),
         ],
       ),
     );
   }
+}
+
+/// Подпись недели целиком, без многоточия: если и короткая не влезает
+/// (очень крупный системный шрифт) — мельче.
+class WeekLabelText extends StatelessWidget {
+  final String text;
+  const WeekLabelText(this.text, {super.key});
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    alignment: Alignment.centerLeft,
+    child: Text(text, style: AppStyle.of(context).eyebrow(), maxLines: 1, softWrap: false),
+  );
 }
 
 /// Переключатель двух видов недели — значками, без подписей (владелец, 09.10):

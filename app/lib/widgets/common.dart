@@ -140,33 +140,39 @@ class ScreenTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FitWords(title, style: s.title(titleSize(title, 34)), maxLines: 3),
+              if (sub != null && sub!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(sub!, style: s.body(15, color: s.p.muted)),
+              ],
+              const SizedBox(height: 10),
+              Container(
+                width: 34,
+                height: 3,
+                decoration: BoxDecoration(color: s.p.accent, borderRadius: BorderRadius.circular(2)),
+              ),
+            ],
+          ),
+        ),
+        ?trailing,
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(Space.xl, Space.l, Space.xl, Space.m),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
+      // строка над заголовком — во всю ширину, кнопки справа её не теснят (Б5)
+      child: lead == null
+          ? row
+          : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (lead != null) ...[lead!, const SizedBox(height: 6)],
-                FitWords(title, style: s.title(titleSize(title, 34)), maxLines: 3),
-                if (sub != null && sub!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(sub!, style: s.body(15, color: s.p.muted)),
-                ],
-                const SizedBox(height: 10),
-                Container(
-                  width: 34,
-                  height: 3,
-                  decoration: BoxDecoration(color: s.p.accent, borderRadius: BorderRadius.circular(2)),
-                ),
-              ],
+              children: [lead!, const SizedBox(height: 6), row],
             ),
-          ),
-          ?trailing,
-        ],
-      ),
     );
   }
 }
