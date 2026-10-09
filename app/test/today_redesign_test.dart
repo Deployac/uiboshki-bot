@@ -11,6 +11,7 @@ import 'package:uiboshki/screens/lesson.dart';
 import 'package:uiboshki/screens/today.dart';
 import 'package:uiboshki/screens/week.dart';
 import 'package:uiboshki/theme/app_theme.dart';
+import 'package:uiboshki/widgets/capy.dart';
 import 'package:uiboshki/widgets/common.dart';
 
 import 'fake_api.dart';
@@ -103,9 +104,106 @@ void main() {
     expect(find.text('2 ч 05 мин'), findsOneWidget);
     expect(find.textContaining('🌤'), findsNothing);
 
-    await t.tap(weather); // погода целиком — по нажатию, тоже без эмодзи
-    await t.pump();
-    expect(find.text(weatherBrief(_weather)!.full), findsOneWidget);
+    // погода целиком — чип раскрывается карточкой на месте (П5), тоже без
+    // эмодзи и без серой системной плашки снизу; нажал ещё раз — свернулась
+    await t.tap(weather);
+    await settle(t);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(find.text('Переменная облачность'), findsOneWidget);
+    expect(find.text('ощущается +2°'), findsOneWidget);
+    expect(find.text('куртка не помешает'), findsOneWidget);
+    expect(t.getTopLeft(hello).dy, greaterThan(t.getBottomLeft(find.text('куртка не помешает')).dy));
+    await t.tap(find.text('Переменная облачность'));
+    await settle(t);
+    expect(find.text('Переменная облачность'), findsNothing);
+  });
+
+  test('погода по частям для карточки; дождь — для капибары', () {
+    expect(weatherDetails(_weather), (
+      temp: '+4°',
+      desc: 'Переменная облачность',
+      feels: 'ощущается +2°',
+      advice: 'куртка не помешает',
+    ));
+    expect(weatherDetails('+5°')!.advice, '');
+    expect(rainy('🌧 -3°, лёгкий дождь, ощущается -7° · 🧤 перчатки'), isTrue);
+    expect(rainy(_weather), isFalse);
+  });
+
+  testWidgets('капибара: по центру поверх размытого экрана, подпись печатается; случай первым', (t) async {
+    phone(t);
+    await t.pumpWidget(_wrap(TodayScreen(api: fakeApi(overrides: _answers([])))));
+    await settle(t);
+    final pose = poseAt(now().hour);
+    Future<String> open({bool long = false}) async {
+      final capy = find.byType(CapyBadge);
+      long ? await t.longPress(capy) : await t.tap(capy);
+      await t.pump(const Duration(milliseconds: 400));
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      // без Material у текста в диалоге — жёлтое подчёркивание
+      expect(find.ancestor(of: find.byType(CapyOverlay), matching: find.byType(Material)), findsWidgets);
+      await t.pump(const Duration(seconds: 3)); // допечаталась
+      final shown = t.widget<CapyOverlay>(find.byType(CapyOverlay)).text;
+      await t.tapAt(const Offset(30, 60)); // нажатие в любом месте закрывает
+      await settle(t);
+      expect(find.byType(CapyOverlay), findsNothing);
+      return shown;
+    }
+
+    expect(find.byType(SnackBar), findsNothing);
+    expect(await open(), momentLines[CapyMoment.dayOff]); // пар нет — сначала «выходной»
+    expect(capyLines[pose], contains(await open(long: true)));
+    final third = await open();
+    expect(capyLines[pose], contains(third));
+    expect(await open(), isNot(third)); // по кругу, не повторяется подряд
+    expect(await open(), tickleLine); // пятое нажатие подряд
+  });
+
+  testWidgets('после последней пары недели — своя подпись, иначе «на сегодня всё»', (t) async {
+    if (poseAt(now().hour) == CapyPose.night) return; // ночью капибара спит, без случаев
+    phone(t);
+    final ended = _lesson(now().subtract(const Duration(hours: 2)), 1, 'Основы бизнес-анализа', 'А-18 (В-78)');
+    Future<String> first(List<Map<String, Object?>> days) async {
+      final api = fakeApi(
+        overrides: {
+          ..._answers([ended]),
+          'GET /api/week?start=${iso(mondayOf(now()))}': {'week': 6, 'days': days},
+        },
+      );
+      await t.pumpWidget(_wrap(TodayScreen(key: UniqueKey(), api: api)));
+      await settle(t);
+      await t.tap(find.byType(CapyBadge));
+      await t.pump(const Duration(milliseconds: 400));
+      final text = t.widget<CapyOverlay>(find.byType(CapyOverlay)).text;
+      await t.tapAt(const Offset(30, 60));
+      await settle(t);
+      return text;
+    }
+
+    final today = iso(now());
+    final later = iso(now().add(const Duration(days: 1)));
+    expect(
+      await first([
+        {
+          'date': today,
+          'dots': ['#fff'],
+        },
+      ]),
+      momentLines[CapyMoment.weekOver],
+    );
+    expect(
+      await first([
+        {
+          'date': today,
+          'dots': ['#fff'],
+        },
+        {
+          'date': later,
+          'dots': ['#fff'],
+        },
+      ]),
+      momentLines[CapyMoment.dayOver],
+    );
   });
 
   testWidgets('во время пары: «до конца», полоска и где следующая', (t) async {
