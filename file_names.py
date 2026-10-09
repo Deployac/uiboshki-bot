@@ -17,6 +17,7 @@ files.orig_title — «/tidyfiles undo» возвращает всё как бы
 import re
 
 from file_categories import category_of, natural_key
+from translit import from_translit
 
 NUMBERED = ("lecture", "practice", "control")
 
@@ -40,8 +41,9 @@ TOPIC_MAX = 100
 
 
 def clean(title: str) -> str:
-    """Подчёркивания → пробелы, без расширения и лишних пробелов/знаков по краям."""
-    t = _EXT.sub("", (title or "").strip())
+    """Подчёркивания → пробелы, без расширения и лишних пробелов/знаков по краям;
+    название транслитом — по-русски («Lektsiya 05 …» → «Лекция 05 …»)."""
+    t = from_translit(_EXT.sub("", (title or "").strip()).replace("_", " "))
     t = re.sub(r"[_]+", " ", t)
     t = re.sub(r"\s+", " ", t).strip(" -–—:")
     return t[:1].upper() + t[1:] if t else t
