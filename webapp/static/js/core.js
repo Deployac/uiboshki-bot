@@ -115,13 +115,28 @@ function syncFullscreen() {
   document.documentElement.classList.toggle("fullscreen", !!tg.isFullscreen);
   syncSafeArea();
 }
-if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0") && ["ios", "android"].includes(tg.platform)) {
+// На весь экран — только телефон. На компьютере приложение — окошко размером
+// с телефон, как из кнопки «Открыть приложение» в чате. Кнопка «Open» в
+// списке чатов открывает главное приложение бота в режиме из BotFather (полный
+// экран — ради ярлыка «Домой» на телефоне), и Telegram Desktop растягивал его
+// на весь монитор: вёрстка уезжала, закрыть было нечем (скрины владельца,
+// 09.10). Desktop при запуске не сообщает странице, что она на весь экран
+// (isFullscreen ещё false), поэтому выйти просим всегда: окно и так обычное —
+// Telegram просто подтверждает.
+function fitFullscreen() {
+  if (["ios", "android"].includes(tg.platform)) {
+    if (!tg.isFullscreen) tg.requestFullscreen();
+  } else if (["tdesktop", "macos", "weba", "webk", "web", "unigram"].includes(tg.platform)) {
+    tg.exitFullscreen();
+  }
+}
+if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0")) {
   try {
     tg.onEvent("safeAreaChanged", syncSafeArea);
     tg.onEvent("contentSafeAreaChanged", syncSafeArea);
     tg.onEvent("fullscreenChanged", syncFullscreen);
     tg.onEvent("fullscreenFailed", syncFullscreen);
-    if (!tg.isFullscreen) tg.requestFullscreen();
+    fitFullscreen();
     syncFullscreen();
   } catch (e) {}
 }
