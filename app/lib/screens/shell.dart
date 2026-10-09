@@ -45,12 +45,14 @@ const _tour = [
 class Shell extends StatefulWidget {
   final Api api;
   final ValueChanged<FontChoice> onFont;
+  final ValueChanged<ThemeChoice>? onTheme;
   final VoidCallback onLogout, onUnauthorized;
   final int initialTab;
   const Shell({
     super.key,
     required this.api,
     required this.onFont,
+    this.onTheme,
     required this.onLogout,
     required this.onUnauthorized,
     this.initialTab = 0,
@@ -68,6 +70,31 @@ class _ShellState extends State<Shell> {
 
   // СДО подключили из «Ещё» — «Учёба» строится заново
   int _sdo = 0;
+
+  /// Сменили шрифт или тему, пока вкладка была скрыта: на iPhone такая
+  /// вкладка оставалась со старым шрифтом (Onest не уходил обратно, владелец
+  /// 09.10, 3.7). Скрытые вкладки строятся заново, когда их открывают.
+  final _gen = List<int>.filled(tabs.length, 0);
+  final _stale = <int>{};
+  (FontChoice, bool)? _style;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final s = AppStyle.of(context);
+    final cur = (s.font, s.p.dark);
+    if (_style != null && _style != cur) {
+      for (var i = 0; i < tabs.length; i++) {
+        if (i != _index) _stale.add(i);
+      }
+    }
+    _style = cur;
+  }
+
+  void _open(int i) => setState(() {
+    if (_stale.remove(i)) _gen[i]++;
+    _index = i;
+  });
 
   @override
   void initState() {
@@ -165,19 +192,21 @@ class _ShellState extends State<Shell> {
   Widget build(BuildContext context) {
     final api = widget.api;
     final un = widget.onUnauthorized;
+    final g = _gen;
     final pages = [
-      TodayScreen(key: ValueKey('today$_epoch'), api: api, onUnauthorized: un),
-      WeekScreen(key: ValueKey('week$_epoch'), api: api, onUnauthorized: un),
-      DeadlinesScreen(key: ValueKey('dl$_epoch'), api: api, onUnauthorized: un),
-      StudyScreen(key: ValueKey('study$_epoch.$_sdo'), api: api, onUnauthorized: un),
+      TodayScreen(key: ValueKey('today$_epoch.${g[0]}'), api: api, onUnauthorized: un),
+      WeekScreen(key: ValueKey('week$_epoch.${g[1]}'), api: api, onUnauthorized: un),
+      DeadlinesScreen(key: ValueKey('dl$_epoch.${g[2]}'), api: api, onUnauthorized: un),
+      StudyScreen(key: ValueKey('study$_epoch.$_sdo.${g[3]}'), api: api, onUnauthorized: un),
       MoreScreen(
-        key: ValueKey('more$_epoch'),
+        key: ValueKey('more$_epoch.${g[4]}'),
         api: api,
         onFont: widget.onFont,
+        onTheme: widget.onTheme,
         onLogout: widget.onLogout,
         onUnauthorized: un,
         onGroup: () => pickGroup(),
-        onStudy: () => setState(() => _index = tabByName('study')),
+        onStudy: () => _open(tabByName('study')),
         onSdo: () => setState(() => _sdo++),
       ),
     ];
@@ -196,7 +225,7 @@ class _ShellState extends State<Shell> {
           ),
         ),
       ),
-      bottomNavigationBar: CapsuleTabBar(items: tabs, index: _index, onTap: (i) => setState(() => _index = i)),
+      bottomNavigationBar: CapsuleTabBar(items: tabs, index: _index, onTap: _open),
     );
   }
 }

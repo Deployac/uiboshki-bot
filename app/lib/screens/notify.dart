@@ -54,10 +54,7 @@ class _NotifyBodyState extends State<_NotifyBody> {
   Map<String, dynamic> get _prefs => _s['prefs'] as Map<String, dynamic>;
 
   void _snack(String text) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
+    if (mounted) showToast(context, text, kind: ToastKind.error);
   }
 
   Future<void> _save(Map<String, dynamic> body) {
@@ -100,28 +97,16 @@ class _NotifyBodyState extends State<_NotifyBody> {
     final key = r['key'] as String;
     final max = r['max'] as int;
     final v = _prefs[key] as int? ?? 0;
-    final ctrl = TextEditingController(text: v > 0 && !(r['presets'] as List).contains(v) ? '$v' : '');
-    final n = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(r['title'] as String),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(hintText: 'минут до пары, до $max'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Отмена')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, int.tryParse(ctrl.text.trim()) ?? -1),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+    final got = await inputSheet(
+      context,
+      title: r['title'] as String,
+      text: 'За сколько минут до пары напомнить',
+      hint: 'минут, до $max',
+      initial: v > 0 && !(r['presets'] as List).contains(v) ? '$v' : '',
+      keyboard: TextInputType.number,
     );
-    ctrl.dispose();
-    if (n == null) return;
+    if (got == null || !mounted) return;
+    final n = int.tryParse(got) ?? -1;
     if (n < 1 || n > max) {
       _snack('Число минут от 1 до $max');
       return;

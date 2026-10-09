@@ -53,9 +53,9 @@ List<({String label, DateTime date})> quickDates(DateTime t) {
 
 String _hm(TimeOfDay t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-void snack(BuildContext context, String text) => ScaffoldMessenger.of(context)
-  ..hideCurrentSnackBar()
-  ..showSnackBar(SnackBar(content: Text(text)));
+/// Короткое сообщение — своей плашкой (widgets/common.dart, showToast).
+void snack(BuildContext context, String text, {ToastKind kind = ToastKind.info}) =>
+    showToast(context, text, kind: kind);
 
 Future<T?> _sheet<T>(BuildContext context, Widget child) => showModalBottomSheet<T>(
   context: context,
@@ -431,19 +431,14 @@ class DlChips extends StatelessWidget {
 }
 
 /// Спросить «точно?» перед удалением.
-Future<bool> confirmDelete(BuildContext context, DlExtra x) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(x.editScope == 'me' ? 'Убрать у себя?' : 'Удалить срок?'),
-        content: Text(x.editScope == 'me' ? 'У группы этот срок останется.' : 'Вернуть его не получится.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Оставить')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Убрать')),
-        ],
-      ),
-    ) ??
-    false;
+Future<bool> confirmDelete(BuildContext context, DlExtra x) => confirmSheet(
+  context,
+  title: x.editScope == 'me' ? 'Убрать у себя?' : 'Удалить срок?',
+  text: x.editScope == 'me' ? 'У группы этот срок останется.' : 'Вернуть его не получится.',
+  action: 'Убрать',
+  cancel: 'Оставить',
+  danger: true,
+);
 
 // ── Напомнить ────────────────────────────────────────────────────────────
 

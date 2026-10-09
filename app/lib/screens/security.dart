@@ -60,10 +60,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   void _snack(String text) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
+    if (mounted) showToast(context, text, kind: ToastKind.error);
   }
 
   /// Вышли на этом телефоне — закрыть экран и уйти ко входу.
@@ -85,18 +82,15 @@ class _SecurityScreenState extends State<SecurityScreen> {
   }
 
   Future<void> _everywhere() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Выйти везде?'),
-        content: const Text('На всех устройствах, и на этом тоже. Войти снова — через бота.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Остаться')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Выйти везде')),
-        ],
-      ),
+    final ok = await confirmSheet(
+      context,
+      title: 'Выйти везде?',
+      text: 'На всех устройствах, и на этом тоже. Войти снова — через бота.',
+      action: 'Выйти везде',
+      cancel: 'Остаться',
+      danger: true,
     );
-    if (ok != true) return;
+    if (!ok) return;
     try {
       await api.post('/auth/logout?everywhere=true');
     } on ApiError catch (e) {

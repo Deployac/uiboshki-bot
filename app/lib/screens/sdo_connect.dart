@@ -110,26 +110,22 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
   }
 
   Future<void> _disconnect() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Отключить СДО?'),
-        content: const Text('Сдавать работы отсюда будет нельзя, пока не подключишь снова.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Оставить')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Отключить')),
-        ],
-      ),
+    final ok = await confirmSheet(
+      context,
+      title: 'Отключить СДО?',
+      text: 'Сдавать работы отсюда будет нельзя, пока не подключишь снова.',
+      action: 'Отключить',
+      cancel: 'Оставить',
+      danger: true,
     );
-    if (ok == true) await _act(() => widget.api.post('/sdo/disconnect'));
+    if (ok) await _act(() => widget.api.post('/sdo/disconnect'));
   }
 
   Future<void> _share(bool v) async {
     tick();
     await _act(() => widget.api.post('/sdo/share', {'share': v}));
     if (v && _st?['share'] == true && mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Спасибо! Задания группы появятся в сроках через минуту')));
+      showToast(context, 'Спасибо! Задания группы появятся в сроках через минуту', kind: ToastKind.done);
     }
   }
 

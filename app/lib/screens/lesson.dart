@@ -333,16 +333,16 @@ class _CourseStrip extends StatelessWidget {
 /// (тип 2 — преподаватель, 3 — аудитория) и открыть (search.dart).
 Future<void> openTarget(BuildContext context, Api api, String query, int type) async {
   final s = AppStyle.of(context);
-  final messenger = ScaffoldMessenger.of(context);
+  final toast = Overlay.of(context, rootOverlay: true);
   List items;
   try {
     items = (await api.get('/search?q=${Uri.encodeQueryComponent(query)}&type=$type'))['items'] as List;
   } catch (_) {
-    messenger.showSnackBar(const SnackBar(content: Text('Расписание МИРЭА сейчас не отвечает')));
+    toastOn(toast, 'Расписание МИРЭА сейчас не отвечает', kind: ToastKind.error);
     return;
   }
   if (items.isEmpty) {
-    messenger.showSnackBar(SnackBar(content: Text('«$query» в расписании МИРЭА не нашёл')));
+    toastOn(toast, '«$query» в расписании МИРЭА не нашёл');
     return;
   }
   Map pick = items.first;

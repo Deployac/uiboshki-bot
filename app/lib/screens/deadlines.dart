@@ -47,9 +47,9 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
       await call();
       return true;
     } on ApiError catch (e) {
-      if (mounted) snack(context, e.message);
+      if (mounted) snack(context, e.message, kind: ToastKind.error);
     } catch (e) {
-      if (mounted) snack(context, errorText(e));
+      if (mounted) snack(context, errorText(e), kind: ToastKind.error);
     }
     return false;
   }
@@ -82,7 +82,8 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
       case DlAction.edit:
         final saved = await showDeadlineEdit(context, api, d: d, x: x);
         if (saved == true) {
-          if (mounted) snack(context, x.editScope == 'me' && !x.personal ? 'Сохранено у тебя' : 'Сохранено');
+          final text = x.editScope == 'me' && !x.personal ? 'Сохранено у тебя' : 'Сохранено';
+          if (mounted) snack(context, text, kind: ToastKind.done);
           await reload();
         }
       case DlAction.delete:
@@ -90,7 +91,7 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
         if (await _run(() => api.delete('/deadlines/${d.id}'))) await reload();
       case DlAction.resetMine:
         if (await _run(() => api.delete('/deadlines/${d.id}/mine'))) {
-          if (mounted) snack(context, 'Снова как у всей группы');
+          if (mounted) snack(context, 'Снова как у всей группы', kind: ToastKind.done);
           await reload();
         }
     }
@@ -100,7 +101,7 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
     tick();
     final saved = await showDeadlineEdit(context, widget.api);
     if (saved == true) {
-      if (mounted) snack(context, 'Срок добавлен — видишь только ты');
+      if (mounted) snack(context, 'Срок добавлен — видишь только ты', kind: ToastKind.done);
       await reload();
     }
   }

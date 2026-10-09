@@ -61,12 +61,12 @@ class HomeworkScreen extends StatelessWidget {
     tick();
     try {
       await api.post('/homework/${h.id}/send');
-      if (context.mounted) snack(context, 'Отправил в Telegram — файл в чате с ботом.');
+      if (context.mounted) snack(context, 'Отправил в Telegram — файл в чате с ботом.', kind: ToastKind.done);
     } on ApiError catch (e) {
       // Аккаунт без Telegram: сервер объяснит, почему не вышло.
-      if (context.mounted) snack(context, e.message);
+      if (context.mounted) snack(context, e.message, kind: ToastKind.error);
     } catch (e) {
-      if (context.mounted) snack(context, errorText(e));
+      if (context.mounted) snack(context, errorText(e), kind: ToastKind.error);
     }
   }
 

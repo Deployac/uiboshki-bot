@@ -438,7 +438,7 @@ class _TargetScreenState extends State<TargetScreen> {
 
   Future<void> _togglePin() async {
     final on = _pinned;
-    final messenger = ScaffoldMessenger.of(context);
+    final toast = Overlay.of(context, rootOverlay: true); // плашка — и после ухода с экрана
     setState(() => _pinBusy = true);
     try {
       final path = '/pins/${widget.type}/${widget.id}';
@@ -449,11 +449,11 @@ class _TargetScreenState extends State<TargetScreen> {
       }
       tick();
       if (mounted) setState(() => _pinned = !on);
-      messenger.showSnackBar(SnackBar(content: Text(on ? 'Откреплено' : 'Закреплено — будет сверху в поиске')));
+      toastOn(toast, on ? 'Откреплено' : 'Закреплено — будет сверху в поиске', kind: ToastKind.done);
     } on ApiError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Не получилось: ${e.message}')));
+      toastOn(toast, 'Не получилось: ${e.message}', kind: ToastKind.error);
     } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(errorText(e))));
+      toastOn(toast, errorText(e), kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => _pinBusy = false);
     }

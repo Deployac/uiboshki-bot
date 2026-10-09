@@ -20,6 +20,9 @@ import 'study.dart';
 class MoreScreen extends StatelessWidget {
   final Api api;
   final ValueChanged<FontChoice> onFont;
+
+  /// Тема: как в телефоне, светлая или тёмная (main.dart запоминает).
+  final ValueChanged<ThemeChoice>? onTheme;
   final VoidCallback onLogout;
   final VoidCallback? onUnauthorized;
 
@@ -36,6 +39,7 @@ class MoreScreen extends StatelessWidget {
     super.key,
     required this.api,
     required this.onFont,
+    this.onTheme,
     required this.onLogout,
     this.onUnauthorized,
     this.onGroup,
@@ -95,7 +99,7 @@ class MoreScreen extends StatelessWidget {
                       key: const Key('more:calendar'),
                       icon: Icons.event_available_outlined,
                       title: 'Календарь',
-                      onTap: () => _copyCalendar(context),
+                      onTap: () => _calendarSheet(context),
                     ),
                     _TileItem(
                       key: const Key('more:group'),
@@ -143,18 +147,15 @@ class MoreScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
             child: Tile(
               onTap: () async {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (ctx) => AlertDialog(
-                    title: const Text('Выйти?'),
-                    content: const Text('На этом устройстве. Войти снова — через бота.'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Остаться')),
-                      TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Выйти')),
-                    ],
-                  ),
+                final ok = await confirmSheet(
+                  context,
+                  title: 'Выйти?',
+                  text: 'На этом устройстве. Войти снова — через бота.',
+                  action: 'Выйти',
+                  cancel: 'Остаться',
+                  danger: true,
                 );
-                if (ok == true) onLogout();
+                if (ok) onLogout();
               },
               child: Row(
                 children: [
@@ -196,41 +197,84 @@ class MoreScreen extends StatelessWidget {
   /// «@имя» → https://t.me/имя
   static String _url(String v) => v.startsWith('@') ? 'https://t.me/${v.substring(1)}' : v;
 
-  /// «Тема и шрифт» — лист: шрифт выбирается, тема — как в телефоне.
-  Future<void> _themeSheet(BuildContext context) => showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: AppStyle.of(context).p.cardSolid,
-    showDragHandle: true,
-    isScrollControlled: true,
-    builder: (_) => _ThemeSheet(onFont: onFont),
-  );
+  /// «Тема и шрифт» — лист: шрифт и тема (как в телефоне, светлая, тёмная).
+  Future<void> _themeSheet(BuildContext context) =>
+      appSheet<void>(context, (_) => _ThemeSheet(onFont: onFont, onTheme: onTheme));
 
   /// Адрес сервера для ссылок наружу (на стенде base пустой — тот же сайт).
   static String get _origin => Api.base.isEmpty ? Uri.base.origin : Api.base;
 
-  void _snack(BuildContext context, String text) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text(text)));
+  /// Открыть ссылку в системе (календарь по webcal://); тесты подменяют.
+  @visibleForTesting
+  static Future<bool> Function(Uri) openUrl = (u) => launchUrl(u, mode: LaunchMode.externalApplication);
 
-  // Подписка на расписание и дедлайны в календаре телефона (как /calendar в боте)
-  Future<void> _copyCalendar(BuildContext context) async {
+  /// Подписка на расписание и дедлайны в календаре телефона (как /calendar в
+  /// боте): лист с двумя кнопками. «Добавить в календарь» сразу открывает
+  /// окно подписки (webcal:// — на iPhone «Подписаться на календарь»), не
+  /// вышло — ссылка копируется; «Скопировать ссылку» — для других телефонов.
+  Future<void> _calendarSheet(BuildContext context) => appSheet<void>(
+    context,
+    (ctx) => SheetFrame(
+      title: 'Календарь',
+      text: 'Пары и сроки появятся в календаре телефона и будут обновляться сами.',
+      action: 'Добавить в календарь',
+      cancel: 'Скопировать ссылку',
+      onAction: () async {
+        Navigator.pop(ctx);
+        await _subscribe(context);
+      },
+      onCancel: () async {
+        Navigator.pop(ctx);
+        await _subscribe(context, copy: true);
+      },
+    ),
+  );
+
+  Future<void> _subscribe(BuildContext context, {bool copy = false}) async {
+    final toast = Overlay.of(context, rootOverlay: true);
+    String path;
     try {
-      final r = await api.get('/calendar/link');
-      await Clipboard.setData(ClipboardData(text: '$_origin${r['ics_path']}'));
-      if (context.mounted) _snack(context, 'Ссылка скопирована — Календарь → Добавить подписку');
-    } on PlatformException {
-      if (context.mounted) _snack(context, 'Не удалось скопировать — попробуй ещё раз.');
+      path = '${(await api.get('/calendar/link'))['ics_path'] ?? ''}';
+      if (path.isEmpty) throw ApiError('нет ссылки');
     } catch (e) {
-      if (context.mounted) _snack(context, errorText(e));
+      toastOn(toast, e is ApiError && e.message == 'нет ссылки' ? 'Не получилось взять ссылку — попробуй позже' : errorText(e), kind: ToastKind.error);
+      return;
     }
+    final https = '$_origin$path';
+    if (!copy) {
+      final host = https.replaceFirst(RegExp(r'^https?://'), '');
+      var opened = false;
+      try {
+        opened = await openUrl(Uri.parse('webcal://$host'));
+      } catch (_) {}
+      if (opened) return;
+    }
+    try {
+      await Clipboard.setData(ClipboardData(text: https));
+    } catch (_) {
+      toastOn(toast, 'Не удалось скопировать — попробуй ещё раз.', kind: ToastKind.error);
+      return;
+    }
+    toastOn(
+      toast,
+      copy
+          ? 'Ссылка скопирована — в календаре: «Добавить подписку» и вставь её'
+          : 'Календарь не открылся — ссылка скопирована, добавь подписку в календаре',
+      kind: ToastKind.done,
+    );
   }
 
   // «Позвать»: ссылка на сайт бота (/about — живое демо и поиск расписания)
   Future<void> _invite(BuildContext context) async {
-    await Clipboard.setData(
-      ClipboardData(text: 'Бот нашей группы: расписание, дедлайны и баллы СДО, лекции и ИИ по ним — $_origin/about'),
-    );
-    if (context.mounted) _snack(context, 'Ссылка скопирована — отправь одногруппникам');
+    try {
+      await Clipboard.setData(
+        ClipboardData(text: 'Бот нашей группы: расписание, дедлайны и баллы СДО, лекции и ИИ по ним — $_origin/about'),
+      );
+    } catch (_) {
+      if (context.mounted) showToast(context, 'Не удалось скопировать — попробуй ещё раз.', kind: ToastKind.error);
+      return;
+    }
+    if (context.mounted) showToast(context, 'Ссылка скопирована — отправь одногруппникам', kind: ToastKind.done);
   }
 }
 
@@ -677,10 +721,12 @@ class _SettingTile extends StatelessWidget {
   );
 }
 
-/// Лист «Тема и шрифт»: шрифт — «Книжный» или «Строгий»; тема — как в телефоне.
+/// Лист «Тема и шрифт»: шрифт — «Книжный» или «Строгий»; тема — как в
+/// телефоне (по умолчанию), светлая «Тетрадь» или тёмная «Глубина».
 class _ThemeSheet extends StatelessWidget {
   final ValueChanged<FontChoice> onFont;
-  const _ThemeSheet({required this.onFont});
+  final ValueChanged<ThemeChoice>? onTheme;
+  const _ThemeSheet({required this.onFont, this.onTheme});
 
   @override
   Widget build(BuildContext context) {
@@ -706,16 +752,13 @@ class _ThemeSheet extends StatelessWidget {
             ),
             const SizedBox(height: Space.s),
             Tile(
-              child: Row(
+              padding: EdgeInsets.zero,
+              child: Column(
                 children: [
-                  Icon(p.dark ? Icons.dark_mode_outlined : Icons.light_mode_outlined, color: p.accent),
-                  const SizedBox(width: Space.m),
-                  Expanded(
-                    child: Text(
-                      p.dark ? 'Тема «Глубина» — тёмная, как в телефоне' : 'Тема «Тетрадь» — светлая, как в телефоне',
-                      style: s.body(15),
-                    ),
-                  ),
+                  for (final t in ThemeChoice.values) ...[
+                    if (t != ThemeChoice.values.first) Divider(height: 1, color: p.line),
+                    _ThemeRow(choice: t, selected: s.theme == t, onTap: onTheme == null ? null : () => onTheme!(t)),
+                  ],
                 ],
               ),
             ),
@@ -800,11 +843,11 @@ class _OptionalState extends State<_Optional> {
 
   Future<void> _answer(String subject, bool attend) async {
     tick();
-    final messenger = ScaffoldMessenger.of(context);
+    final toast = Overlay.of(context, rootOverlay: true);
     try {
       await widget.api.post('/optional', {'subject': subject, 'attend': attend});
     } on ApiError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Не сохранилось: ${e.message}')));
+      toastOn(toast, 'Не сохранилось: ${e.message}', kind: ToastKind.error);
       return;
     }
     if (!mounted) return;
@@ -812,11 +855,11 @@ class _OptionalState extends State<_Optional> {
       _pending.remove(subject);
       _answers[subject] = attend;
     });
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(content: Text(attend ? 'Пары «$subject» будут в расписании' : 'Убрал «$subject» из расписания')),
-      );
+    showToast(
+      context,
+      attend ? 'Пары «$subject» будут в расписании' : 'Убрал «$subject» из расписания',
+      kind: ToastKind.done,
+    );
   }
 
   @override
@@ -899,6 +942,65 @@ class _Choice extends StatelessWidget {
             text,
             textAlign: TextAlign.center,
             style: s.body(15, weight: FontWeight.w600, color: on ? p.onAccent : p.text),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Строка темы: значок, название и какая палитра; выбранная — с галочкой.
+class _ThemeRow extends StatelessWidget {
+  final ThemeChoice choice;
+  final bool selected;
+  final VoidCallback? onTap;
+  const _ThemeRow({required this.choice, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final (icon, title, sub) = switch (choice) {
+      ThemeChoice.system => (
+        Icons.brightness_auto_outlined,
+        'Как в телефоне',
+        p.dark ? 'сейчас тёмная «Глубина»' : 'сейчас светлая «Тетрадь»',
+      ),
+      ThemeChoice.light => (Icons.light_mode_outlined, 'Светлая', '«Тетрадь»'),
+      ThemeChoice.dark => (Icons.dark_mode_outlined, 'Тёмная', '«Глубина»'),
+    };
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: InkWell(
+        key: Key('theme:${choice.name}'),
+        onTap: onTap == null
+            ? null
+            : () {
+                tick();
+                onTap!();
+              },
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+          child: Row(
+            children: [
+              Icon(icon, color: p.accent),
+              const SizedBox(width: Space.m),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: s.body(16, weight: FontWeight.w600)),
+                    Text(sub, style: s.body(13, color: p.muted)),
+                  ],
+                ),
+              ),
+              AnimatedOpacity(
+                opacity: selected ? 1 : 0,
+                duration: const Duration(milliseconds: 180),
+                child: Icon(Icons.check_circle_rounded, color: p.accent),
+              ),
+            ],
           ),
         ),
       ),
