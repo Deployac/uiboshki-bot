@@ -92,7 +92,6 @@ class StudyScreen extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 120),
       children: [
         ScreenTitle(
-          eyebrow: 'баллы БРС · текущий семестр',
           title: 'Учёба',
           trailing: d.sdo == null ? null : _SdoBadge(state: d.sdo!, onTap: () => _openConnect(context, reload)),
         ),
@@ -285,7 +284,7 @@ class _Door extends StatelessWidget {
         children: [
           Icon(icon, color: s.p.accent),
           const SizedBox(height: Space.m),
-          Text(title, style: s.title(19)),
+          Text(title, style: s.name(18)),
           const SizedBox(height: 2),
           Text(text, style: s.body(13, color: s.p.muted)),
         ],

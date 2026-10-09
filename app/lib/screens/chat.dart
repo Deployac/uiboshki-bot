@@ -367,7 +367,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   padding: const EdgeInsets.only(bottom: Space.l),
                   keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   children: [
-                    const ScreenTitle(eyebrow: 'отвечает по лекциям группы', title: 'Помощник'),
+                    const ScreenTitle(title: 'Помощник'),
                     if (_log.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: Space.xl),

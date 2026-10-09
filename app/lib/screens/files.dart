@@ -572,6 +572,11 @@ class _FileRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final ext = extOf(f);
+    // в предмете тип уже в заголовке раздела — словом только в поиске
+    final info = [
+      if (withSubject && f.subject.isNotEmpty) f.subject,
+      if (withSubject && _kindWord[fileFilterOf(f)] != null) _kindWord[fileFilterOf(f)]!,
+    ].join(' · ');
     return InkWell(
       onTap: () {
         tick();
@@ -581,20 +586,26 @@ class _FileRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
         child: Row(
           children: [
-            Icon(_categoryIcons[f.category] ?? Icons.insert_drive_file_outlined, color: s.p.muted, size: 20),
+            FormatBadge(ext: ext, category: f.category),
             const SizedBox(width: Space.m),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(f.title, style: s.body(15, weight: FontWeight.w600)),
-                  if (ext.isNotEmpty || f.hasSummary || (withSubject && f.subject.isNotEmpty))
-                    Text(
-                      [
-                        if (withSubject && f.subject.isNotEmpty) f.subject,
-                        if (ext.isNotEmpty) ext,
-                        if (f.hasSummary) 'есть конспект',
-                      ].join(' · '),
+                  Text(f.title, style: s.name(15)),
+                  if (info.isNotEmpty || f.hasSummary)
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          if (f.hasSummary)
+                            TextSpan(
+                              text: 'есть конспект',
+                              style: s.body(12, weight: FontWeight.w600, color: s.p.ok),
+                            ),
+                          if (f.hasSummary && info.isNotEmpty) const TextSpan(text: ' · '),
+                          if (info.isNotEmpty) TextSpan(text: info),
+                        ],
+                      ),
                       style: s.body(12, color: s.p.muted),
                     ),
                 ],
@@ -604,7 +615,10 @@ class _FileRow extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(left: Space.s),
                 child: ActionChip(
-                  label: Text(extOf(o).isEmpty ? 'ещё' : extOf(o), style: s.body(12, weight: FontWeight.w600)),
+                  label: Text(
+                    extOf(o).isEmpty ? 'ещё' : extOf(o),
+                    style: s.body(12, weight: FontWeight.w700, color: formatColor(extOf(o), s.p)),
+                  ),
                   visualDensity: VisualDensity.compact,
                   side: BorderSide(color: s.p.line),
                   backgroundColor: s.p.card,
@@ -617,6 +631,65 @@ class _FileRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Тип файла словом под названием: «лекция», «лаба».
+const _kindWord = {
+  'lecture': 'лекция',
+  'practice': 'практика',
+  'lab': 'лаба',
+  'control': 'контрольная',
+  'method': 'методичка',
+  'exam': 'к экзамену',
+};
+
+/// Цвет формата: PDF красный, презентация оранжевая, Word синий, таблица
+/// зелёная — как значки в самих программах (владелец, 09.10, 16А).
+Color formatColor(String ext, Palette p) => switch (ext) {
+  'PDF' => p.danger,
+  'PPT' || 'PPTX' || 'ODP' || 'KEY' => const Color(0xFFF2994A),
+  'DOC' || 'DOCX' || 'RTF' || 'ODT' => const Color(0xFF4F8CFF),
+  'XLS' || 'XLSX' || 'CSV' || 'ODS' => p.ok,
+  'ZIP' || 'RAR' || '7Z' => const Color(0xFF8B7CF6),
+  'JPG' || 'JPEG' || 'PNG' || 'HEIC' => const Color(0xFF2EC4B6),
+  _ => p.muted,
+};
+
+/// Значок формата слева от файла: «PDF» на подложке его цвета; без
+/// расширения — значок типа файла.
+class FormatBadge extends StatelessWidget {
+  final String ext, category;
+  const FormatBadge({super.key, required this.ext, this.category = 'other'});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final c = formatColor(ext, s.p);
+    final label = ext.length > 4 ? ext.substring(0, 4) : ext;
+    return Container(
+      width: 40,
+      height: 44,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: c.withValues(alpha: s.p.dark ? 0.18 : 0.14),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: label.isEmpty
+          ? Icon(_categoryIcons[category] ?? Icons.insert_drive_file_outlined, color: c, size: 20)
+          // «PPTX» при крупном системном шрифте уменьшается, а не обрезается
+          : Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 3),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  style: s.body(10.5, weight: FontWeight.w800, color: c).copyWith(letterSpacing: 0.4),
+                ),
+              ),
+            ),
     );
   }
 }
@@ -738,7 +811,7 @@ class _PageSheetState extends State<_PageSheet> {
       children = [
         Text('$kind $page из $pages', style: s.eyebrow()),
         const SizedBox(height: 4),
-        Text(_title, style: s.title(22)),
+        Text(_title, style: s.name(20)),
         if (image != null && image.isNotEmpty) ...[
           const SizedBox(height: Space.l),
           ClipRRect(
@@ -873,7 +946,7 @@ class _FileSheetState extends State<_FileSheet> {
             children: [
               Text(widget.f.subject, style: s.eyebrow()),
               const SizedBox(height: 4),
-              Text(widget.f.title, style: s.title(24)),
+              Text(widget.f.title, style: s.name(21)),
               const SizedBox(height: Space.l),
               Row(
                 children: [

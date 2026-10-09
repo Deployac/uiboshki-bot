@@ -173,7 +173,7 @@ class _SearchScreenState extends State<SearchScreen> {
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             children: [
               const BackRow(),
-              const ScreenTitle(eyebrow: 'любая группа, преподаватель, аудитория', title: 'Поиск'),
+              const ScreenTitle(title: 'Поиск'),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: Space.l),
                 child: TextField(

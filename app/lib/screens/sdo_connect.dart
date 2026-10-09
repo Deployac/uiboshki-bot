@@ -143,7 +143,7 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
             padding: const EdgeInsets.only(bottom: Space.xxl),
             children: [
               const BackRow(),
-              const ScreenTitle(eyebrow: 'свой вход · online-edu.mirea.ru', title: 'Вход в СДО'),
+              const ScreenTitle(title: 'Вход в СДО'),
               if (st == null && _loadError == null)
                 Padding(
                   padding: const EdgeInsets.all(Space.xxl),

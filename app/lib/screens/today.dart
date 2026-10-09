@@ -198,7 +198,7 @@ class _Hero extends StatelessWidget {
             ],
           ),
           const SizedBox(height: Space.s),
-          FitWords(lesson.title, style: s.title(21)),
+          FitWords(lesson.title, style: s.name(20)),
           const SizedBox(height: Space.m),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -247,10 +247,11 @@ class _Hero extends StatelessWidget {
           ],
           const SizedBox(height: Space.m),
           Wrap(
-            spacing: Space.l,
-            runSpacing: 4,
+            spacing: Space.m,
+            runSpacing: 6,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              if (lesson.room.isNotEmpty) _Meta(Icons.place_outlined, lesson.room),
+              if (lesson.room.isNotEmpty) RoomPill(lesson.room, color: c, size: 15),
               if (lesson.teacher.isNotEmpty) _Meta(Icons.person_outline_rounded, lesson.teacher),
             ],
           ),
@@ -309,9 +310,9 @@ class _Next extends StatelessWidget {
         children: [
           Text('Дальше · ${lesson.start}', style: s.eyebrow()),
           const SizedBox(height: 6),
-          Text(lesson.title, style: s.body(17, weight: FontWeight.w600)),
-          const SizedBox(height: 3),
-          Text(lesson.place, style: s.body(13, color: p.muted)),
+          Text(lesson.title, style: s.name(17)),
+          const SizedBox(height: 6),
+          RoomLine(lesson),
           if (moving) ...[
             const SizedBox(height: Space.s),
             Row(
@@ -392,16 +393,9 @@ class LessonList extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(l.title, style: s.body(15, weight: FontWeight.w600)),
-                                const SizedBox(height: 2),
-                                Text(
-                                  [
-                                    l.place,
-                                    if (showGroups && l.groups.isNotEmpty) l.groups,
-                                    if (live) 'идёт',
-                                  ].join(' · '),
-                                  style: s.body(13, color: live ? subjectColor(l.title) : p.muted),
-                                ),
+                                Text(l.title, style: s.name(15)),
+                                const SizedBox(height: 5),
+                                RoomLine(l, extra: [if (showGroups && l.groups.isNotEmpty) l.groups], live: live),
                               ],
                             ),
                           ),
@@ -423,6 +417,66 @@ class LessonList extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// «А-332 (МП-1)» → «А-332 · МП-1»; несколько кабинетов через запятую — так же.
+String roomText(String room) => room.trim().replaceAllMapped(RegExp(r'\s*\(([^)]+)\)'), (m) => ' · ${m[1]!.trim()}');
+
+/// Кабинет плашкой цвета предмета — крупнее и ярче преподавателя, видно с
+/// одного взгляда (владелец, 09.10, 12А).
+class RoomPill extends StatelessWidget {
+  final String room;
+  final Color color;
+  final double size;
+  const RoomPill(this.room, {super.key, required this.color, this.size = 14});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final fg = Color.lerp(color, p.dark ? Colors.white : Colors.black, p.dark ? 0.55 : 0.35)!;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: size * 0.65, vertical: size * 0.25),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: p.dark ? 0.22 : 0.16),
+        borderRadius: BorderRadius.circular(size * 0.65),
+      ),
+      child: Text(
+        roomText(room),
+        style: s.body(size, weight: FontWeight.w700, color: fg),
+      ),
+    );
+  }
+}
+
+/// Строка под названием пары: кабинет плашкой, рядом серым тип пары
+/// (и чьи пары — в расписании преподавателя), у идущей — «идёт».
+class RoomLine extends StatelessWidget {
+  final Lesson lesson;
+  final List<String> extra;
+  final bool live;
+  const RoomLine(this.lesson, {super.key, this.extra = const [], this.live = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final c = subjectColor(lesson.title);
+    final rest = [if (lesson.kind.isNotEmpty) lesson.kind.toLowerCase(), ...extra].join(' · ');
+    return Wrap(
+      spacing: Space.s,
+      runSpacing: 4,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        if (lesson.room.isNotEmpty) RoomPill(lesson.room, color: c),
+        if (rest.isNotEmpty) Text(rest, style: s.body(13, color: s.p.muted)),
+        if (live)
+          Text(
+            'идёт',
+            style: s.body(13, weight: FontWeight.w700, color: c),
+          ),
+      ],
     );
   }
 }

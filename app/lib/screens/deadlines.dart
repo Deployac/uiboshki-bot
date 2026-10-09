@@ -309,7 +309,7 @@ class _Hot extends StatelessWidget {
             ],
           ),
           const SizedBox(height: Space.s),
-          Text(d.subject, style: s.title(21)),
+          Text(d.subject, style: s.name(19)),
           if (_hasChips(x)) ...[const SizedBox(height: Space.s), DlChips(x: x!)],
           const SizedBox(height: Space.m),
           FittedBox(

@@ -141,7 +141,7 @@ class _NotifyBodyState extends State<_NotifyBody> {
       padding: const EdgeInsets.only(bottom: Space.xxl),
       children: [
         const BackRow(),
-        const ScreenTitle(eyebrow: 'что бот присылает и когда', title: 'Уведомления'),
+        const ScreenTitle(title: 'Уведомления'),
         Padding(
           padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.m),
           child: Row(

@@ -10,6 +10,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import 'capy.dart';
 import 'common.dart';
 
 String markWord(String label) => label == 'зачёт' ? 'зачёт' : '«$label»';
@@ -108,6 +109,16 @@ class _GoalCardState extends State<GoalCard> {
             children: [
               Text('Цель', style: s.title(20)),
               const Spacer(),
+              // набрал — капибара прыгает, не хватит — грустит (17Б)
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: switch (status) {
+                  'done' => CapyHop(key: const ValueKey('goal:joy'), size: 46, color: p.ok),
+                  'no' => CapySigh(key: const ValueKey('goal:sad'), size: 46, color: p.muted),
+                  _ => const SizedBox.shrink(),
+                },
+              ),
+              const SizedBox(width: Space.s),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(

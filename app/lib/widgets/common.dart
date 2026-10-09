@@ -116,12 +116,14 @@ class Tile extends StatelessWidget {
   }
 }
 
-/// Заголовок экрана: строка-подпись курсивом и крупное название с короткой
-/// прямой чертой под ним (без дуги — решение владельца).
+/// Заголовок экрана: крупное название с короткой прямой чертой под ним (без
+/// дуги — решение владельца). Строка над ним — только с данными (дата,
+/// неделя, сколько файлов); фразы-пояснения убраны (владелец, 09.10, 14А).
 class ScreenTitle extends StatelessWidget {
-  final String eyebrow, title;
+  final String? eyebrow;
+  final String title;
   final Widget? trailing;
-  const ScreenTitle({super.key, required this.eyebrow, required this.title, this.trailing});
+  const ScreenTitle({super.key, this.eyebrow, required this.title, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -135,8 +137,7 @@ class ScreenTitle extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(eyebrow, style: s.eyebrow()),
-                const SizedBox(height: 6),
+                if (eyebrow != null) ...[Text(eyebrow!, style: s.eyebrow()), const SizedBox(height: 6)],
                 FitWords(title, style: s.title(34)),
                 const SizedBox(height: 10),
                 Container(
@@ -213,32 +214,54 @@ class Notice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
+    final words = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: s.body(17, weight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(text, style: s.body(14, color: s.p.muted)),
+        if (onRetry != null) ...[
+          const SizedBox(height: Space.m),
+          TextButton(
+            onPressed: onRetry,
+            child: Text('Ещё раз', style: s.body(15, color: s.p.accent)),
+          ),
+        ],
+      ],
+    );
+    // «Пусто, всё хорошо» — капибара выглядывает снизу справа из-за края карточки
+    if (pose != null && pose != CapyPose.sad) {
+      const size = 84.0;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.l),
+        child: Tile(
+          padding: EdgeInsets.zero,
+          child: Stack(
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: size * CapyPeek.shown + 30),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(Space.l, Space.l, size + Space.l, Space.l),
+                  child: words,
+                ),
+              ),
+              Positioned(
+                right: Space.m,
+                bottom: 0,
+                child: CapyPeek(pose: pose!, size: size),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Space.l),
       child: Tile(
         child: Row(
           children: [
-            if (pose != null) ...[
-              CapyImage(pose: pose!, size: 72, color: pose == CapyPose.sad ? s.p.muted : s.p.accent),
-              const SizedBox(width: Space.l),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: s.body(17, weight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  Text(text, style: s.body(14, color: s.p.muted)),
-                  if (onRetry != null) ...[
-                    const SizedBox(height: Space.m),
-                    TextButton(
-                      onPressed: onRetry,
-                      child: Text('Ещё раз', style: s.body(15, color: s.p.accent)),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+            if (pose != null) ...[CapyImage(pose: pose!, size: 72, color: s.p.muted), const SizedBox(width: Space.l)],
+            Expanded(child: words),
           ],
         ),
       ),

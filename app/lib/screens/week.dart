@@ -1,8 +1,10 @@
 // «Неделя» — повестка: вся неделя одной лентой, сверху полоса дней с
-// точками пар. Нажал день — лента плавно едет к нему; по умолчанию выбран
-// сегодняшний, даже если пар нет. Соседняя неделя — свайпом вбок или стрелками.
+// точками пар. Нажал день — лента плавно едет к нему; открывается сразу на
+// сегодняшнем дне, прошедшие — выше, до них можно долистать (владелец, 09.10,
+// 19Б). Соседняя неделя — свайпом вбок или стрелками.
 // Сроки сдачи тут не показываем — для них вкладка «Сдать» (владелец, 09.10).
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 
 import '../api/api.dart';
 import '../api/models.dart';
@@ -111,6 +113,12 @@ class _WeekView extends StatefulWidget {
 class _WeekViewState extends State<_WeekView> {
   final _keys = List.generate(7, (_) => GlobalKey());
   final _scroll = ScrollController();
+
+  // День, с которого лента начинается (сегодня): дни до него лежат выше
+  // нулевой точки прокрутки — экран открывается прямо на нём, даже если ниже
+  // почти пусто (прыжок после первого кадра упирался в конец ленты).
+  final _center = const ValueKey('week:center');
+  late final int _anchor;
   late int _selected;
 
   @override
@@ -118,8 +126,7 @@ class _WeekViewState extends State<_WeekView> {
     super.initState();
     final today = now();
     final i = DateTime(today.year, today.month, today.day).difference(widget.data.monday).inDays;
-    _selected = i >= 0 && i < 7 ? i : 0;
-    if (_selected > 0) WidgetsBinding.instance.addPostFrameCallback((_) => _go(_selected, animate: false));
+    _selected = _anchor = i >= 0 && i < 7 ? i : 0;
   }
 
   @override
@@ -203,15 +210,17 @@ class _WeekViewState extends State<_WeekView> {
         const SizedBox(height: Space.s),
         Divider(height: 1, color: p.line),
         Expanded(
-          child: SingleChildScrollView(
+          child: CustomScrollView(
             controller: _scroll,
+            center: _center,
+            // все семь дней строятся сразу — нажатие на день доезжает и до понедельника
+            scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.only(bottom: 160),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (var i = 0; i < 7; i++)
-                  _DayBlock(
+            slivers: [
+              for (var i = 0; i < 7; i++)
+                SliverToBoxAdapter(
+                  key: i == _anchor ? _center : null,
+                  child: _DayBlock(
                     key: _keys[i],
                     date: d.monday.add(Duration(days: i)),
                     lessons: d.days[iso(d.monday.add(Duration(days: i)))] ?? const [],
@@ -219,8 +228,9 @@ class _WeekViewState extends State<_WeekView> {
                     at: t,
                     onLesson: widget.onLesson,
                   ),
-              ],
-            ),
+                ),
+              const SliverToBoxAdapter(child: SizedBox(height: 160)),
+            ],
           ),
         ),
       ],

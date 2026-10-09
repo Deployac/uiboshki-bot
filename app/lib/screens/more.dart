@@ -39,7 +39,7 @@ class MoreScreen extends StatelessWidget {
       builder: (context, me, _) => ListView(
         padding: const EdgeInsets.only(bottom: 120),
         children: [
-          ScreenTitle(eyebrow: 'профиль и настройки', title: me['first_name'] ?? 'Ещё'),
+          ScreenTitle(title: me['first_name'] ?? 'Ещё'),
           const Section('Моя группа'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),

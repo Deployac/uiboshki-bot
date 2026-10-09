@@ -94,10 +94,7 @@ class _GroupPickScreenState extends State<GroupPickScreen> {
                   )
                 else
                   const SizedBox(height: Space.xl),
-                const ScreenTitle(
-                  eyebrow: 'расписание, сроки и файлы — свои у каждой группы',
-                  title: 'Из какой ты группы?',
-                ),
+                const ScreenTitle(title: 'Из какой ты группы?'),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: Space.l),
                   child: TextField(
