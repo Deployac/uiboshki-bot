@@ -66,7 +66,7 @@ async def test_webapp_request_is_tracked(db, monkeypatch):
     assert c.get("/api/me", headers={"X-Telegram-Init-Data": _make_init_data()}).status_code == 200
     async with aiosqlite.connect(db.DATABASE_PATH) as con:
         rows = await (await con.execute("SELECT user_id, kind FROM events")).fetchall()
-    assert rows == [(222, "open")]
+    assert rows == [(222, "open"), (222, "via_tg")]
 
 
 @pytest.mark.asyncio
@@ -187,3 +187,28 @@ async def test_evening_summary_only_with_new_people(db, monkeypatch):
     sent.clear()                                                       # через сутки тех же не считаем
     await stats.send_evening(Bot(), now=datetime.now(stats.TZ) + timedelta(days=1, minutes=5))
     assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_platforms_line(db, monkeypatch):
+    """Где открывают (09.10): Telegram, PWA/браузер (токен сессии) и своё приложение (X-App)."""
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    from database.sessions import create_session
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(stats, "_last", {})
+    await db.upsert_user(333, "", "Боря")
+    await db.upsert_user(444, "", "Вера")
+    c = TestClient(server.app)
+    assert c.get("/api/me", headers={"X-Telegram-Init-Data": _make_init_data()}).status_code == 200
+    pwa = await create_session(333, "Chrome · Android")
+    assert c.get("/api/me", headers={"Authorization": f"Bearer {pwa}"}).status_code == 200
+    app = await create_session(444, "Капибара · iPhone")
+    assert c.get("/api/me", headers={"Authorization": f"Bearer {app}", "X-App": "ios"}).status_code == 200
+    s = await stats.collect(7)
+    assert dict(s["platforms"]) == {"Telegram": 1, "PWA и браузер": 1, "приложение": 1}
+    assert "Где открывают: Telegram — <b>1</b> · PWA и браузер — <b>1</b> · приложение — <b>1</b>" in stats.summary(s)
+    p = await stats.people(7)
+    assert "приложение" in {a["id"]: a["uses"] for a in p["active"]}[444]
+    assert stats.platforms_line([("Telegram", 0)]) == ""

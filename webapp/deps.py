@@ -56,6 +56,7 @@ async def get_current_user(request: Request, x_telegram_init_data: str = Header(
     await enter(user["id"])       # его группа — для файлов, ДЗ, заметок, контекста ИИ (этап 1 (б))
     import stats                  # «кто, что, когда» для /stats старосты (без содержимого)
     await stats.track(user["id"], stats.kind_for(request.method, request.url.path))
+    await stats.track(user["id"], stats.via(bool(x_telegram_init_data), request.headers.get("x-app", "")))
     return user
 
 
