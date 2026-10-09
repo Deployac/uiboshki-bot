@@ -1,7 +1,8 @@
 // Капибара — талисман приложения: 8 поз из ChatGPT (те же, что в WebApp,
 // webapp/static/img/capy). В углу «Сегодня» — по времени суток: утро с
 // кофе, день за ноутбуком, вечер с книгой и лампой, ночь — спит на мяче;
-// радуется, когда сдал или всё хорошо, грустит, когда не загрузилось.
+// радуется, когда сдал или всё хорошо, грустит, когда не загрузилось;
+// на сёрфе (на четырёх лапах, владелец 09.10) — пока обновляется экран.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -9,7 +10,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import 'common.dart';
 
-enum CapyPose { morning, day, evening, night, joy, sad, splash }
+enum CapyPose { morning, day, evening, night, joy, sad, splash, surf }
 
 /// Часы — как в WebApp (core.js: capyForHour).
 CapyPose poseAt(int hour) {

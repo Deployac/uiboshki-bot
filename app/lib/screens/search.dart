@@ -13,6 +13,7 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
+import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import 'files.dart' show BackRow;
 import 'lesson.dart' show openLesson;
@@ -524,8 +525,7 @@ class _TargetScreenState extends State<TargetScreen> {
     final week = _weeks.isEmpty ? null : _weeks[_week] as Map;
     final days = week == null ? const [] : week['days'] as List;
     final t = now();
-    return RefreshIndicator(
-      color: p.accent,
+    return CapyRefresh(
       onRefresh: _load,
       child: ListView(
         padding: const EdgeInsets.only(bottom: Space.xxl),

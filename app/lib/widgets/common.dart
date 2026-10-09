@@ -6,6 +6,7 @@ import '../api/api.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'capy.dart';
+import 'capy_refresh.dart';
 
 /// «Сейчас». Для стенда и скриншотов время можно сдвинуть: --dart-define=NOW=2026-10-08T10:07:00+03:00
 DateTime now() {
@@ -323,7 +324,7 @@ class _LoaderState<T> extends State<Loader<T>> {
   Widget build(BuildContext context) {
     final p = AppStyle.of(context).p;
     if (_data != null) {
-      return RefreshIndicator(color: p.accent, onRefresh: _reload, child: widget.builder(context, _data as T, _reload));
+      return CapyRefresh(onRefresh: _reload, child: widget.builder(context, _data as T, _reload));
     }
     if (_error != null) {
       return ListView(
