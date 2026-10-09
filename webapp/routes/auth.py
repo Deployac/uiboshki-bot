@@ -129,7 +129,9 @@ def _page(title: str, text: str, extra: str = "", status: int = 200):
     from fastapi.responses import HTMLResponse
     return HTMLResponse(
         "<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Капибара</title><body style=\"font:16px system-ui;max-width:420px;margin:15vh auto;padding:0 20px\">"
+        # тема телефона (тёмная — не белый экран) и перенос длинных имён без прокрутки вбок
+        "<meta name='color-scheme' content='light dark'><title>Капибара</title>"
+        "<body style=\"font:16px system-ui;max-width:420px;margin:15vh auto;padding:0 20px;overflow-wrap:anywhere\">"
         f"<h2>{escape(title)}</h2><p>{escape(text)}</p>{extra}</body>", status_code=status)
 
 

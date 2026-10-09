@@ -1007,3 +1007,33 @@ def test_more_install_sheet_tells_about_pwa():
     assert 'APP_URL = "https://www.uiboshki.ru/app"' in js
     assert "laptop:" in JS["js/icons.js"]
     assert 'id: "v5.50"' in js and "uiboshki.ru/app" in js.split("const NEWS")[1].split("};")[0]
+
+# ── Ночь 09.10: сайт ──
+def test_site_dark_spinner_keeps_accent():
+    """Тёмная тема сайта: «border:1px solid …» в тёмном правиле .spinner сбрасывал
+    border-top-color:var(--accent) — спиннер «Ищем в расписании…» был ровным
+    кольцом без бегущего куска. Генератор повторяет цвет стороны после рамки."""
+    import importlib.util
+    root = STATIC.parent.parent
+    spec = importlib.util.spec_from_file_location("site_dark", root / "tools" / "site_dark.py")
+    sd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sd)
+    out = sd.build(".spinner{display:inline-block;border:1px solid #bdb7aa;border-top-color:var(--accent);width:13px}")
+    assert re.search(r"\.spinner\{border:1px solid #[0-9a-f]{6};border-top-color:var\(--accent\)\}", out), out
+    css = (STATIC / "site" / "site.css").read_text(encoding="utf-8")
+    assert ".spinner{border:1px solid #60594a;border-top-color:var(--accent)}" in css
+    # номера возможностей 01–04 одной ширины — заголовки не пляшут на пару пикселей
+    assert ".feature-number{font-variant-numeric:tabular-nums}" in css
+
+
+def test_server_pages_wrap_long_text():
+    """Страницы, которые сервер отдаёт сам: длинное имя аккаунта VK/Яндекс и
+    длинный вопрос/код в слепом тесте ИИ не дают прокрутки вбок на телефоне;
+    страница входа — в теме телефона (тёмная — не белый экран)."""
+    import ai_bench
+    from webapp.routes.auth import _page
+    html = _page("Привязать VK ID?", "А" * 200).body.decode()
+    assert "overflow-wrap:anywhere" in html and "name='color-scheme' content='light dark'" in html
+    page = ai_bench.page([{"kind": "Вопрос", "title": "x" * 300, "subject": "", "answers": [
+        {"text": "```\n" + "1" * 300 + "\n```", "model": m, "cost": 0, "secs": 1} for m in ai_bench.MODELS]}])
+    assert "h2{font-size:16px;margin:4px 0 10px;overflow-wrap:anywhere}" in page and ".t pre{white-space:pre-wrap}" in page
