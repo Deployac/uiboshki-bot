@@ -93,7 +93,10 @@ def test_subscribe_api(db, monkeypatch):
     c = TestClient(server.app)
     h = {"X-Telegram-Init-Data": _make_init_data()}
     assert len(webpush.unb64u(c.get("/api/push/key", headers=h).json()["key"])) == 65
-    sub = {"endpoint": "https://push.example/x", "keys": {"p256dh": "a", "auth": "b"}}
+    sub = {"endpoint": "https://fcm.googleapis.com/fcm/send/x", "keys": {"p256dh": "a", "auth": "b"}}
     assert c.post("/api/push/subscribe", json=sub, headers=h).json() == {"ok": True}
     assert c.post("/api/push/subscribe", json=dict(sub, endpoint="http://evil"), headers=h).status_code == 400
-    assert c.post("/api/push/unsubscribe", json={"endpoint": "https://push.example/x"}, headers=h).json()["removed"] == 1
+    # только адреса пуш-сервисов браузеров (ревью безопасности 09.10)
+    for bad in ("https://push.example/x", "https://10.255.255.1/x", "https://fcm.googleapis.com.evil.ru/x"):
+        assert c.post("/api/push/subscribe", json=dict(sub, endpoint=bad), headers=h).status_code == 400
+    assert c.post("/api/push/unsubscribe", json={"endpoint": sub["endpoint"]}, headers=h).json()["removed"] == 1

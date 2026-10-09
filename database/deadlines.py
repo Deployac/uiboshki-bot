@@ -114,8 +114,8 @@ def _shared_in() -> tuple[str, tuple]:
 
 async def deadline_group(d: dict) -> int:
     """Группа общего дедлайна (NULL — своя)."""
-    from database.groups import g_or_home
-    return g_or_home(d.get("group_id"))
+    from database.groups import row_group
+    return row_group(d.get("group_id"))
 
 
 async def can_see_deadline(d: dict, user_id: int) -> bool:

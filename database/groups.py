@@ -137,6 +137,14 @@ def g_or_home(group_id: int | None) -> int:
     return home() if cur is None else cur
 
 
+def row_group(group_id: int | None) -> int:
+    """Группа СТРОКИ базы (дедлайн, ДЗ, заметка): NULL — всегда своя группа.
+    Не g_or_home: та подставляет группу запроса, и общий дедлайн УИБО-03-24
+    для человека из другой группы считался «его» — староста чужой группы мог
+    его править и удалять (ревью безопасности 09.10)."""
+    return home() if group_id is None else group_id
+
+
 async def enter(user_id: int) -> int:
     """Запомнить группу человека на время его запроса."""
     gid = await viewer_group(user_id)
