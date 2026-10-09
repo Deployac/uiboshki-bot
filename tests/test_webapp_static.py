@@ -1037,3 +1037,10 @@ def test_server_pages_wrap_long_text():
     page = ai_bench.page([{"kind": "Вопрос", "title": "x" * 300, "subject": "", "answers": [
         {"text": "```\n" + "1" * 300 + "\n```", "model": m, "cost": 0, "secs": 1} for m in ai_bench.MODELS]}])
     assert "h2{font-size:16px;margin:4px 0 10px;overflow-wrap:anywhere}" in page and ".t pre{white-space:pre-wrap}" in page
+
+
+def test_demo_news_seen_follows_current_release():
+    """Демо на сайте: «Что нового» не всплывает — прочитан текущий NEWS.id, а не
+    зашитый номер (после смены id на v5.50 лист вылез поверх демо)."""
+    demo = (STATIC / "site" / "demo.js").read_text(encoding="utf-8")
+    assert 'news_seen: "v' not in demo and "NEWS.id" in demo
