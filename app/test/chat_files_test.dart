@@ -55,7 +55,7 @@ void main() {
     await t.tap(find.text('Основы бизнес-анализа в ИТ-сфере'));
     await settle(t);
     expect(find.text('Лекции'), findsOneWidget); // подписи типов без эмодзи
-    await t.tap(find.text('Лекция 2. Требования и стейкхолдеры'));
+    await t.tap(find.text('Требования и стейкхолдеры')); // тема — строкой под «Лекция 2»
     await settle(t);
     expect(asked, contains('GET /api/summary/2'));
     expect(find.textContaining('Кто такие стейкхолдеры', findRichText: true), findsOneWidget);

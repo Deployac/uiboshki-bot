@@ -12,11 +12,17 @@ tidy_titles(files) → {id: новое название}: тип (file_categorie
 мусор (подчёркивания, расширение). Применяет староста командой /tidyfiles
 (сначала показывает, что поменяется); старое название хранится в
 files.orig_title — «/tidyfiles undo» возвращает всё как было.
+
+text_titles(files, names, texts) — лекциям без темы («Лекция 8», «Лекция 1.
+Презентация») тема из текста файла (lecture_topic): «Лекция 8. Тема». Одна
+лекция в PDF и PPTX получает одну тему — в приложении это одна строка.
+split_title — «Лекция 8» и тема отдельно: приложение пишет тему под номером.
 """
 
 import re
 
 from file_categories import category_of, natural_key
+from lecture_topic import topic_from_text
 from translit import from_translit
 
 NUMBERED = ("lecture", "practice", "control")
@@ -37,6 +43,10 @@ _ACRONYM = re.compile(r"^(?=[^\s]*[А-ЯЁA-Z][^\s]*[А-ЯЁA-Z])[А-ЯЁA-Zа-�
 _GENERIC = re.compile(r"^(?:лекци[а-яё]*|практическ[а-яё]*(?:\s+заняти[а-яё]*)?|заняти[а-яё]*|материал[а-яё]*|"
                       r"слайд[а-яё]*|конспект[а-яё]*|файл|к\s+лекци[а-яё]*|к\s+практик[а-яё]*)$", re.I)
 _PRESENT = re.compile(r"^презентаци[а-яё]*(?:\s+(?:к|по|для)\s+(?:лекци|практик|заняти|тем)[а-яё]*)?$", re.I)
+_FMT = re.compile(r"\s*\((?:pdf|pptx?|docx?|xlsx?|odt|odp|rtf|txt)\)$", re.I)   # старое «Лекция 3 (PDF)»
+# «Лекция 8», «Практика 5–6», «Тема 2, лекция 1» и тема после точки
+_HEAD = re.compile(r"^((?:Лекция|Практика|Семинар|Лабораторная|Контрольная|Тест) \d{1,2}(?:[–-]\d{1,2})?|"
+                   r"Тема \d{1,2}, лекция \d{1,2})(?:\. (.+))?$")
 TOPIC_MAX = 100
 
 
@@ -45,7 +55,7 @@ def clean(title: str) -> str:
     название транслитом — по-русски («Lektsiya 05 …» → «Лекция 05 …»)."""
     t = from_translit(_EXT.sub("", (title or "").strip()).replace("_", " "))
     t = re.sub(r"[_]+", " ", t)
-    t = re.sub(r"\s+", " ", t).strip(" -–—:")
+    t = _FMT.sub("", re.sub(r"\s+", " ", t)).strip(" -–—:")
     return t[:1].upper() + t[1:] if t else t
 
 
@@ -165,22 +175,64 @@ def tidy_titles(files: list[dict]) -> dict[int, str]:
             new = named.get(f["id"]) or clean(f["title"])
             if new and new != f["title"]:
                 out[f["id"]] = new
-    # одинаковые названия в одном предмете (PDF и презентация одной лекции) — с типом
-    # файла, если типы разные; одинаковые файлы-дубли из СДО так и остаются
-    by_name: dict[tuple, list[int]] = {}
-    for f in files:
-        by_name.setdefault((f.get("subject") or "", out.get(f["id"], f["title"])), []).append(f["id"])
-    ext = {f["id"]: (_EXT.search(f.get("file_name") or "") or [None, ""])[1].lower() for f in files}
-    for (_, name), ids in by_name.items():
-        if len(ids) > 1 and len({ext[i] for i in ids}) > 1:
-            for fid in ids:
-                if ext[fid]:
-                    out[fid] = f"{name} ({ext[fid].upper()})"
+    # одинаковые названия (PDF и презентация одной лекции) остаются одинаковыми:
+    # приложение показывает их одной строкой с кнопкой второго формата
     return out
 
 
-def preview(files: list[dict], changes: dict[int, str], limit: int = 25) -> list[str]:
-    """Строки «было → стало» по предметам, для сообщения старосте."""
+def split_title(title: str) -> tuple[str, str]:
+    """«Лекция 8. Управление рисками» → («Лекция 8», «Управление рисками»);
+    название не по шаблону — («», «»)."""
+    m = _HEAD.match((title or "").strip())
+    return (m.group(1), m.group(2) or "") if m else ("", "")
+
+
+def _no_topic(topic: str) -> bool:
+    return not topic or topic == "Презентация"
+
+
+def text_titles(files: list[dict], names: dict[int, str], texts: dict[int, str]) -> dict[int, str]:
+    """{id: «Лекция 8. Тема»} — лекциям, у которых и после tidy_titles нет темы,
+    тема из начала текста (texts: id → текст файла). names — что дал tidy_titles.
+
+    У одной лекции (тот же предмет и номер — PDF и презентация) тема одна:
+    из названия соседнего файла, если там есть, иначе первая найденная в тексте.
+    Одна и та же «тема» у трёх и больше лекций предмета — это название курса
+    со всех титульных слайдов, не берём."""
+    lectures = [f for f in sorted(files, key=lambda f: f["id"]) if category_of(f) == "lecture"]
+    need: dict[int, tuple[str, str]] = {}                  # id → (предмет, «Лекция 8»)
+    known: dict[tuple, str] = {}                           # (предмет, «лекция 8») → тема
+    found: dict[int, str] = {}
+    for f in lectures:
+        subj = f.get("subject") or ""
+        head, topic = split_title(names.get(f["id"], f["title"]))
+        if not head:
+            continue
+        if not _no_topic(topic):
+            known.setdefault((subj, head.lower()), topic)       # тема из названия — надёжнее текста
+            continue
+        need[f["id"]] = (subj, head)
+        t = topic_from_text(texts.get(f["id"]) or "", subj)
+        if t:
+            found[f["id"]] = t
+    heads_by_topic: dict[tuple, set] = {}
+    for fid, t in found.items():
+        heads_by_topic.setdefault((need[fid][0], t.lower()), set()).add(need[fid][1].lower())
+    for fid, t in found.items():
+        subj, head = need[fid]
+        if len(heads_by_topic[(subj, t.lower())]) < 3:
+            known.setdefault((subj, head.lower()), t)
+    out = {}
+    for fid, (subj, head) in need.items():
+        topic = known.get((subj, head.lower()))
+        if topic:
+            out[fid] = f"{head}. {topic}"
+    return out
+
+
+def preview(files: list[dict], changes: dict[int, str], limit: int = 25, marked: set | None = None) -> list[str]:
+    """Строки «было → стало» по предметам, для сообщения старосте; marked —
+    темы из текста лекций (их проверить глазами), со значком 📄."""
     from utils import esc
     by_id = {f["id"]: f for f in files}
     rows = sorted(changes.items(), key=lambda kv: (by_id[kv[0]].get("subject") or "", natural_key(kv[1])))
@@ -190,12 +242,14 @@ def preview(files: list[dict], changes: dict[int, str], limit: int = 25) -> list
         if subj != last:
             lines.append(f"\n<b>{esc(subj)}</b>")
             last = subj
-        lines.append(f"• {esc(by_id[fid]['title'])} → <b>{esc(new)}</b>")
+        mark = "📄 " if marked and fid in marked else "• "
+        lines.append(f"{mark}{esc(by_id[fid]['title'])} → <b>{esc(new)}</b>")
     return lines
 
 
-def full_list(files: list[dict], changes: dict[int, str]) -> str:
-    """Все переименования текстом для файла: по предметам, «было → стало»."""
+def full_list(files: list[dict], changes: dict[int, str], marked: set | None = None) -> str:
+    """Все переименования текстом для файла: по предметам, «было → стало»;
+    тема из текста лекции — с пометкой."""
     by_id = {f["id"]: f for f in files}
     rows = sorted(changes.items(), key=lambda kv: (by_id[kv[0]].get("subject") or "", natural_key(kv[1])))
     out, last = [], None
@@ -204,5 +258,6 @@ def full_list(files: list[dict], changes: dict[int, str]) -> str:
         if subj != last:
             out.append(("\n" if out else "") + f"== {subj} ==")
             last = subj
-        out.append(f"{by_id[fid]['title']}  →  {new}")
+        note = "   (тема из текста)" if marked and fid in marked else ""
+        out.append(f"{by_id[fid]['title']}  →  {new}{note}")
     return "\n".join(out) + "\n"

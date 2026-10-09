@@ -140,6 +140,16 @@ async def get_file_text(file_id: int) -> str:
         return row[0] if row else ""
 
 
+async def get_text_heads(file_ids, chars: int = 2500) -> dict[int, str]:
+    """Начало текста файлов (титульный слайд, первая страница) — тема лекции
+    для /tidyfiles (file_names.text_titles)."""
+    want = set(file_ids)
+    async with connect() as db:
+        rows = await (await db.execute("SELECT file_id, substr(content, 1, ?) FROM file_text WHERE char_count > 0",
+                                       (chars,))).fetchall()
+    return {fid: text for fid, text in rows if fid in want}
+
+
 def text_hash(text: str) -> str:
     """Отпечаток текста лекции: та же лекция в другом курсе СДО (другая
     группа потока, другое имя файла) — тот же отпечаток (этап 1 (в))."""

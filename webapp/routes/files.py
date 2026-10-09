@@ -35,6 +35,7 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
     # шлёт документ — см. handlers/start.py: cmd_start_deeplink.
     from database import get_file_ids_with_summary, get_file_ids_with_text
     from file_categories import CATEGORIES, LABELS, category_of
+    from file_names import split_title
     from database import is_editor
     with_text = await get_file_ids_with_text()
     with_summary = await get_file_ids_with_summary()
@@ -42,8 +43,12 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
     out = []
     for f in items:
         cat = category_of(f)
+        # «Лекция 8. Тема» — номер заголовком, тема строкой под ним (владелец, 09.10);
+        # «Презентация» не тема: PDF и слайды одной лекции — одна строка в приложении
+        head, topic = split_title(f["title"])
         out.append({
             "id": f["id"], "title": f["title"], "subject": f.get("subject") or "",
+            "head": head or f["title"], "topic": "" if topic == "Презентация" else topic,
             "file_name": f.get("file_name") or "", "has_text": f["id"] in with_text,
             "has_summary": f["id"] in with_summary,
             "category": cat, "category_label": LABELS[cat],

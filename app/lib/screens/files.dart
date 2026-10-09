@@ -19,11 +19,16 @@ import '../widgets/tg_html.dart';
 class FileItem {
   final int id;
   final String title, subject, fileName, category;
+
+  /// «Лекция 8» и тема отдельно — тема строкой под номером (владелец, 09.10).
+  final String head, topic;
   final bool hasText, hasSummary;
 
   FileItem.fromJson(Map<String, dynamic> j)
     : id = j['id'] as int,
       title = j['title'] ?? '',
+      head = (j['head'] as String?)?.isNotEmpty == true ? j['head'] : (j['title'] ?? ''),
+      topic = j['topic'] ?? '',
       subject = j['subject'] ?? '',
       fileName = j['file_name'] ?? '',
       category = j['category'] ?? 'other',
@@ -427,11 +432,12 @@ String fileFilterOf(FileItem f) =>
     f.category == 'practice' && RegExp(r'лаб|lab', caseSensitive: false).hasMatch(f.title) ? 'lab' : f.category;
 
 /// Одинаковые названия (одна лекция в PDF и PPTX, повторная выгрузка) — одной
-/// строкой; в группе первым — файл с конспектом или текстом.
+/// строкой; в группе первым — файл с конспектом или текстом. «Лекция 1» и
+/// «Лекция 1. Презентация» — тоже одна лекция (у презентации темы нет).
 List<List<FileItem>> groupSameTitle(List<FileItem> files) {
   final groups = <String, List<FileItem>>{};
   for (final f in files) {
-    (groups[f.title.trim().toLowerCase()] ??= []).add(f);
+    (groups['${f.head}|${f.topic}'.trim().toLowerCase()] ??= []).add(f);
   }
   int rank(FileItem f) => f.hasSummary ? 0 : (f.hasText ? 1 : 2);
   final out = [for (final g in groups.values) g..sort((a, b) => rank(a).compareTo(rank(b)))];
@@ -593,7 +599,12 @@ class _FileRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(f.title, style: s.name(15)),
+                  Text(f.head, style: s.name(15)),
+                  if (f.topic.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(f.topic, style: s.body(14, color: s.p.text)),
+                    ),
                   if (info.isNotEmpty || f.hasSummary)
                     Text.rich(
                       TextSpan(
