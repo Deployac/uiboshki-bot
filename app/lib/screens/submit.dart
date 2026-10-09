@@ -177,7 +177,7 @@ class _SubmitSheetState extends State<SubmitSheet> {
                   children: [
                     Text('Сдать файлом', style: s.eyebrow()),
                     const SizedBox(height: 4),
-                    Text(widget.title, style: s.title(22)),
+                    Text(widget.title, style: s.name(20)),
                     const SizedBox(height: Space.l),
                     if (rules == null && _error == null)
                       Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5))
@@ -283,7 +283,7 @@ class _Done extends StatelessWidget {
             height: 112,
             child: Stack(
               children: [
-                CapyImage(pose: CapyPose.joy, size: 104, color: p.ok),
+                CapyHop(size: 104, color: p.ok),
                 Positioned(
                   right: 0,
                   bottom: 0,

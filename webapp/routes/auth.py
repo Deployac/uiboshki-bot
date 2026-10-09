@@ -21,6 +21,11 @@ router = APIRouter()
 
 def _device(request: Request) -> str:
     """«Chrome · Android» из User-Agent — чтобы в боте было видно, что за вход."""
+    # своё приложение называет себя заголовком X-App (app/lib/api/api.dart): у Dart
+    # в User-Agent только «Dart/3», и бот спрашивал «Войти… на устройстве Браузер»
+    app = {"ios": "iPhone", "android": "Android"}.get(request.headers.get("x-app", ""))
+    if app:
+        return f"Капибара · {app}"
     ua = request.headers.get("user-agent", "")
     browser = next((b for b in ("Edg", "YaBrowser", "Chrome", "Firefox", "Safari") if b in ua), "Браузер")
     browser = {"Edg": "Edge", "YaBrowser": "Яндекс Браузер"}.get(browser, browser)
@@ -38,11 +43,14 @@ def _client_ip(request: Request) -> str:
 async def auth_start(request: Request):
     import ratelimit
     from config import BOT_USERNAME
-    from database.sessions import create_login
+    from database.sessions import create_login, get_login
     if not ratelimit.allow("auth_start", _client_ip(request)):
         raise HTTPException(429, "Слишком много попыток — подожди минуту")
     code = await create_login(_device(request))
-    return {"code": code, "link": f"https://t.me/{BOT_USERNAME}?start=login_{code}", "expires_in": 600}
+    # pick — число на экране устройства: в боте его надо выбрать из трёх, иначе
+    # вход по чужой ссылке подтверждался одним «Да, это я» (ревью безопасности 09.10)
+    return {"code": code, "link": f"https://t.me/{BOT_USERNAME}?start=login_{code}", "expires_in": 600,
+            "pick": (await get_login(code))["pick"]}
 
 
 class PollBody(BaseModel):
@@ -94,6 +102,11 @@ async def auth_logout(request: Request, everywhere: bool = False, user: dict = C
     from database.sessions import revoke_session
     token = request.headers.get("authorization", "")[7:].strip()
     n = await revoke_session(user["id"]) if everywhere else await revoke_session(user["id"], token=token or "-")
+    if everywhere:
+        # и пуши: отозванное устройство продолжало получать тексты уведомлений
+        # (сроки, новые баллы) — ревью безопасности 09.10
+        from database.push import delete_user_push_subs
+        await delete_user_push_subs(user["id"])
     return {"ok": True, "revoked": n}
 
 
@@ -124,7 +137,9 @@ def _page(title: str, text: str, extra: str = "", status: int = 200):
     from fastapi.responses import HTMLResponse
     return HTMLResponse(
         "<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Капибара</title><body style=\"font:16px system-ui;max-width:420px;margin:15vh auto;padding:0 20px\">"
+        # тема телефона (тёмная — не белый экран) и перенос длинных имён без прокрутки вбок
+        "<meta name='color-scheme' content='light dark'><title>Капибара</title>"
+        "<body style=\"font:16px system-ui;max-width:420px;margin:15vh auto;padding:0 20px;overflow-wrap:anywhere\">"
         f"<h2>{escape(title)}</h2><p>{escape(text)}</p>{extra}</body>", status_code=status)
 
 

@@ -131,8 +131,8 @@ async def hw_del_last(callback: CallbackQuery):
         # Старая кнопка (уже удалено или сообщение до обновления) — ничего не трогаем
         await callback.answer("Уже удалено")
         return
-    from database.groups import g_or_home
-    if not await is_editor(callback.from_user.id, g_or_home(item.get("group_id"))):
+    from database.groups import row_group
+    if not await is_editor(callback.from_user.id, row_group(item.get("group_id"))):
         await callback.answer("Нет прав")
         return
     await delete_hw(item["id"])

@@ -8,6 +8,7 @@ import 'api/api.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
 import 'theme/app_theme.dart';
+import 'widgets/capy.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,6 +31,18 @@ class UiboApp extends StatefulWidget {
 class _UiboAppState extends State<UiboApp> {
   late FontChoice _font = widget.font;
   late bool _loggedIn = widget.api.token != null;
+  bool _cached = false;
+
+  /// Капибары — в память сразу: на экране загрузки сцена без мигания.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_cached) return;
+    _cached = true;
+    for (final pose in CapyPose.values) {
+      precacheImage(AssetImage('assets/capy/${pose.name}.png'), context);
+    }
+  }
 
   Future<void> _setFont(FontChoice f) async {
     setState(() => _font = f);

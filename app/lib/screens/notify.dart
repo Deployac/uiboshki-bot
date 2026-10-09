@@ -141,7 +141,7 @@ class _NotifyBodyState extends State<_NotifyBody> {
       padding: const EdgeInsets.only(bottom: Space.xxl),
       children: [
         const BackRow(),
-        const ScreenTitle(eyebrow: 'что бот присылает и когда', title: 'Уведомления'),
+        const ScreenTitle(title: 'Уведомления'),
         Padding(
           padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.m),
           child: Row(
@@ -459,7 +459,9 @@ class _Pill extends StatelessWidget {
     final s = AppStyle.of(context);
     final p = s.p;
     return Material(
-      color: on ? color : p.line.withValues(alpha: dim ? 0.5 : 1),
+      // line в тёмной теме полупрозрачная: альфу только уменьшаем (было alpha: 1 —
+      // невыбранные плашки становились белыми с белым текстом)
+      color: on ? color : p.line.withValues(alpha: p.line.a * (dim ? 0.5 : 1)),
       borderRadius: BorderRadius.circular(Radii.chip),
       child: InkWell(
         borderRadius: BorderRadius.circular(Radii.chip),

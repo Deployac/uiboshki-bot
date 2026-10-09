@@ -39,7 +39,7 @@ const _tour = [
   'вся неделя лентой, сверху — дни: нажми, и лента приедет',
   'что сдать и до какого срока, отметка «сдал»',
   'баллы, цель по предмету, посещения',
-  'настройки, шрифт, группа и выход',
+  'баллы в среднем, настройки, шрифт, группа и выход',
 ];
 
 class Shell extends StatefulWidget {
@@ -65,6 +65,9 @@ class _ShellState extends State<Shell> {
 
   /// Сменилась группа — номер растёт, экраны строятся заново со своими данными.
   int _epoch = 0;
+
+  // СДО подключили из «Ещё» — «Учёба» строится заново
+  int _sdo = 0;
 
   @override
   void initState() {
@@ -166,7 +169,7 @@ class _ShellState extends State<Shell> {
       TodayScreen(key: ValueKey('today$_epoch'), api: api, onUnauthorized: un),
       WeekScreen(key: ValueKey('week$_epoch'), api: api, onUnauthorized: un),
       DeadlinesScreen(key: ValueKey('dl$_epoch'), api: api, onUnauthorized: un),
-      StudyScreen(key: ValueKey('study$_epoch'), api: api, onUnauthorized: un),
+      StudyScreen(key: ValueKey('study$_epoch.$_sdo'), api: api, onUnauthorized: un),
       MoreScreen(
         key: ValueKey('more$_epoch'),
         api: api,
@@ -174,6 +177,8 @@ class _ShellState extends State<Shell> {
         onLogout: widget.onLogout,
         onUnauthorized: un,
         onGroup: () => pickGroup(),
+        onStudy: () => setState(() => _index = tabByName('study')),
+        onSdo: () => setState(() => _sdo++),
       ),
     ];
     return Scaffold(

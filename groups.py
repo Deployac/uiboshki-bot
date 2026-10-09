@@ -61,12 +61,19 @@ async def of_user(user_id: int) -> dict | None:
     return {"id": gid, "name": g["name"] if g else "", "own": bool(g and g["own"]) or gid == home_id()}
 
 
-async def choose(user_id: int, group_id: int) -> dict | None:
-    """Записать человека в группу. None — такой группы нет в справочнике."""
+HOME_ONLY_MEMBERS = "в эту группу — только участники её чата в Telegram. Попроси старосту добавить тебя в чат"
+
+
+async def choose(user_id: int, group_id: int, bot=None) -> dict | None:
+    """Записать человека в группу. None — такой группы нет в справочнике;
+    {"denied": …} — своя группа, а человек не в её чате (members.py)."""
     import schedule_index
     from database import set_user_group, upsert_group
     group_id = int(group_id)
     if group_id == home_id():
+        import members
+        if await members.is_member(user_id, bot) is False:
+            return {"denied": HOME_ONLY_MEMBERS}
         await ensure_home()
         name = await name_of(group_id)
     else:

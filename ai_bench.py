@@ -185,9 +185,9 @@ def page(items: list[dict]) -> str:
 body{{margin:0;padding:16px;font:15px/1.5 -apple-system,system-ui,sans-serif;background:#f4f1ea;color:#24221d}}
 h1{{font-size:24px;margin:0 0 4px}}.lead{{color:#6c675d;margin:0 0 18px}}
 section{{background:#fffdf8;border-radius:18px;padding:14px;margin-bottom:16px;box-shadow:0 1px 0 #e3ddd0}}
-.k{{margin:0;color:#b75438;font-size:12px;font-weight:700;text-transform:uppercase}}h2{{font-size:16px;margin:4px 0 10px}}
+.k{{margin:0;color:#b75438;font-size:12px;font-weight:700;text-transform:uppercase}}h2{{font-size:16px;margin:4px 0 10px;overflow-wrap:anywhere}}
 .a{{border:1.5px solid #e3ddd0;border-radius:14px;padding:10px 12px;margin-top:8px}}.a.on{{border-color:#b75438;background:#fbf1ea}}
-.h{{display:flex;justify-content:space-between;align-items:center}}.t{{font-size:14px;margin-top:6px;overflow-wrap:anywhere}}
+.h{{display:flex;justify-content:space-between;align-items:center}}.t{{font-size:14px;margin-top:6px;overflow-wrap:anywhere}}.t pre{{white-space:pre-wrap}}
 button{{font:600 13px system-ui;border:0;border-radius:10px;padding:7px 12px;background:#24221d;color:#fff}}
 .m{{font-size:12px;color:#b75438;font-weight:700;margin-top:6px}}#res{{white-space:pre-wrap;font:14px/1.6 ui-monospace,monospace}}
 .bar{{position:sticky;bottom:0;background:#f4f1ea;padding:10px 0}}

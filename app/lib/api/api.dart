@@ -42,9 +42,20 @@ class Api {
 
   Uri _uri(String path) => Uri.parse('$base/api/v1$path');
 
+  /// Своё приложение называет себя серверу: в боте «Войти… на Капибара · iPhone»,
+  /// а не «Браузер» (у Dart в User-Agent только «Dart/3»). В вебе — браузер и так виден.
+  static String? get platform => kIsWeb
+      ? null
+      : switch (defaultTargetPlatform) {
+          TargetPlatform.iOS => 'ios',
+          TargetPlatform.android => 'android',
+          _ => null,
+        };
+
   Map<String, String> get _headers => {
     'Content-Type': 'application/json',
     if (token != null) 'Authorization': 'Bearer $token',
+    'X-App': ?platform,
   };
 
   dynamic _decode(http.Response r) {
@@ -63,7 +74,21 @@ class Api {
   static const _cachePrefix = 'uib_cache:';
   static const timeout = Duration(seconds: 8);
 
+  /// Внутри [fromCache] get берёт только запомненное и в сеть не ходит.
+  static const _cacheOnly = #uibCacheOnly;
+
+  /// Загрузка экрана из запаса телефона, без сети: экран показывает прошлые
+  /// данные сразу, свежие догружаются следом (владелец, 09.10: «долго грузит»).
+  /// null — чего-то в запасе нет.
+  static Future<T?> fromCache<T>(Future<T> Function() load) =>
+      runZoned(() => load().then<T?>((v) => v).catchError((_) => null), zoneValues: {_cacheOnly: true});
+
   Future<dynamic> get(String path) async {
+    if (Zone.current[_cacheOnly] == true) {
+      final cached = await _cached(path);
+      if (cached == null) throw StateError('нет в запасе');
+      return cached.body;
+    }
     final http.Response r;
     try {
       r = await _client.get(_uri(path), headers: _headers).timeout(timeout);
@@ -96,6 +121,12 @@ class Api {
     return (at: DateTime.parse(j['at'] as String), body: jsonDecode(j['body'] as String));
   }
 
+  /// Запись из загрузки «из запаса» — нельзя: бросаем, экран ждёт сеть.
+  Never? _noCacheZone() {
+    if (Zone.current[_cacheOnly] == true) throw StateError('запись без сети');
+    return null;
+  }
+
   /// Выход — данные с телефона стираются (как «выйти» в PWA).
   Future<void> clearCache() async {
     final prefs = await SharedPreferences.getInstance();
@@ -106,20 +137,22 @@ class Api {
   }
 
   Future<dynamic> put(String path, [Object? body]) async =>
-      _decode(await _client.put(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
+      _noCacheZone() ?? _decode(await _client.put(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
 
   Future<dynamic> patch(String path, [Object? body]) async =>
-      _decode(await _client.patch(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
+      _noCacheZone() ?? _decode(await _client.patch(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
 
-  Future<dynamic> delete(String path) async => _decode(await _client.delete(_uri(path), headers: _headers));
+  Future<dynamic> delete(String path) async =>
+      _noCacheZone() ?? _decode(await _client.delete(_uri(path), headers: _headers));
 
   Future<dynamic> post(String path, [Object? body]) async =>
-      _decode(await _client.post(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
+      _noCacheZone() ?? _decode(await _client.post(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
 
   // ── вход через бота: код → ссылка в бота → «Да, это я» → токен ──
-  Future<({String code, String link})> startLogin() async {
+  /// pick — число, которое надо нажать в боте (из трёх), как у Google.
+  Future<({String code, String link, int? pick})> startLogin() async {
     final r = await post('/auth/start');
-    return (code: r['code'] as String, link: r['link'] as String);
+    return (code: r['code'] as String, link: r['link'] as String, pick: r['pick'] as int?);
   }
 
   /// null — ещё ждём; иначе статус: ok / denied / expired.

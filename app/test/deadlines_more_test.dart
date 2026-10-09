@@ -113,7 +113,7 @@ void main() {
     await t.pumpWidget(host(DeadlinesScreen(api: api)));
     await settle(t);
     expect(find.text('изменён у тебя'), findsOneWidget); // чип на карточке
-    await t.tap(find.text('Практика 4 · Анализ данных'));
+    await t.tap(find.text('Практика 4')); // работа строкой, предмет — под ней
     await settle(t);
     expect(find.text('Убрать у себя'), findsOneWidget);
     expect(find.text('Как у всех'), findsOneWidget);
@@ -129,7 +129,7 @@ void main() {
     expect(sent['due_date'], iso(now().add(const Duration(days: 3))));
     expect(find.text('Сохранено у тебя'), findsOneWidget);
 
-    await t.tap(find.text('Практика 4 · Анализ данных'));
+    await t.tap(find.text('Практика 4'));
     await settle(t);
     await t.tap(find.text('Как у всех'));
     await settle(t);
@@ -146,7 +146,7 @@ void main() {
     });
     await t.pumpWidget(host(DeadlinesScreen(api: api)));
     await settle(t);
-    await t.tap(find.text('Практика 4 · Анализ данных'));
+    await t.tap(find.text('Практика 4'));
     await settle(t);
     await t.tap(find.text('Убрать у себя'));
     await settle(t);
@@ -167,7 +167,7 @@ void main() {
     });
     await t.pumpWidget(host(DeadlinesScreen(api: api)));
     await settle(t);
-    await t.tap(find.text('Практика 4 · Анализ данных'));
+    await t.tap(find.text('Практика 4'));
     await settle(t);
     await t.tap(find.text('Напомнить'));
     await settle(t);
@@ -191,7 +191,7 @@ void main() {
     });
     await t.pumpWidget(host(DeadlinesScreen(api: api)));
     await settle(t);
-    await t.tap(find.text('Практика 4 · Анализ данных'));
+    await t.tap(find.text('Практика 4'));
     await settle(t);
     await t.tap(find.text('Напомнить'));
     await settle(t);

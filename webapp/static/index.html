@@ -247,7 +247,7 @@
       <button onclick="toggleMore(false); copyCalendarLink()"><span class="sq t-cal"><svg class="ico" aria-hidden="true"><use href="#i-calsub"/></svg></span><span class="lbl">Календарь</span></button>
       <button onclick="toggleMore(false); openNotify()"><span class="sq t-bell"><svg class="ico" aria-hidden="true"><use href="#i-bell"/></svg></span><span class="lbl">Уведомления</span></button>
       <button onclick="toggleMore(false); openSecurity()"><span class="sq t-sec"><svg class="ico" aria-hidden="true"><use href="#i-shield"/></svg></span><span class="lbl">Безопасность</span></button>
-      <button onclick="toggleMore(false); addToHome()"><span class="sq t-phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span><span class="lbl">Ярлык</span></button>
+      <button onclick="toggleMore(false); openPlatforms()"><span class="sq t-phone"><svg class="ico" aria-hidden="true"><use href="#i-phone"/></svg></span><span class="lbl">Установить</span></button>
       <button onclick="toggleMore(false); showWhatsNew()"><span class="sq t-news"><svg class="ico" aria-hidden="true"><use href="#i-sparkle"/></svg></span><span class="lbl">Что нового</span></button>
       <button onclick="toggleMore(false); openConfigLink(CHANNEL_URL)"><span class="sq t-channel"><svg class="ico" aria-hidden="true"><use href="#i-send"/></svg></span><span class="lbl">Канал бота</span></button>
       <button onclick="toggleMore(false); openConfigLink(CONTACT_URL)"><span class="sq t-contact"><svg class="ico" aria-hidden="true"><use href="#i-message"/></svg></span><span class="lbl">Написать нам</span></button>
@@ -292,6 +292,13 @@
   <div class="sheet">
     <div class="sheet-grip"></div>
     <div id="notify-body"></div>
+  </div>
+</div>
+
+<div class="sheet-backdrop" id="platforms-sheet" onclick="if (event.target === this) closeSheet('platforms-sheet')">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div id="platforms-body"></div>
   </div>
 </div>
 

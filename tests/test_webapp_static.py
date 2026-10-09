@@ -526,7 +526,7 @@ def test_more_menu_tiles_with_actions():
     menu = _more_menu()
     labels = re.findall(r'<span class="lbl">([^<]+)</span>', menu)
     assert labels == ["Файлы", "Дедлайны", "ДЗ", "Календарь", "Уведомления", "Безопасность",
-                      "Ярлык", "Что нового", "Канал бота", "Написать нам", "Моя группа", "Позвать"]
+                      "Установить", "Что нового", "Канал бота", "Написать нам", "Моя группа", "Позвать"]
     for call in ("openHomework()", "showWhatsNew()", "openConfigLink(CHANNEL_URL)", "openConfigLink(CONTACT_URL)",
                  "shareBot()", "openGroup()"):
         assert f'toggleMore(false); {call}"' in menu, call
@@ -1016,3 +1016,181 @@ async def test_sdo_guide_link_from_published_post(db, monkeypatch):
     assert await server._guide_link() == "https://t.me/uiboshki_dev/23"
     assert "(GUIDE_URL ?" in JS["js/more.js"] and "const GUIDE_URL = APP_CONFIG.guide" in JS["js/core.js"]
     assert (server.STATIC_DIR.parent.parent / "channel" / "posts" / server.GUIDE_SLUG).is_dir()
+
+
+# ── Ночь 09.10: Капибара везде ──
+def test_more_install_sheet_tells_about_pwa():
+    """«Ещё → Установить» — лист про Telegram, PWA (uiboshki.ru/app), компьютер
+    и своё приложение, а не только ярлык Telegram (владелец, 09.10)."""
+    assert 'toggleMore(false); openPlatforms()"' in _more_menu()
+    assert 'id="platforms-sheet"' in HTML and 'id="platforms-body"' in HTML
+    js = JS["js/more.js"]
+    body = js.split("function openPlatforms()")[1].split("async function copyAppLink")[0]
+    for text in ("uiboshki.ru/app", "Telegram", "На компьютере", "Android и iPhone", "addToHome()", "copyAppLink()"):
+        assert text in body, text
+    assert 'APP_URL = "https://www.uiboshki.ru/app"' in js
+    assert "laptop:" in JS["js/icons.js"]
+    assert 'id: "v5.50"' in js and "uiboshki.ru/app" in js.split("const NEWS")[1].split("};")[0]
+
+# ── Ночь 09.10: сайт ──
+def test_site_dark_spinner_keeps_accent():
+    """Тёмная тема сайта: «border:1px solid …» в тёмном правиле .spinner сбрасывал
+    border-top-color:var(--accent) — спиннер «Ищем в расписании…» был ровным
+    кольцом без бегущего куска. Генератор повторяет цвет стороны после рамки."""
+    import importlib.util
+    root = STATIC.parent.parent
+    spec = importlib.util.spec_from_file_location("site_dark", root / "tools" / "site_dark.py")
+    sd = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sd)
+    out = sd.build(".spinner{display:inline-block;border:1px solid #bdb7aa;border-top-color:var(--accent);width:13px}")
+    assert re.search(r"\.spinner\{border:1px solid #[0-9a-f]{6};border-top-color:var\(--accent\)\}", out), out
+    css = (STATIC / "site" / "site.css").read_text(encoding="utf-8")
+    assert ".spinner{border:1px solid #60594a;border-top-color:var(--accent)}" in css
+    # номера возможностей 01–04 одной ширины — заголовки не пляшут на пару пикселей
+    assert ".feature-number{font-variant-numeric:tabular-nums}" in css
+
+
+def test_server_pages_wrap_long_text():
+    """Страницы, которые сервер отдаёт сам: длинное имя аккаунта VK/Яндекс и
+    длинный вопрос/код в слепом тесте ИИ не дают прокрутки вбок на телефоне;
+    страница входа — в теме телефона (тёмная — не белый экран)."""
+    import ai_bench
+    from webapp.routes.auth import _page
+    html = _page("Привязать VK ID?", "А" * 200).body.decode()
+    assert "overflow-wrap:anywhere" in html and "name='color-scheme' content='light dark'" in html
+    page = ai_bench.page([{"kind": "Вопрос", "title": "x" * 300, "subject": "", "answers": [
+        {"text": "```\n" + "1" * 300 + "\n```", "model": m, "cost": 0, "secs": 1} for m in ai_bench.MODELS]}])
+    assert "h2{font-size:16px;margin:4px 0 10px;overflow-wrap:anywhere}" in page and ".t pre{white-space:pre-wrap}" in page
+
+
+def test_demo_news_seen_follows_current_release():
+    """Демо на сайте: «Что нового» не всплывает — прочитан текущий NEWS.id, а не
+    зашитый номер (после смены id на v5.50 лист вылез поверх демо)."""
+    demo = (STATIC / "site" / "demo.js").read_text(encoding="utf-8")
+    assert 'news_seen: "v' not in demo and "NEWS.id" in demo
+
+
+# ── Ночь 09.10: зона B (СДО, файлы, чат, «Ещё» и листы) ──
+
+def _night_b_css():
+    return CSS.split("Ночь 09.10: СДО, файлы, чат, листы")[1]
+
+
+def test_chat_code_block_scrolls_inside_bubble():
+    # блок кода в ответе ИИ раздвигал страницу вбок (320px: ширина 1149px)
+    rule = re.search(r"\.msg pre \{([^}]*)\}", _night_b_css()).group(1)
+    assert "overflow-x: auto" in rule and "max-width: 100%" in rule
+    # и без лишних пустых строк вокруг блока
+    assert r'html.replace(/\n*(<pre>[\s\S]*?<\/pre>)\n*/g, "$1")' in JS["js/chat.js"]
+
+
+def test_no_emoji_in_reasoning_summary():
+    # «Ход мыслей» был с эмодзи мозга — в интерфейсе эмодзи не используем
+    assert ".think summary::before { content: none; }" in _night_b_css()
+
+
+def test_subject_category_name_not_under_bar():
+    # 320px: «Посещаемость» налезала на мини-полоску — полоска сжимается, а не имя
+    css = _night_b_css()
+    assert ".cat-row .nm { min-width: auto; }" in css
+    assert re.search(r"\.cat-row \.mb \{[^}]*flex: 0 1 70px", css)
+
+
+def test_long_subject_back_button_one_line():
+    # «‹ Анализ и диагностика финансово-хозяйственной…» шёл тремя строками по центру
+    rule = re.search(r"#tk-back, #pos-back \{([^}]*)\}", _night_b_css()).group(1)
+    assert "text-overflow: ellipsis" in rule and "white-space: nowrap" in rule and "text-align: left" in rule
+
+
+def test_fullscreen_sheets_clear_home_bar_and_top_buttons():
+    # полный экран Telegram: env() там 0 — низ листа (кнопка «Загрузить в СДО»)
+    # уходил под полоску «Домой», верх длинного листа — под кнопки Telegram
+    rule = re.search(r"html\.fullscreen \.sheet \{([^}]*)\}", _night_b_css()).group(1)
+    assert "var(--safe-bottom" in rule and "var(--safe-top" in rule
+    # своя max-height у листа «Безопасность» (с id) перебивала бы правило
+    assert "#security-sheet .sheet { max-height" not in CSS
+    # открытый лист затемняет и полосу под часами (светлая тема — белая полоса)
+    assert "html.fullscreen body:has(.sheet-backdrop.open, .more-backdrop.open)::before { display: none; }" in CSS
+
+
+def test_onboarding_fits_short_screen():
+    # 320×568 в полном экране: «Дальше» уезжало за нижний край
+    css = _night_b_css()
+    assert ".onboard { overflow-y: auto; }" in css and "@media (max-height: 640px)" in css
+
+
+# ── Ночь 09.10: WebApp, часть A ──
+
+def test_search_filters_do_not_push_page_sideways():
+    # строка фильтров поиска уходила вправо на 18px при отступе main 14px —
+    # вся вкладка «Поиск» прокручивалась вбок на 4px (стенд, все размеры)
+    main_pad = re.search(r"\n  main \{ padding: \d+px (\d+)px", CSS).group(1)
+    m = re.search(r"#target-types \{[^}]*margin-right: -(\d+)px; padding-right: (\d+)px", CSS)
+    assert m and m.group(1) == m.group(2) == main_pad
+
+
+def test_deadline_sheet_date_and_time_share_row():
+    # 320px: поле времени вылезало за край листа «Новый дедлайн»
+    assert re.search(r"\.sheet \.row2 > \* \{ flex: 1 1 0; min-width: 0; \}", CSS)
+
+
+def test_calm_hero_text_clears_capybara():
+    # «завтра в 14:20»: название пары и преподаватель уезжали под капибару
+    assert re.search(r"\.hero\.calm \.h-title, \.hero\.calm \.h-meta \{ padding-right: 5\dpx; \}", CSS)
+
+
+def test_sheets_respect_telegram_safe_area():
+    # полный экран Telegram: env() пуст — кнопка листа стояла на полоске «Домой»
+    rule = re.search(r"html\.fullscreen \.sheet \{(.*?)\}", CSS, re.S).group(1)
+    assert "var(--safe-bottom" in rule and "var(--safe-top" in rule
+
+
+def test_nav_height_follows_tab_bar_size():
+    # safeAreaChanged приходит после загрузки — --nav-h оставался старым,
+    # «＋» дедлайнов вставал на нижнюю панель
+    core = JS["js/core.js"]
+    assert re.search(r"new ResizeObserver\(\(\) => \{[^}]*syncNavHeight\(\)[^}]*\}\)\s*\.observe\(document\.querySelector\(\"nav\.tabs\"\), \{ box: \"border-box\" \}\)", core)
+
+
+@pytest.mark.skipif(not shutil.which("node"), reason="нужен node")
+def test_home_deadline_tile_cuts_on_word_with_ellipsis():
+    # плитка «Дедлайны»: было «Лабораторная работа 3 · Анализ и диагнос · просрочен»
+    fn = re.search(r"function shortText\(s, max\) \{.*?\n\}", JS["js/home.js"], re.S).group(0)
+    assert "shortText(dl.soon[0].subject, 40)" in JS["js/home.js"]
+    src = fn + "\nconsole.log(JSON.stringify([" \
+        "shortText('Лабораторная работа 3 · Анализ и диагностика финансово-хозяйственной', 40)," \
+        "shortText('Курсовая: глава 1', 40), shortText('', 40)]));"
+    res = subprocess.run(["node", "-e", src], capture_output=True, text=True)
+    assert res.returncode == 0, res.stderr
+    assert json.loads(res.stdout) == ["Лабораторная работа 3 · Анализ и…", "Курсовая: глава 1", ""]
+
+
+def test_wide_screen_keeps_phone_column():
+    # PWA на компьютере: пары и нижняя панель растягивались на все 1280px
+    block = CSS.split("@media (min-width: 720px)")[1]
+    for sel in ("header.top, main { max-width: var(--col)", "nav.tabs { padding-left: calc(var(--col-side)",
+                ".sheet { max-width: var(--col)", ".fab { right: calc(var(--col-side)"):
+        assert sel in block
+
+
+def test_target_week_arrows_off_until_weeks_loaded():
+    # экран «МИРЭА не отвечает»: стрелки недели горели, а нажатие ничего не делало
+    fn = JS["js/search.js"].split("async function openTarget(")[1].split("const data = await api(")[0]
+    assert 'getElementById("tw-prev").disabled = document.getElementById("tw-next").disabled = true' in fn
+
+
+# ── Ревью безопасности 09.10: токен из адреса — только своему входу ──
+def test_token_from_url_only_after_own_oauth_start():
+    """/app#token=<чужой> по присланной ссылке переключал человека в чужой аккаунт.
+    Токен из адреса берётся, только если startOAuth начат в этом браузере."""
+    core = JS["js/core.js"]
+    head = core.split("const APP_TOKEN")[0]
+    assert "if (oauthPending()) saveToken(" in head
+    assert 'localStorage.setItem("uib_oauth_at"' in core.split("async function startOAuth")[1].split("\n}\n")[0]
+
+
+def test_pwa_login_shows_pick_number():
+    """Вход через бота: экран «Войти» показывает число, которое надо нажать в Telegram."""
+    body = JS["js/core.js"].split("async function startLogin")[1].split("async function pollLogin")[0]
+    assert "login-pick" in body and "res.pick" in body
+    assert ".login-pick" in CSS

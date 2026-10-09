@@ -147,7 +147,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
               padding: const EdgeInsets.only(bottom: Space.xxl),
               children: [
                 const BackRow(),
-                const ScreenTitle(eyebrow: 'что бот знает и как это защищено', title: 'Безопасность'),
+                const ScreenTitle(title: 'Безопасность'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.l),
+                  child: _Summary(security: d.security, devices: d.sessions.length),
+                ),
                 const Section('Устройства'),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: Space.l),
@@ -317,6 +321,53 @@ List<(IconData, String, String)> _facts(Map s) {
       'Не больше $ai вопросов ИИ в минуту и ${sub['count'] ?? 6} сдач за ${sub['minutes'] ?? 10} минут.',
     ),
   ];
+}
+
+/// Итог одной зелёной карточкой вместо подписи над заголовком (владелец,
+/// 09.10, 14А): главное — с первого взгляда, подробности — ниже.
+class _Summary extends StatelessWidget {
+  final Map security;
+  final int devices;
+  const _Summary({required this.security, required this.devices});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final text = [
+      security['sdo'] == 'ok' ? 'Вход в СДО зашифрован, пароль не хранится' : 'Пароль от СДО не хранится',
+      'ссылки на файлы живут ${security['link_minutes'] ?? 10} минут',
+      if (devices > 0) 'входов вне Telegram: $devices',
+    ].join(', ');
+    return Tile(
+      key: const Key('security:summary'),
+      color: p.ok.withValues(alpha: p.dark ? 0.16 : 0.12),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: p.ok.withValues(alpha: 0.22), shape: BoxShape.circle),
+            child: Icon(Icons.verified_user_outlined, color: p.ok, size: 22),
+          ),
+          const SizedBox(width: Space.m),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Всё под защитой',
+                  style: s.body(16, weight: FontWeight.w700, color: p.ok),
+                ),
+                const SizedBox(height: 2),
+                Text('$text.', style: s.body(13, color: p.muted)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _ActionRow extends StatelessWidget {

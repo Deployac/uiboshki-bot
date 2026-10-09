@@ -34,7 +34,8 @@ _RULES: list[tuple[str, re.Pattern]] = [
 
 def detect_category(*texts: str) -> str:
     """Тип файла по названию/имени файла; "other", если ничего не подошло."""
-    text = " ".join(t for t in texts if t).replace("_", " ")
+    from translit import from_translit
+    text = " ".join(from_translit(t.replace("_", " ")) for t in texts if t)
     for key, pattern in _RULES:
         if pattern.search(text):
             return key

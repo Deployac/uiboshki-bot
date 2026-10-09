@@ -97,7 +97,7 @@ class LessonScreen extends StatelessWidget {
                       ],
                     ),
                     const SizedBox(height: Space.s),
-                    Text(lesson.title, style: s.title(30)),
+                    FitWords(lesson.title, style: s.title(30)),
                     const SizedBox(height: Space.l),
                     Row(
                       children: [
@@ -276,7 +276,7 @@ class _CourseStrip extends StatelessWidget {
               children: [
                 Text('Баллы БРС', style: s.body(13, color: s.p.muted)),
                 Text(
-                  c.need > 0 ? 'до «${c.needLabel}» ещё ${c.need}' : 'на «${c.needLabel}» хватает',
+                  c.need > 0 ? 'до «${c.needLabel}» ещё ${c.need}' : c.enoughText,
                   style: s.body(16, weight: FontWeight.w700),
                 ),
                 if (c.worksTotal > 0)

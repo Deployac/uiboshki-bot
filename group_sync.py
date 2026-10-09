@@ -33,6 +33,9 @@ async def sync_group(group_id: int) -> dict:
     import sdo_accounts
     import sdo_parser
     from database import get_group_donors
+    from database.groups import home
+    if group_id == home():
+        return {"error": "своя группа синкается общим входом"}
     last = "нет входа, которым поделились"
     for donor in await get_group_donors(group_id):
         cookie = sdo_accounts.decrypt(donor["cookie_enc"])

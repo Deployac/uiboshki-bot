@@ -13,6 +13,7 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
+import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import 'files.dart' show BackRow;
 import 'lesson.dart' show openLesson;
@@ -173,7 +174,7 @@ class _SearchScreenState extends State<SearchScreen> {
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             children: [
               const BackRow(),
-              const ScreenTitle(eyebrow: 'любая группа, преподаватель, аудитория', title: 'Поиск'),
+              const ScreenTitle(title: 'Поиск'),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: Space.l),
                 child: TextField(
@@ -519,13 +520,12 @@ class _TargetScreenState extends State<TargetScreen> {
       );
     }
     final d = _data;
-    if (d == null) return Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5));
+    if (d == null) return const CapyLoading();
     final (kind, _) = _kinds[widget.type] ?? ('Расписание', Icons.calendar_today_outlined);
     final week = _weeks.isEmpty ? null : _weeks[_week] as Map;
     final days = week == null ? const [] : week['days'] as List;
     final t = now();
-    return RefreshIndicator(
-      color: p.accent,
+    return CapyRefresh(
       onRefresh: _load,
       child: ListView(
         padding: const EdgeInsets.only(bottom: Space.xxl),

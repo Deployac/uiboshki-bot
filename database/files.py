@@ -89,6 +89,15 @@ def _fscope(group_id: int | None) -> tuple[str, tuple]:
     return file_scope_sql("f"), (g, g)
 
 
+async def file_visible(fid: int, group_id: int) -> bool:
+    """Файл виден группе (свой или общий с ней) — для обработчиков «по номеру»:
+    скачать, страница, конспект (ревью безопасности 09.10)."""
+    sql, params = _fscope(group_id)
+    async with connect() as db:
+        row = await (await db.execute(f"SELECT 1 FROM files f WHERE f.id = ? AND {sql}", (fid, *params))).fetchone()
+    return row is not None
+
+
 async def get_files(subject: str = None, group_id: int | None = None) -> list[dict]:
     where, params = _fscope(group_id)
     async with connect() as db:
