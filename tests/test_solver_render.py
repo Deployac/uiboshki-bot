@@ -190,3 +190,28 @@ async def test_free_text_solver_failure_is_not_silent(db, dp, monkeypatch, failu
     await _feed(dp, bot, "Найди производную функции x^3 * ln(x) по x")
     assert any("решаю" in t for t, _ in bot.session.sent)
     assert any(expected in t for t in bot.session.edits)
+
+
+# ── Ночь 09.10: таблицы в ответах ИИ ──
+def test_markdown_table_narrow_is_aligned_pre():
+    """Таблица Markdown шла как есть, с «|---|---|» посередине: узкая — ровно в <pre>."""
+    from utils import md_to_tg_html_chunks
+    html = md_to_tg_html_chunks("Итог:\n\n| x | f(x) |\n|---|---|\n| 1 | 2 |\n| 10 | 20 |\n\nВсё.")[0]
+    assert "<pre>x  │ f(x)\n───┼─────\n1  │ 2\n10 │ 20</pre>" in html
+    assert "|---" not in html and html.startswith("Итог:") and html.endswith("Всё.")
+
+
+def test_markdown_table_wide_becomes_list():
+    """Широкая таблица на телефоне не влезет — списком: первый столбец жирным, остальные «заголовок: значение»."""
+    from utils import md_to_tg_html_chunks
+    md = ("| Метод | Плюсы | Минусы |\n|:--|:--:|--:|\n| **NPV** | учитывает время | зависит от ставки |\n"
+          "| IRR | в процентах | x < 0 бывает |")
+    html = md_to_tg_html_chunks(md)[0]
+    assert html == ("• <b>NPV</b> — Плюсы: учитывает время; Минусы: зависит от ставки\n"
+                    "• <b>IRR</b> — Плюсы: в процентах; Минусы: x &lt; 0 бывает")
+
+
+def test_pipe_inside_code_block_is_not_a_table():
+    from utils import md_to_tg_html_chunks
+    html = md_to_tg_html_chunks("```\n| a | b |\n```")[0]
+    assert html == "<pre>| a | b |</pre>"
