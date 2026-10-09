@@ -33,14 +33,14 @@ Finder get card => find.byKey(const Key('capy:refresh'));
 
 void main() {
   test('сцены идут по кругу, ночью — сон', () {
-    CapyScenes.startAt(CapyScene.laptop);
+    CapyScenes.startAt(CapyScene.surf);
     expect(
       [for (var i = 0; i < 6; i++) CapyScenes.next(14)],
-      [CapyScene.laptop, CapyScene.lamp, CapyScene.ball, CapyScene.mandarin, CapyScene.laptop, CapyScene.lamp],
+      [CapyScene.surf, CapyScene.laptop, CapyScene.lamp, CapyScene.ball, CapyScene.mandarin, CapyScene.surf],
     );
     expect(CapyScenes.next(2), CapyScene.sleep);
     expect(CapyScenes.next(23), CapyScene.sleep);
-    expect(CapyScenes.next(5), CapyScene.ball); // ночь круг не сдвигает
+    expect(CapyScenes.next(5), CapyScene.laptop); // ночь круг не сдвигает
   });
 
   testWidgets('потянул — капибара на сёрфе, пока грузится; пришло — уехала', (t) async {

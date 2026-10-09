@@ -1,7 +1,7 @@
 // Капибара, пока грузится (владелец, 09.10, пункт 26 — «все это»): на месте
 // крутилки при первой загрузке экрана — сцена с подписью (`CapyLoading`);
 // потянул экран вниз — маленькая капибара сверху, без плашки (`CapyRefresh`).
-// Сцены идут по кругу: ноутбук, лампа, мяч, мандарин; ночью — спит.
+// Сцены идут по кругу: сёрф, ноутбук, лампа, мяч, мандарин; ночью — спит.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -23,8 +23,7 @@ const sceneText = {
 
 /// Какая сцена следующая: ночью — сон, в остальное время — по кругу.
 class CapyScenes {
-  // сёрф пока не в круге: владелец (09.10) нарисует капибару на доске в ChatGPT
-  static const day = [CapyScene.laptop, CapyScene.lamp, CapyScene.ball, CapyScene.mandarin];
+  static const day = [CapyScene.surf, CapyScene.laptop, CapyScene.lamp, CapyScene.ball, CapyScene.mandarin];
   static int _next = math.Random().nextInt(day.length);
 
   static CapyScene next(int hour) {
