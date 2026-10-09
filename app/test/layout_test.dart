@@ -17,6 +17,7 @@ import 'package:uiboshki/api/models.dart';
 import 'package:uiboshki/main.dart';
 import 'package:uiboshki/screens/chat.dart';
 import 'package:uiboshki/screens/deadline_edit.dart';
+import 'package:uiboshki/screens/deadlines.dart';
 import 'package:uiboshki/screens/files.dart';
 import 'package:uiboshki/screens/group_pick.dart';
 import 'package:uiboshki/screens/homework.dart';
@@ -101,7 +102,8 @@ String _hm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toStr
 
 /// Запись стенда — на неделю 5–11 октября; тест идёт «сейчас»: неделя
 /// переезжает на текущую, а на «Сегодня» идёт вторая пара (длинное
-/// название и ФИО) — так видны большая карточка и «Дальше».
+/// название и ФИО) — так видны большая карточка и «Дальше»; сроки —
+/// вокруг «сейчас» (горит, недели, просрочен, сдано).
 Map<String, Object?> _aroundNow(Map<String, Object?> fx) {
   final t = DateTime.now();
   final monday = DateTime(t.year, t.month, t.day - (t.weekday - 1));
@@ -127,12 +129,48 @@ Map<String, Object?> _aroundNow(Map<String, Object?> fx) {
   today['lessons'] = lessons;
   return {
     'GET /api/today': today,
+    'GET /api/deadlines?include_done=true': {'items': deadlinesAround(t)},
     'GET /api/week?start=${_d(monday)}': jsonDecode(move(fx['GET /api/week?start=2026-10-05'])),
     for (var i = 0; i < 7; i++)
       'GET /api/day?date=${_d(monday.add(Duration(days: i)))}': jsonDecode(
         move(fx['GET /api/day?date=${_d(DateTime(2026, 10, 5 + i))}']),
       ),
   };
+}
+
+/// Сроки вокруг «сейчас» с самыми длинными названиями: горит (с кнопкой
+/// «Сдать» и пометками), по неделям, просроченный и сданные.
+List<Map<String, Object?>> deadlinesAround(DateTime t) {
+  Map<String, Object?> item(int id, Duration after, String subject, {bool done = false, bool submit = false}) {
+    final at = t.add(after);
+    return {
+      'id': id,
+      'subject': subject,
+      'description': '',
+      'due_date': _d(at),
+      'due_time': _hm(at),
+      'personal': id == 6,
+      'done': done ? 1 : 0,
+      'can_edit': true,
+      'edit_scope': 'me',
+      'mine_changed': id == 1,
+      'can_submit': submit,
+      'reminders': [
+        if (id == 1) {'at': '2026-10-09 12:00', 'label': 'за 3 часа, 9 октября 12:00'},
+      ],
+    };
+  }
+
+  return [
+    item(1, const Duration(hours: 3, minutes: 38), 'Практика 5-6 · $longSubject (Экз)', submit: true),
+    item(2, const Duration(hours: 20), 'Лабораторная работа 3 · ООАиП (Экз)'),
+    item(3, const Duration(days: 4), 'Защита проекта · Основы предпринимательской деятельности (Зач)'),
+    item(4, const Duration(days: 9), 'Курсовая: глава 1 · $longSubject'),
+    item(5, const Duration(days: 30), 'Тест 2 · Учетная деятельность (Зач)'),
+    item(6, const Duration(days: -2), 'Распечатать отчёт по практике для научного руководителя'),
+    item(7, const Duration(days: -5), 'Эссе · $longSubject', done: true),
+    item(8, const Duration(days: -40), 'Кейс 1 · Анализ данных (Экз)', done: true),
+  ];
 }
 
 Widget host(Palette p, FontChoice f, Widget child) => AppStyle(
@@ -384,6 +422,21 @@ void main() {
           });
         }
       }
+    }
+  }
+
+  // «Сдать» → «Сдано»: сданное и пусто во «Впереди» — тоже без переполнений.
+  for (final d in devices) {
+    for (final f in FontChoice.values) {
+      testWidgets('сдать, «Сдано»: ${d.name} · ${f.name}', (t) async {
+        useDevice(t, d);
+        await t.pumpWidget(host(Palette.depth, f, Scaffold(body: DeadlinesScreen(api: longApi()))));
+        await settle(t);
+        await t.tap(find.textContaining('Сдано ·'));
+        await settle(t);
+        expect(find.text('Эссе'), findsOneWidget);
+        await scrollThrough(t);
+      });
     }
   }
 
