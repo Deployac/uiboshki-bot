@@ -64,4 +64,10 @@ void main() {
     expect(find.text('Лекция 2'), findsOneWidget);
     expect(find.widgetWithText(ActionChip, 'PPTX'), findsOneWidget);
   });
+
+  test('«Скачать» сохраняет с правильным типом: PDF, презентация', () {
+    expect(fileMime('Лекция 1.pdf'), 'application/pdf');
+    expect(fileMime('l1.PPTX'), 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
+    expect(fileMime('архив'), 'application/octet-stream');
+  });
 }

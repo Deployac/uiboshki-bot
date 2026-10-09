@@ -1,9 +1,12 @@
 // Файлы курсов: предметы → файлы по типам (лекции, практики…). Нажал файл —
-// лист: конспект (общий на всех, ИИ зовётся один раз), скачать, прислать в Telegram.
+// лист: конспект (общий на всех, ИИ зовётся один раз), скачать (окно «Сохранить
+// в Файлы»), просмотр в браузере, прислать в Telegram.
 // Поиск сверху: файлы по названию и места в самих лекциях («где было про NPV?»
 // → «Лекция 5 · слайд 12» и отрывок) — нажал, открылась страница (showPageSheet).
 import 'dart:async';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -657,6 +660,21 @@ const _kindWord = {
   'exam': 'к экзамену',
 };
 
+/// Тип файла для окна «Сохранить в Файлы».
+String fileMime(String name) => switch (name.split('.').last.toLowerCase()) {
+  'pdf' => 'application/pdf',
+  'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'ppt' => 'application/vnd.ms-powerpoint',
+  'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'doc' => 'application/msword',
+  'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'txt' => 'text/plain',
+  'zip' => 'application/zip',
+  'png' => 'image/png',
+  'jpg' || 'jpeg' => 'image/jpeg',
+  _ => 'application/octet-stream',
+};
+
 /// Цвет формата: PDF красный, презентация оранжевая, Word синий, таблица
 /// зелёная — как значки в самих программах (владелец, 09.10, 16А).
 Color formatColor(String ext, Palette p) => switch (ext) {
@@ -917,15 +935,41 @@ class _FileSheetState extends State<_FileSheet> {
     }
   }
 
+  /// «Скачать»: на телефоне — сразу системное окно «Сохранить в Файлы»
+  /// (владелец, 09.10: раньше перекидывало в Safari, и то качало, то
+  /// открывало); в браузере — обычная загрузка по ссылке.
   Future<void> _download() async {
     tick();
     try {
       final r = await widget.api.post('/files/${widget.f.id}/link');
-      await launchUrl(Uri.parse(r['url'] as String), mode: LaunchMode.externalApplication);
+      final url = r['url'] as String;
+      if (kIsWeb) {
+        await launchUrl(Uri.parse(url));
+        return;
+      }
+      setState(() => _note = 'Скачиваю…');
+      final name = r['file_name'] as String? ?? widget.f.fileName;
+      final bytes = await widget.api.download(url);
+      if (!mounted) return;
+      final saved = await FilePicker.saveFile(fileName: name, bytes: bytes, mimeType: fileMime(name));
+      if (mounted) setState(() => _note = saved == null ? null : 'Сохранил в Файлы.');
     } on ApiError catch (e) {
       // Больше 20 МБ Bot API не отдаёт — тогда файл придёт в Telegram.
       setState(() => _note = e.message);
-      await _send();
+      if (e.message.contains('отправлю в чат')) await _send();
+    } on TimeoutException {
+      if (mounted) setState(() => _note = 'Не скачалось — нажми ещё раз');
+    }
+  }
+
+  /// «Просмотр»: файл открывается в Safari (или браузере) — листать там.
+  Future<void> _view() async {
+    tick();
+    try {
+      final r = await widget.api.post('/files/${widget.f.id}/link');
+      await launchUrl(Uri.parse('${r['url']}&view=1'), mode: LaunchMode.externalApplication);
+    } on ApiError catch (e) {
+      setState(() => _note = e.message);
     }
   }
 
@@ -977,12 +1021,18 @@ class _FileSheetState extends State<_FileSheet> {
                         side: BorderSide(color: p.line),
                         shape: const StadiumBorder(),
                       ),
-                      onPressed: _send,
-                      icon: const Icon(Icons.send_rounded, size: 18),
-                      label: const Text('В Telegram'),
+                      onPressed: _view,
+                      icon: const Icon(Icons.visibility_outlined, size: 18),
+                      label: const Text('Просмотр'),
                     ),
                   ),
                 ],
+              ),
+              TextButton.icon(
+                style: TextButton.styleFrom(foregroundColor: p.muted),
+                onPressed: _send,
+                icon: const Icon(Icons.send_rounded, size: 16),
+                label: const Text('Прислать в Telegram'),
               ),
               if (_note != null) ...[const SizedBox(height: Space.m), Text(_note!, style: s.body(14, color: p.muted))],
               if (widget.f.hasText) ...[

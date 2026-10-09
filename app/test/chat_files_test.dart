@@ -60,5 +60,7 @@ void main() {
     expect(asked, contains('GET /api/summary/2'));
     expect(find.textContaining('Кто такие стейкхолдеры', findRichText: true), findsOneWidget);
     expect(find.text('Скачать'), findsOneWidget);
+    expect(find.text('Просмотр'), findsOneWidget); // в Safari — листать там (владелец, 09.10)
+    expect(find.text('Прислать в Telegram'), findsOneWidget);
   });
 }
