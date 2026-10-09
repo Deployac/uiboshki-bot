@@ -1,10 +1,14 @@
-// «Неделя» — повестка: вся неделя одной лентой, сверху полоса дней с
-// точками пар. Нажал день — лента плавно едет к нему; открывается сразу на
-// сегодняшнем дне, прошедшие — выше, до них можно долистать (владелец, 09.10,
-// 19Б). Соседняя неделя — свайпом вбок или стрелками.
+// «Неделя» — два вида пар, переключатель значками справа сверху, выбор
+// запоминается (владелец, 09.10: переехал сюда с «Сегодня»).
+// Лента: вся неделя одной лентой, сверху полоса дней с точками пар. Нажал
+// день — лента плавно едет к нему; открывается сразу на сегодняшнем дне,
+// прошедшие — выше, до них можно долистать (19Б). По дням — плитки дней и
+// пары выбранного (week_days.dart). В обоих видах соседняя неделя — свайпом
+// вбок или стрелками у дат недели.
 // Сроки сдачи тут не показываем — для них вкладка «Сдать» (владелец, 09.10).
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api.dart';
 import '../api/models.dart';
@@ -14,6 +18,7 @@ import '../widgets/common.dart';
 import 'lesson.dart';
 import 'search.dart';
 import 'today.dart' show LessonList;
+import 'week_days.dart';
 
 class WeekData {
   final int? number;
@@ -29,6 +34,12 @@ class WeekScreen extends StatefulWidget {
   final VoidCallback? onUnauthorized;
   const WeekScreen({super.key, required this.api, this.onUnauthorized});
 
+  /// Какой вид открыт: 'list' — лента, 'days' — по дням.
+  static const viewKey = 'uib_week_view';
+
+  /// Где выбор лежал, пока переключатель был на «Сегодня»: 'days' — по дням.
+  static const oldViewKey = 'uib_today_view';
+
   @override
   State<WeekScreen> createState() => _WeekScreenState();
 }
@@ -36,6 +47,34 @@ class WeekScreen extends StatefulWidget {
 class _WeekScreenState extends State<WeekScreen> {
   int _shift = 0;
   int _dir = 1; // куда уехала неделя: 1 — вперёд, -1 — назад
+
+  /// Вид по дням; null — выбор ещё читается из памяти телефона.
+  bool? _days;
+
+  @override
+  void initState() {
+    super.initState();
+    _readView();
+  }
+
+  Future<void> _readView() async {
+    var days = false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final v = prefs.getString(WeekScreen.viewKey) ?? prefs.getString(WeekScreen.oldViewKey);
+      days = v == 'days';
+    } catch (_) {}
+    if (mounted) setState(() => _days = days);
+  }
+
+  Future<void> _setView(bool days) async {
+    if (days == _days) return;
+    tick();
+    setState(() => _days = days);
+    try {
+      await (await SharedPreferences.getInstance()).setString(WeekScreen.viewKey, days ? 'days' : 'list');
+    } catch (_) {}
+  }
 
   void _shiftBy(int k) {
     tick();
@@ -60,41 +99,47 @@ class _WeekScreenState extends State<WeekScreen> {
   }
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
-    // свайп вбок — соседняя неделя; вертикальную прокрутку ленты не трогает
-    behavior: HitTestBehavior.translucent,
-    onHorizontalDragEnd: (e) {
-      final v = e.primaryVelocity ?? 0;
-      if (v.abs() >= 250) _shiftBy(v < 0 ? 1 : -1);
-    },
-    child: AnimatedSwitcher(
-      duration: const Duration(milliseconds: 280),
-      switchInCurve: Curves.easeOutCubic,
-      switchOutCurve: Curves.easeInCubic,
-      transitionBuilder: (child, anim) {
-        final incoming = child.key == ValueKey(_shift);
-        final from = Offset((incoming ? 0.18 : -0.18) * _dir, 0);
-        return FadeTransition(
-          opacity: anim,
-          child: SlideTransition(
-            position: Tween(begin: from, end: Offset.zero).animate(anim),
-            child: child,
-          ),
-        );
+  Widget build(BuildContext context) {
+    final days = _days;
+    if (days == null) return const SizedBox.shrink();
+    return GestureDetector(
+      // свайп вбок — соседняя неделя в обоих видах; вертикальную прокрутку не трогает
+      behavior: HitTestBehavior.translucent,
+      onHorizontalDragEnd: (e) {
+        final v = e.primaryVelocity ?? 0;
+        if (v.abs() >= 250) _shiftBy(v < 0 ? 1 : -1);
       },
-      child: Loader<WeekData>(
-        key: ValueKey(_shift),
-        load: _load,
-        onUnauthorized: widget.onUnauthorized,
-        builder: (context, d, _) => _WeekView(
-          onLesson: (l) => openLesson(context, widget.api, l),
-          onSearch: () => openSearch(context, widget.api),
-          data: d,
-          onShift: _shiftBy,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 280),
+        switchInCurve: Curves.easeOutCubic,
+        switchOutCurve: Curves.easeInCubic,
+        transitionBuilder: (child, anim) {
+          final incoming = child.key == ValueKey(_shift);
+          final from = Offset((incoming ? 0.18 : -0.18) * _dir, 0);
+          return FadeTransition(
+            opacity: anim,
+            child: SlideTransition(
+              position: Tween(begin: from, end: Offset.zero).animate(anim),
+              child: child,
+            ),
+          );
+        },
+        child: Loader<WeekData>(
+          key: ValueKey(_shift),
+          load: _load,
+          onUnauthorized: widget.onUnauthorized,
+          builder: (context, d, _) => _WeekView(
+            onLesson: (l) => openLesson(context, widget.api, l),
+            onSearch: () => openSearch(context, widget.api),
+            data: d,
+            onShift: _shiftBy,
+            days: days,
+            onView: _setView,
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _WeekView extends StatefulWidget {
@@ -104,7 +149,18 @@ class _WeekView extends StatefulWidget {
 
   /// Поиск расписания любой группы, преподавателя, аудитории.
   final VoidCallback onSearch;
-  const _WeekView({required this.data, required this.onShift, required this.onLesson, required this.onSearch});
+
+  /// Вид по дням вместо ленты и его переключатель.
+  final bool days;
+  final ValueChanged<bool> onView;
+  const _WeekView({
+    required this.data,
+    required this.onShift,
+    required this.onLesson,
+    required this.onSearch,
+    required this.days,
+    required this.onView,
+  });
 
   @override
   State<_WeekView> createState() => _WeekViewState();
@@ -160,8 +216,8 @@ class _WeekViewState extends State<_WeekView> {
     return Column(
       children: [
         ScreenTitle(
-          eyebrow: d.number != null ? '${d.number} неделя · $range' : range,
           title: 'Неделя',
+          lead: _WeekLabel(text: d.number != null ? '${d.number} неделя · $range' : range, onShift: widget.onShift),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -173,67 +229,153 @@ class _WeekViewState extends State<_WeekView> {
                 },
                 icon: Icon(Icons.search_rounded, color: p.muted),
               ),
-              IconButton(
-                tooltip: 'Прошлая неделя',
-                onPressed: () => widget.onShift(-1),
-                icon: Icon(Icons.chevron_left_rounded, color: p.muted),
-              ),
-              IconButton(
-                tooltip: 'Следующая неделя',
-                onPressed: () => widget.onShift(1),
-                icon: Icon(Icons.chevron_right_rounded, color: p.muted),
-              ),
+              const SizedBox(width: 2),
+              ViewToggle(days: widget.days, onChanged: widget.onView),
             ],
           ),
         ),
-        // Полоса дней
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: Space.m),
-          child: Row(
-            children: [
-              for (var i = 0; i < 7; i++)
-                Expanded(
-                  child: _DayCell(
-                    date: d.monday.add(Duration(days: i)),
-                    dots: d.days[iso(d.monday.add(Duration(days: i)))]?.length ?? 0,
-                    selected: i == _selected,
-                    today: iso(d.monday.add(Duration(days: i))) == todayIso,
-                    onTap: () {
-                      tick();
-                      _go(i);
-                    },
+        if (widget.days)
+          Expanded(
+            child: WeekDays(data: d, onLesson: widget.onLesson),
+          )
+        else ...[
+          // Полоса дней
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.m),
+            child: Row(
+              children: [
+                for (var i = 0; i < 7; i++)
+                  Expanded(
+                    child: _DayCell(
+                      date: d.monday.add(Duration(days: i)),
+                      dots: d.days[iso(d.monday.add(Duration(days: i)))]?.length ?? 0,
+                      selected: i == _selected,
+                      today: iso(d.monday.add(Duration(days: i))) == todayIso,
+                      onTap: () {
+                        tick();
+                        _go(i);
+                      },
+                    ),
                   ),
-                ),
-            ],
+              ],
+            ),
           ),
-        ),
-        const SizedBox(height: Space.s),
-        Divider(height: 1, color: p.line),
-        Expanded(
-          child: CustomScrollView(
-            controller: _scroll,
-            center: _center,
-            // все семь дней строятся сразу — нажатие на день доезжает и до понедельника
-            scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
-            physics: const AlwaysScrollableScrollPhysics(),
-            slivers: [
-              for (var i = 0; i < 7; i++)
-                SliverToBoxAdapter(
-                  key: i == _anchor ? _center : null,
-                  child: _DayBlock(
-                    key: _keys[i],
-                    date: d.monday.add(Duration(days: i)),
-                    lessons: d.days[iso(d.monday.add(Duration(days: i)))] ?? const [],
-                    today: iso(d.monday.add(Duration(days: i))) == todayIso,
-                    at: t,
-                    onLesson: widget.onLesson,
+          const SizedBox(height: Space.s),
+          Divider(height: 1, color: p.line),
+          Expanded(
+            child: CustomScrollView(
+              controller: _scroll,
+              center: _center,
+              // все семь дней строятся сразу — нажатие на день доезжает и до понедельника
+              scrollCacheExtent: const ScrollCacheExtent.pixels(5000),
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                for (var i = 0; i < 7; i++)
+                  SliverToBoxAdapter(
+                    key: i == _anchor ? _center : null,
+                    child: _DayBlock(
+                      key: _keys[i],
+                      date: d.monday.add(Duration(days: i)),
+                      lessons: d.days[iso(d.monday.add(Duration(days: i)))] ?? const [],
+                      today: iso(d.monday.add(Duration(days: i))) == todayIso,
+                      at: t,
+                      onLesson: widget.onLesson,
+                    ),
                   ),
-                ),
-              const SliverToBoxAdapter(child: SizedBox(height: 160)),
-            ],
+                const SliverToBoxAdapter(child: SizedBox(height: 160)),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
+    );
+  }
+}
+
+/// Номер и даты недели, по бокам стрелки на соседние недели.
+class _WeekLabel extends StatelessWidget {
+  final String text;
+  final ValueChanged<int> onShift;
+  const _WeekLabel({required this.text, required this.onShift});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    Widget arrow(IconData icon, String tip, int k) => Tooltip(
+      message: tip,
+      child: Semantics(
+        button: true,
+        label: tip,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onShift(k),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+            child: Icon(icon, size: 20, color: s.p.muted),
+          ),
+        ),
+      ),
+    );
+    return Transform.translate(
+      offset: const Offset(-4, 0), // стрелка — по краю заголовка
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          arrow(Icons.chevron_left_rounded, 'Прошлая неделя', -1),
+          Flexible(
+            child: Text(text, style: s.eyebrow(), maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          arrow(Icons.chevron_right_rounded, 'Следующая неделя', 1),
+        ],
+      ),
+    );
+  }
+}
+
+/// Переключатель двух видов недели — значками, без подписей (владелец, 09.10):
+/// лента и по дням.
+class ViewToggle extends StatelessWidget {
+  final bool days;
+  final ValueChanged<bool> onChanged;
+  const ViewToggle({super.key, required this.days, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    Widget seg(IconData icon, String tip, bool on, bool value) => Tooltip(
+      message: tip,
+      child: Semantics(
+        button: true,
+        selected: on,
+        label: tip,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onChanged(value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            width: 36,
+            height: 30,
+            decoration: BoxDecoration(
+              color: on ? p.accent : p.accent.withValues(alpha: 0),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: on ? p.onAccent : p.muted),
+          ),
+        ),
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(13)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          seg(Icons.view_agenda_outlined, 'Лентой', !days, false),
+          const SizedBox(width: 2),
+          seg(Icons.calendar_view_week_rounded, 'По дням', days, true),
+        ],
+      ),
     );
   }
 }

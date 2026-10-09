@@ -128,7 +128,10 @@ class ScreenTitle extends StatelessWidget {
   final String? eyebrow;
   final String title;
   final Widget? trailing;
-  const ScreenTitle({super.key, this.eyebrow, required this.title, this.trailing});
+
+  /// Строка над заголовком вместо [eyebrow], если в ней не только текст.
+  final Widget? lead;
+  const ScreenTitle({super.key, this.eyebrow, required this.title, this.trailing, this.lead});
 
   @override
   Widget build(BuildContext context) {
@@ -142,7 +145,13 @@ class ScreenTitle extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (eyebrow != null) ...[Text(eyebrow!, style: s.eyebrow()), const SizedBox(height: 6)],
+                if (lead != null) ...[
+                  lead!,
+                  const SizedBox(height: 6),
+                ] else if (eyebrow != null) ...[
+                  Text(eyebrow!, style: s.eyebrow()),
+                  const SizedBox(height: 6),
+                ],
                 FitWords(title, style: s.title(34)),
                 const SizedBox(height: 10),
                 Container(
