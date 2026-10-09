@@ -137,7 +137,7 @@ class ScreenTitle extends StatelessWidget {
               children: [
                 Text(eyebrow, style: s.eyebrow()),
                 const SizedBox(height: 6),
-                Text(title, style: s.title(34)),
+                FitWords(title, style: s.title(34)),
                 const SizedBox(height: 10),
                 Container(
                   width: 34,
@@ -152,6 +152,41 @@ class ScreenTitle extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Крупный заголовок без разрыва слов посередине («Безопасн/ость»,
+/// «хозяйственн/ой»): если самое длинное слово не влезает в строку (узкий
+/// экран, крупный системный шрифт), шрифт уменьшается ровно до влезания.
+class FitWords extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+
+  /// Ширина строки, если известна заранее (внутри IntrinsicHeight
+  /// LayoutBuilder нельзя); без неё — по месту.
+  final double? width;
+  const FitWords(this.text, {super.key, required this.style, this.width});
+
+  static final _gaps = RegExp(r'[\s\-‐–—/]+');
+
+  Widget _fit(BuildContext context, double max) {
+    final scaler = MediaQuery.textScalerOf(context);
+    var widest = 0.0;
+    for (final w in text.split(_gaps)) {
+      final tp = TextPainter(
+        text: TextSpan(text: w, style: style),
+        textScaler: scaler,
+        textDirection: Directionality.of(context),
+      )..layout();
+      if (tp.width > widest) widest = tp.width;
+      tp.dispose();
+    }
+    if (!max.isFinite || widest <= max) return Text(text, style: style);
+    return Text(text, style: style.copyWith(fontSize: (style.fontSize ?? 14) * max / widest * 0.98));
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      width != null ? _fit(context, width!) : LayoutBuilder(builder: (context, box) => _fit(context, box.maxWidth));
 }
 
 /// Подпись раздела внутри экрана: «Весь день», «На неделе».

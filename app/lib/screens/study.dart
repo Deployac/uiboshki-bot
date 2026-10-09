@@ -47,6 +47,17 @@ class Course {
 
   /// Порог высшей отметки — «полное» кольцо (у экзамена это 5 при 80).
   num get top => marks.isEmpty ? max : marks.last.at;
+
+  /// Все пороги пройдены — need_label пуст («на «» уже хватает»):
+  /// тогда называем высшую набранную отметку.
+  String get enoughText {
+    final got = [
+      for (final m in marks)
+        if (score >= m.at) m.label,
+    ];
+    final label = got.isNotEmpty ? got.last : needLabel;
+    return label.isEmpty ? 'баллов уже хватает' : 'на ${markWord(label)} уже хватает';
+  }
 }
 
 class StudyScreen extends StatelessWidget {
@@ -341,7 +352,7 @@ class _CourseRow extends StatelessWidget {
         ? 'итог — ${c.finalMark}'
         : c.need > 0
         ? 'до «${c.needLabel}» ещё ${c.need} ${plural(c.need.round(), 'балл', 'балла', 'баллов')}'
-        : 'на «${c.needLabel}» уже хватает';
+        : c.enoughText;
     return Tile(
       onTap: onTap,
       child: Row(
@@ -459,7 +470,7 @@ class CourseScreen extends StatelessWidget {
                               ),
                               const SizedBox(height: Space.m),
                               Text(
-                                c.need > 0 ? 'ещё ${c.need} до «${c.needLabel}»' : 'на «${c.needLabel}» хватает',
+                                c.need > 0 ? 'ещё ${c.need} до «${c.needLabel}»' : c.enoughText,
                                 style: s.body(16, weight: FontWeight.w700),
                               ),
                             ],

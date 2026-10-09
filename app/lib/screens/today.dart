@@ -198,7 +198,7 @@ class _Hero extends StatelessWidget {
             ],
           ),
           const SizedBox(height: Space.s),
-          Text(lesson.title, style: s.title(21)),
+          FitWords(lesson.title, style: s.title(21)),
           const SizedBox(height: Space.m),
           FittedBox(
             fit: BoxFit.scaleDown,
@@ -258,7 +258,10 @@ class _Meta extends StatelessWidget {
       children: [
         Icon(icon, size: 15, color: s.p.muted),
         const SizedBox(width: 4),
-        Text(text, style: s.body(13, color: s.p.muted)),
+        // длинное ФИО или аудитория переносится, а не вылезает за карточку
+        Flexible(
+          child: Text(text, style: s.body(13, color: s.p.muted)),
+        ),
       ],
     );
   }
@@ -352,7 +355,8 @@ class LessonList extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           SizedBox(
-                            width: 50,
+                            // «09:00» не рвётся на «09:0/0» при крупном системном шрифте
+                            width: MediaQuery.textScalerOf(context).scale(50),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
