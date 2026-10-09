@@ -46,7 +46,7 @@ _PERSON = re.compile(
     r"[А-ЯЁ][а-яё-]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:вич|вна|чна|ична|ьич))$")
 _URL = re.compile(r"https?://|www\.|@[a-z]|\.(?:ru|com|org)\b", re.I)
 # служебное «Лекция 8», «Лекция № 8.», «ЛЕКЦИЯ 8:», «Тема 3»
-_LECTURE = re.compile(r"^(?:лекци[яи]|лк|занятие)(?![а-яё])\s*№?\s*\d{1,2}(?![\d.]\d)\s*[.:)\-–—]?\s*(.*)$", re.I)
+_LECTURE = re.compile(r"^(?:лекци[яи]|лк|занятие)(?![а-яё])\s*№?\s*(\d{1,2})(?![\d.]\d)\s*[.:)\-–—]?\s*(.*)$", re.I)
 _TEMA = re.compile(r"^тема(?![а-яё])(?:\s+лекции)?(?:\s*№?\s*\d{1,2}(?![\d.]\d))?\s*[.:\-–—]?\s*(.*)$", re.I)
 # строка-продолжение: заголовок перенёсся («Управление проектами в» / «информационных системах»)
 _TAIL_WORD = re.compile(r"(?:^|\s)(?:в|во|и|на|по|для|из|к|с|со|о|об|от|до|за|при|без|или|как|их|её|его)$", re.I)
@@ -54,8 +54,12 @@ _SMALL = {"в", "во", "и", "на", "по", "для", "из", "к", "с", "с�
           "или", "как", "не", "а", "но"}
 
 
+# PDF отдаёт «бизнес -анализа», «Б -А» — дефис прилипает к следующему слову
+_HYPHEN = re.compile(r"(?<=[А-ЯЁа-яёA-Za-z]) -(?=[А-ЯЁа-яёA-Za-z])")
+
+
 def _norm(line: str) -> str:
-    line = _SPACE.sub(" ", line or "").strip()
+    line = _HYPHEN.sub("-", _SPACE.sub(" ", line or "")).strip()
     return line.strip(" \t•·▪►–—-*|")
 
 
@@ -159,36 +163,53 @@ def head_lines(text: str) -> list[str]:
     return [x for x in lines if x][:HEAD_LINES]
 
 
-def topic_from_text(text: str, subject: str = "") -> str:
-    """Тема лекции по началу её текста или «»."""
+def _after(lines: list[str], i: int, rest: str, subject: str) -> str:
+    """Тема у маркера в строке i: после него в той же строке или, если там
+    пусто, в одной из следующих строк (после шапки)."""
+    inner = _TEMA.match(rest)                                  # «Лекция 3. Тема: …»
+    if inner:
+        rest = inner.group(1).strip()
+    if rest:
+        return _candidate(_join(lines, i, rest), subject)
+    for j in range(i + 1, min(i + 4, len(lines))):
+        if _marker(lines[j]):
+            return ""                                          # у неё свой разбор
+        if _boiler(lines[j], subject):
+            continue
+        return _candidate(_join(lines, j, lines[j]), subject)
+    return ""
+
+
+def topic_from_text(text: str, subject: str = "", number: int | None = None) -> str:
+    """Тема лекции по началу её текста или «». number — номер лекции из
+    названия файла: на слайде «План курса» перечислены все лекции, берём свою."""
     lines = head_lines(text)
-    # 1–2. явные «Тема: …» и «Лекция 8. …» / «Лекция 8» + следующая строка
+    own, tema, other = "", "", {}                              # other: номер → тема
     for i, line in enumerate(lines):
-        m = _TEMA.match(line) or _LECTURE.match(line)
-        if not m:
+        m = _LECTURE.match(line)
+        if m:
+            topic = _after(lines, i, m.group(2).strip(), subject)
+            n = int(m.group(1))
+            if topic and n == number and not own:
+                own = topic
+            elif topic:
+                other.setdefault(n, topic)
+            else:
+                other.setdefault(n, "")
             continue
-        rest = m.group(1).strip()
-        inner = _TEMA.match(rest)                              # «Лекция 3. Тема: …»
-        if inner:
-            rest = inner.group(1).strip()
-        if rest:
-            topic = _candidate(_join(lines, i, rest), subject)
-            if topic:
-                return topic
-            continue
-        # «Лекция 8» отдельной строкой — тема в одной из следующих строк, после шапки
-        for j in range(i + 1, min(i + 4, len(lines))):
-            if _marker(lines[j]):
-                break                                          # до неё дойдёт внешний цикл
-            if _boiler(lines[j], subject):
-                continue
-            topic = _candidate(_join(lines, j, lines[j]), subject)
-            if topic:
-                return topic
-            break
-    # 3. первая строка-заголовок после шапки — только на титульном (первые строки)
+        m = _TEMA.match(line)
+        if m and not tema:
+            tema = _after(lines, i, m.group(1).strip(), subject)
+    if own or tema:
+        return own or tema
+    # «Лекция 7» на титульном, а файл пронумерован по порядку выгрузки — номер
+    # в тексте один, значит, это она; несколько разных (план курса) — не гадаем
+    if other:
+        found = [t for t in other.values() if t]
+        return found[0] if len(other) == 1 and found else ""
+    # без «Лекция N» и «Тема» — первая строка-заголовок после шапки (титульный)
     for i, line in enumerate(lines[:12]):
-        if _boiler(line, subject) or _marker(line):
+        if _boiler(line, subject):
             continue
         return _candidate(_join(lines, i, line), subject)  # первая же не-шапка: заголовок или ничего
     return ""

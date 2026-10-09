@@ -212,7 +212,7 @@ def text_titles(files: list[dict], names: dict[int, str], texts: dict[int, str])
             known.setdefault((subj, head.lower()), topic)       # тема из названия — надёжнее текста
             continue
         need[f["id"]] = (subj, head)
-        t = topic_from_text(texts.get(f["id"]) or "", subj)
+        t = topic_from_text(texts.get(f["id"]) or "", subj, int(re.findall(r"\d+", head)[-1]))
         if t:
             found[f["id"]] = t
     heads_by_topic: dict[tuple, set] = {}
