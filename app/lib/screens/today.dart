@@ -1,8 +1,15 @@
-// «Сегодня» — живой день: что идёт сейчас и сколько осталось, что дальше,
-// весь день списком и что горит по срокам. Время тикает раз в минуту.
+// «Сегодня» — два вида одного экрана, переключатель значками справа сверху,
+// выбор запоминается (владелец, 09.10, 21А/21В и 22А).
+// Главный: группа с неделей и погода одной строкой, капибара, приветствие по
+// времени суток; ближайшая пара крупно — время, название, кабинет плашкой
+// цвета предмета и «через»; во время пары — сколько до конца, полоска и где
+// следующая. Ниже пары дня карточками с номером пары и что горит по срокам.
+// Второй вид — дни недели плитками и пары выбранного дня (today_days.dart).
+// Время тикает раз в 30 секунд.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api.dart';
 import '../api/models.dart';
@@ -11,21 +18,103 @@ import '../theme/tokens.dart';
 import '../widgets/capy.dart';
 import '../widgets/common.dart';
 import 'lesson.dart';
+import 'today_days.dart';
+import 'week.dart' show mondayOf;
 
 class TodayData {
   final List<Lesson> lessons;
   final Lesson? tomorrowFirst;
   final List<Deadline> soon;
   final String weather;
-  TodayData(this.lessons, this.tomorrowFirst, this.soon, this.weather);
+
+  /// Имя, группа и номер учебной недели — для шапки. Без сети и запаса их
+  /// может не быть: экран всё равно показывается, просто без них.
+  final String name, group;
+  final int? week;
+  TodayData(this.lessons, this.tomorrowFirst, this.soon, this.weather, {this.name = '', this.group = '', this.week});
 }
 
 const _ordinal = ['первая', 'вторая', 'третья', 'четвёртая', 'пятая', 'шестая', 'седьмая', 'восьмая'];
+
+/// «первая», «вторая»… по месту пары в дне (не по звонку).
+String ordinal(int i) => i < _ordinal.length ? _ordinal[i] : '${i + 1}-я';
+
+/// Приветствие по времени суток — часы те же, что у позы капибары.
+String greeting(int hour) => switch (poseAt(hour)) {
+  CapyPose.morning => 'Доброе утро',
+  CapyPose.day => 'Добрый день',
+  CapyPose.evening => 'Добрый вечер',
+  _ => 'Доброй ночи',
+};
+
+/// «25 мин», от часа — «2 ч 05 мин»: «134 минуты» не читается (владелец, 09.10).
+String spanText(int minutes) =>
+    minutes >= 60 ? '${minutes ~/ 60} ч ${(minutes % 60).toString().padLeft(2, '0')} мин' : '$minutes мин';
+
+/// Минут до момента с округлением вверх: за 30 секунд до начала — «1 мин», а не «0».
+int minutesTo(DateTime from, DateTime to) {
+  final s = to.difference(from).inSeconds;
+  return s <= 0 ? 0 : (s + 59) ~/ 60;
+}
+
+/// Погода из /api/today («🌤 +4°, переменная облачность, ощущается +2° ·
+/// 🧣 куртка не помешает») для шапки: температура и коротко небо («облачно»),
+/// а целиком — без эмодзи (их в интерфейсе нет). null — погоды нет.
+({String temp, String sky, String full})? weatherBrief(String raw) {
+  final full = raw
+      .replaceAll(RegExp(r'[^\p{L}\p{N}\s°+\-−.,:·]', unicode: true), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (full.isEmpty) return null;
+  final parts = [
+    for (final x in full.split(' · ').first.split(','))
+      if (x.trim().isNotEmpty) x.trim(),
+  ];
+  if (parts.isEmpty) return null;
+  return (temp: parts.first, sky: parts.length > 1 ? shortSky(parts[1]) : '', full: full);
+}
+
+/// «Переменная облачность» → «облачно», «Лёгкий дождь» → «дождь».
+String shortSky(String desc) {
+  final x = desc.toLowerCase().trim();
+  for (final (key, short) in const [
+    ('гроза', 'гроза'),
+    ('ливень', 'ливень'),
+    ('снег', 'снег'),
+    ('дожд', 'дождь'),
+    ('морось', 'морось'),
+    ('туман', 'туман'),
+    ('пасмурно', 'пасмурно'),
+    ('облачн', 'облачно'),
+    ('ясно', 'ясно'),
+  ]) {
+    if (x.contains(key)) return short;
+  }
+  return x.split(' ').last;
+}
+
+/// Корпус из «А-332 (МП-1)» — «МП-1»; без скобок — пусто.
+String campusOf(String room) => RegExp(r'\(([^)]+)\)').firstMatch(room)?.group(1)?.trim() ?? '';
+
+/// «А-332 (МП-1), Б-304 (МП-1)» → кабинеты «А-332, Б-304» и корпус «МП-1».
+({String code, String campus}) splitRoom(String room) {
+  final codes = <String>[], campuses = <String>[];
+  for (final r in room.split(RegExp(r',\s*'))) {
+    final code = r.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
+    final c = campusOf(r);
+    if (code.isNotEmpty) codes.add(code);
+    if (c.isNotEmpty && !campuses.contains(c)) campuses.add(c);
+  }
+  return (code: codes.join(', '), campus: campuses.join(', '));
+}
 
 class TodayScreen extends StatefulWidget {
   final Api api;
   final VoidCallback? onUnauthorized;
   const TodayScreen({super.key, required this.api, this.onUnauthorized});
+
+  /// Какой вид открыт: 'main' — сводка дня, 'days' — дни недели.
+  static const viewKey = 'uib_today_view';
 
   @override
   State<TodayScreen> createState() => _TodayScreenState();
@@ -34,10 +123,14 @@ class TodayScreen extends StatefulWidget {
 class _TodayScreenState extends State<TodayScreen> {
   Timer? _timer;
 
+  /// Второй вид (дни недели); null — выбор ещё читается из памяти телефона.
+  bool? _days;
+
   @override
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => setState(() {}));
+    _readView();
   }
 
   @override
@@ -46,289 +139,778 @@ class _TodayScreenState extends State<TodayScreen> {
     super.dispose();
   }
 
+  Future<void> _readView() async {
+    var days = false;
+    try {
+      days = (await SharedPreferences.getInstance()).getString(TodayScreen.viewKey) == 'days';
+    } catch (_) {}
+    if (mounted) setState(() => _days = days);
+  }
+
+  Future<void> _setView(bool days) async {
+    if (days == _days) return;
+    tick();
+    setState(() => _days = days);
+    try {
+      await (await SharedPreferences.getInstance()).setString(TodayScreen.viewKey, days ? 'days' : 'main');
+    } catch (_) {}
+  }
+
   Future<TodayData> _load() async {
-    final j = await widget.api.get('/today');
+    final api = widget.api;
+    // имя, группа и неделя — только для шапки: не пришли — экран всё равно есть
+    Future<dynamic> extra(String path) => api.get(path).then<dynamic>((v) => v, onError: (_) => null);
+    final res = await Future.wait([api.get('/today'), extra('/me'), extra('/week?start=${iso(mondayOf(now()))}')]);
+    final j = res[0];
     final lessons = [for (final l in j['lessons'] as List) Lesson.fromJson(l)];
     final tf = j['tomorrow_first'];
     final soon = [
       for (final d in (j['deadlines']?['soon'] as List? ?? []))
         if ((d['days'] ?? 0) >= 0) Deadline.fromJson(d),
     ];
-    return TodayData(lessons, tf == null ? null : Lesson.fromJson(tf), soon, j['weather'] ?? '');
+    final me = res[1] is Map ? res[1] as Map : const {};
+    final group = me['group'] is Map ? '${me['group']['name'] ?? ''}' : '';
+    final week = res[2] is Map ? res[2]['week'] : null;
+    return TodayData(
+      lessons,
+      tf == null ? null : Lesson.fromJson(tf),
+      soon,
+      j['weather'] ?? '',
+      name: '${me['first_name'] ?? ''}'.trim(),
+      group: group,
+      week: week is int ? week : null,
+    );
   }
 
   @override
-  Widget build(BuildContext context) => Loader<TodayData>(
-    load: _load,
-    onUnauthorized: widget.onUnauthorized,
-    builder: (context, d, _) => _TodayView(d, widget.api),
-  );
+  Widget build(BuildContext context) {
+    final days = _days;
+    if (days == null) return const SizedBox.shrink();
+    return Loader<TodayData>(
+      load: _load,
+      onUnauthorized: widget.onUnauthorized,
+      builder: (context, d, _) {
+        final top = TodayTop(data: d, days: days, onView: _setView);
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 280),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeInCubic,
+          layoutBuilder: (current, previous) =>
+              Stack(alignment: Alignment.topCenter, children: [...previous, ?current]),
+          child: days
+              ? TodayDays(key: const ValueKey('today:days'), data: d, api: widget.api, top: top)
+              : _MainView(key: const ValueKey('today:main'), data: d, api: widget.api, top: top),
+        );
+      },
+    );
+  }
 }
 
-class _TodayView extends StatelessWidget {
-  final TodayData d;
-  final Api api;
-  const _TodayView(this.d, this.api);
+/// Шапка обоих видов: группа с неделей и погода одной строкой (не влезает —
+/// погода только температурой, совсем узко — второй строкой), справа —
+/// переключатель видов, в обоих видах на одном месте.
+class TodayTop extends StatelessWidget {
+  final TodayData data;
+  final bool days;
+  final ValueChanged<bool> onView;
+  const TodayTop({super.key, required this.data, required this.days, required this.onView});
+
+  // на 390 pt (iPhone) «УИБО-03-24 · 6 неделя» и «+12° пасмурно» влезают рядом с переключателем
+  static const _gap = 5.0, _pad = 8.0, _padV = 4.5;
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final wx = weatherBrief(data.weather);
+    final head = [if (data.group.isNotEmpty) data.group, if (data.week != null) '${data.week} неделя'].join(' · ');
+    // меряем тем же стилем, каким рисует Text (с межбуквенным из темы); подписи
+    // в шапке растут с системным шрифтом не больше чем на 15 % — иначе на
+    // 320 pt группа с неделей не влезает рядом с переключателем
+    final style = DefaultTextStyle.of(context).style
+        .merge(s.body(12, weight: FontWeight.w600))
+        .copyWith(letterSpacing: 0);
+    final scaler = MediaQuery.textScalerOf(context).clamp(maxScaleFactor: 1.15);
+    return Padding(
+      key: const ValueKey('today:top'),
+      padding: const EdgeInsets.fromLTRB(Space.l, Space.m, Space.l, 0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, box) {
+                double width(String text) {
+                  final tp = TextPainter(
+                    text: TextSpan(text: text, style: style),
+                    textScaler: scaler,
+                    textDirection: Directionality.of(context),
+                    maxLines: 1,
+                  )..layout();
+                  final w = tp.width + 2 * _pad;
+                  tp.dispose();
+                  return w;
+                }
+
+                String? sky;
+                if (wx != null) {
+                  final full = wx.sky.isEmpty ? wx.temp : '${wx.temp} ${wx.sky}';
+                  final used = head.isEmpty ? 0.0 : width(head) + _gap;
+                  // всё в строку; не влезает — одна температура; и она не влезает — перенос
+                  final room = box.maxWidth - 1; // запас на округление
+                  sky = used + width(full) <= room || used + width(wx.temp) > room ? full : wx.temp;
+                }
+                // первая строка подписей — по центру переключателя, перенос — под ней
+                final chip = scaler.scale(12) * 1.3 + 2 * _padV;
+                return Padding(
+                  padding: EdgeInsets.only(top: ((ViewToggle.height - chip) / 2).clamp(0, 20)),
+                  child: Wrap(
+                    spacing: _gap,
+                    runSpacing: _gap,
+                    children: [
+                      if (head.isNotEmpty) _Chip(head, style: style, scaler: scaler),
+                      if (sky != null)
+                        _Chip(
+                          sky,
+                          style: style,
+                          scaler: scaler,
+                          label: 'Погода: ${wx!.full}',
+                          onTap: () => ScaffoldMessenger.maybeOf(context)
+                            ?..hideCurrentSnackBar()
+                            ..showSnackBar(SnackBar(content: Text(wx.full), duration: const Duration(seconds: 3))),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 6),
+          ViewToggle(days: days, onChanged: onView),
+        ],
+      ),
+    );
+  }
+}
+
+class _Chip extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+  final TextScaler scaler;
+  final String? label;
+  final VoidCallback? onTap;
+  const _Chip(this.text, {required this.style, required this.scaler, this.label, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    final chip = Container(
+      padding: const EdgeInsets.symmetric(horizontal: TodayTop._pad, vertical: TodayTop._padV),
+      decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(Radii.pill)),
+      child: Text(text, style: style, textScaler: scaler, maxLines: 1, overflow: TextOverflow.ellipsis),
+    );
+    if (onTap == null) return chip;
+    return Semantics(
+      button: true,
+      label: label,
+      excludeSemantics: label != null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () {
+          tick();
+          onTap!();
+        },
+        child: chip,
+      ),
+    );
+  }
+}
+
+/// Переключатель двух видов «Сегодня» — значками, без подписей «Главное /
+/// По дням» (владелец, 09.10): сводка дня и дни недели.
+class ViewToggle extends StatelessWidget {
+  final bool days;
+  final ValueChanged<bool> onChanged;
+  const ViewToggle({super.key, required this.days, required this.onChanged});
+
+  /// Высота: кнопка 30 и поля по 3.
+  static const height = 36.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    Widget seg(IconData icon, String tip, bool on, bool value) => Tooltip(
+      message: tip,
+      child: Semantics(
+        button: true,
+        selected: on,
+        label: tip,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onChanged(value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            width: 36,
+            height: 30,
+            decoration: BoxDecoration(
+              color: on ? p.accent : p.accent.withValues(alpha: 0),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: on ? p.onAccent : p.muted),
+          ),
+        ),
+      ),
+    );
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(13)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          seg(Icons.wb_sunny_outlined, 'Сводка дня', !days, false),
+          const SizedBox(width: 2),
+          seg(Icons.calendar_view_week_rounded, 'Дни недели', days, true),
+        ],
+      ),
+    );
+  }
+}
+
+/// Главный вид (21А): приветствие и ближайшая пара крупно; во время пары
+/// (21В) — «Идёт первая пара», сколько до конца и где следующая.
+class _MainView extends StatelessWidget {
+  final TodayData data;
+  final Api api;
+  final Widget top;
+  const _MainView({super.key, required this.data, required this.api, required this.top});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
     final t = now();
-    final lessons = d.lessons;
+    final lessons = data.lessons;
     Lesson? current, next;
     for (final l in lessons) {
       if (l.startAt == null || l.endAt == null) continue;
       if (!t.isBefore(l.startAt!) && t.isBefore(l.endAt!)) current = l;
       if (next == null && t.isBefore(l.startAt!)) next = l;
     }
+    void open(Lesson l) => openLesson(context, api, l);
+    final hello = data.name.isEmpty ? greeting(t.hour) : '${greeting(t.hour)},\n${data.name}';
     final String title;
+    Widget? focus, notice;
     if (lessons.isEmpty) {
-      title = 'Сегодня пар нет';
+      title = hello;
+      final tf = data.tomorrowFirst;
+      notice = Notice(
+        title: 'Сегодня пар нет',
+        text: tf == null ? 'Завтра тоже свободно.' : 'Завтра первая — ${tf.start}, ${tf.title}.',
+        pose: CapyPose.joy,
+      );
     } else if (current != null) {
-      final n = lessons.indexOf(current);
-      title = 'Идёт ${n < _ordinal.length ? _ordinal[n] : '${n + 1}-я'} пара';
+      title = 'Идёт ${ordinal(lessons.indexOf(current))} пара';
+      focus = _LiveFocus(lesson: current, next: next, at: t, onOpen: open);
     } else if (next != null) {
-      title = next == lessons.first ? 'Скоро первая пара' : 'Перемена';
+      final i = lessons.indexOf(next);
+      title = i == 0 ? hello : 'Перемена';
+      focus = _NextFocus(
+        label: '${ordinal(i)} пара в',
+        lesson: next,
+        prev: i > 0 ? lessons[i - 1] : null,
+        at: t,
+        onOpen: open,
+      );
     } else {
-      title = 'Пары закончились';
+      // пары кончились — что завтра; завтра свободно — капибара радуется
+      title = hello;
+      final tf = data.tomorrowFirst;
+      if (tf != null) {
+        focus = _NextFocus(label: 'завтра первая пара в', lesson: tf, at: t, onOpen: open);
+      } else {
+        notice = const Notice(title: 'Пары закончились', text: 'Завтра свободно.', pose: CapyPose.joy);
+      }
     }
-    final hero = current ?? (next == lessons.firstOrNull ? next : null);
-    final after = current != null ? next : (hero == null ? next : _after(lessons, hero));
 
     return ListView(
       padding: const EdgeInsets.only(bottom: 120),
       children: [
-        ScreenTitle(
-          eyebrow: dayTitle(t),
-          title: title,
-          trailing: CapyBadge(hour: t.hour),
+        top,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.m, 0),
+          child: Row(
+            children: [
+              Expanded(child: FitWords(title, style: s.title(30))),
+              const SizedBox(width: Space.s),
+              CapyBadge(hour: t.hour, size: 62),
+            ],
+          ),
         ),
-        if (hero != null)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: _Hero(lesson: hero, live: hero == current, onTap: () => openLesson(context, api, hero)),
-          ),
-        if (after != null) ...[
-          const SizedBox(height: Space.m),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: _Next(lesson: after, prev: current, onTap: () => openLesson(context, api, after)),
-          ),
-        ],
-        if (lessons.isEmpty)
-          Notice(
-            title: 'Отдыхай',
-            text: d.tomorrowFirst == null
-                ? 'Завтра тоже свободно.'
-                : 'Завтра первая — ${d.tomorrowFirst!.start}, ${d.tomorrowFirst!.title}.',
-            pose: CapyPose.joy,
-          ),
+        if (focus != null) Padding(padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.l, 0), child: focus),
+        if (notice != null) ...[const SizedBox(height: Space.m), notice],
         if (lessons.isNotEmpty) ...[
-          const Section('Весь день'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: LessonList(lessons: lessons, at: t, onTap: (l) => openLesson(context, api, l)),
-          ),
-        ],
-        if (d.soon.isNotEmpty) ...[
-          const Section('Горит'),
-          for (final x in d.soon)
+          Section('сегодня · ${lessons.length} ${plural(lessons.length, 'пара', 'пары', 'пар')}'),
+          for (final l in lessons)
             Padding(
               padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-              child: _SoonRow(x, at: t),
+              child: LessonCard(lesson: l, at: t, onTap: () => open(l)),
             ),
         ],
-        if (d.weather.isNotEmpty) ...[
-          const Section('Погода'),
+        if (data.soon.isNotEmpty) ...[
+          const Section('горит'),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.xl),
-            child: Text(d.weather, style: AppStyle.of(context).body(14, color: AppStyle.of(context).p.muted)),
+            padding: const EdgeInsets.symmetric(horizontal: Space.l),
+            child: _SoonList(data.soon, at: t),
           ),
         ],
       ],
     );
   }
+}
 
-  Lesson? _after(List<Lesson> all, Lesson l) {
-    final i = all.indexOf(l);
-    return i >= 0 && i + 1 < all.length ? all[i + 1] : null;
+/// До пары: «первая пара в» и время крупно, название, кабинет плашкой цвета
+/// предмета и «через» с преподавателем. Следующая в другом корпусе —
+/// подсказка про переход.
+class _NextFocus extends StatelessWidget {
+  final String label;
+  final Lesson lesson;
+  final Lesson? prev;
+  final DateTime at;
+  final ValueChanged<Lesson> onOpen;
+  const _NextFocus({required this.label, required this.lesson, this.prev, required this.at, required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final from = prev == null ? '' : campusOf(prev!.room);
+    final to = campusOf(lesson.room);
+    final moving = from.isNotEmpty && to.isNotEmpty && from != to;
+    final gap = prev?.endAt != null && lesson.startAt != null ? lesson.startAt!.difference(prev!.endAt!).inMinutes : 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: s.body(13, color: p.muted)),
+        const SizedBox(height: 4),
+        Text(lesson.start, style: s.number(52)),
+        const SizedBox(height: Space.s),
+        _Name(lesson, onOpen: onOpen),
+        const SizedBox(height: Space.m),
+        _Tiles([
+          if (lesson.room.isNotEmpty) RoomTile(lesson, onTap: () => onOpen(lesson)),
+          if (lesson.startAt != null)
+            _InfoTile(
+              label: 'через',
+              value: spanText(minutesTo(at, lesson.startAt!)),
+              sub: lesson.teacher,
+              onTap: () => onOpen(lesson),
+            )
+          else if (lesson.teacher.isNotEmpty)
+            _InfoTile(label: 'ведёт', value: lesson.teacher, fit: false, onTap: () => onOpen(lesson)),
+        ]),
+        if (moving) ...[
+          const SizedBox(height: Space.s),
+          Row(
+            children: [
+              Icon(Icons.directions_walk_rounded, size: 16, color: p.warn),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  'Другой корпус — $to, на переход $gap мин',
+                  style: s.body(13, weight: FontWeight.w600, color: p.warn),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
+    );
   }
 }
 
-/// Большая карточка: пара сейчас (минут до конца и полоска) или первая пара дня.
-class _Hero extends StatelessWidget {
+/// Во время пары (21В): «до конца» крупно цветом предмета, полоска, название,
+/// кабинет и куда дальше — тот же корпус или другой.
+class _LiveFocus extends StatelessWidget {
   final Lesson lesson;
-  final bool live;
-  final VoidCallback? onTap;
-  const _Hero({required this.lesson, required this.live, this.onTap});
+  final Lesson? next;
+  final DateTime at;
+  final ValueChanged<Lesson> onOpen;
+  const _LiveFocus({required this.lesson, this.next, required this.at, required this.onOpen});
 
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
     final c = subjectColor(lesson.title);
-    final t = now();
     final total = lesson.endAt!.difference(lesson.startAt!).inSeconds;
-    final passed = t.difference(lesson.startAt!).inSeconds.clamp(0, total);
-    final minutes = live ? lesson.endAt!.difference(t).inMinutes + 1 : lesson.startAt!.difference(t).inMinutes + 1;
-    return Tile(
-      onTap: onTap,
-      radius: Radii.card,
-      gradient: LinearGradient(
-        begin: Alignment.topRight,
-        end: Alignment.bottomLeft,
-        colors: [
-          c.withValues(alpha: p.dark ? 0.42 : 0.28),
-          p.cardSolid.withValues(alpha: p.dark ? 0.6 : 1),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 8,
-                height: 8,
-                decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: Text(live ? 'Сейчас · ${lesson.kind}' : 'Первая · ${lesson.start}', style: s.eyebrow(color: c)),
-              ),
-            ],
-          ),
-          const SizedBox(height: Space.s),
-          FitWords(lesson.title, style: s.name(20)),
-          const SizedBox(height: Space.m),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              // «134 минуты» не читается (владелец, 09.10): от часа — «2 ч 14 мин», как в «Сдать»
-              children: minutes >= 60
-                  ? [
-                      Text('${minutes ~/ 60}', style: s.number(56, color: live ? c : p.text)),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 8, left: 3, right: 10),
-                        child: Text('ч', style: s.body(14, color: p.muted)),
-                      ),
-                      Text((minutes % 60).toString().padLeft(2, '0'), style: s.number(56, color: live ? c : p.text)),
-                      const SizedBox(width: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text('мин\n${live ? 'до конца' : 'до начала'}', style: s.body(13, color: p.muted)),
-                      ),
-                    ]
-                  : [
-                      Text('${minutes > 0 ? minutes : 0}', style: s.number(56, color: live ? c : p.text)),
-                      const SizedBox(width: 8),
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          '${plural(minutes, 'минута', 'минуты', 'минут')}\n${live ? 'до конца' : 'до начала'}',
-                          style: s.body(13, color: p.muted),
-                        ),
-                      ),
-                    ],
-            ),
-          ),
-          if (live) ...[
-            const SizedBox(height: Space.m),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: LinearProgressIndicator(
-                value: total == 0 ? 0 : passed / total,
-                minHeight: 5,
-                color: c,
-                backgroundColor: p.line,
-              ),
-            ),
-          ],
-          const SizedBox(height: Space.m),
-          Wrap(
-            spacing: Space.m,
-            runSpacing: 6,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              if (lesson.room.isNotEmpty) RoomPill(lesson.room, color: c, size: 15),
-              if (lesson.teacher.isNotEmpty) _Meta(Icons.person_outline_rounded, lesson.teacher),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Meta extends StatelessWidget {
-  final IconData icon;
-  final String text;
-  const _Meta(this.icon, this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    final s = AppStyle.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    final passed = at.difference(lesson.startAt!).inSeconds.clamp(0, total);
+    final n = next;
+    final Widget after;
+    if (n != null) {
+      final from = campusOf(lesson.room), to = campusOf(n.room);
+      final known = from.isNotEmpty && to.isNotEmpty;
+      final moving = known && from != to;
+      final room = splitRoom(n.room).code;
+      after = _InfoTile(
+        label: 'дальше в ${n.start}',
+        value: room.isNotEmpty ? room : n.title,
+        fit: room.isNotEmpty,
+        sub: moving
+            ? 'другой корпус, $to'
+            : known
+            ? 'тот же корпус'
+            : room.isNotEmpty
+            ? n.title
+            : n.kind,
+        subColor: moving ? p.warn : null,
+        onTap: () => onOpen(n),
+      );
+    } else {
+      after = _InfoTile(label: 'конец в', value: lesson.end, sub: 'последняя на сегодня', onTap: () => onOpen(lesson));
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 15, color: s.p.muted),
-        const SizedBox(width: 4),
-        // длинное ФИО или аудитория переносится, а не вылезает за карточку
-        Flexible(
-          child: Text(text, style: s.body(13, color: s.p.muted)),
+        Text('до конца', style: s.body(13, color: p.muted)),
+        const SizedBox(height: 4),
+        _Countdown(minutes: minutesTo(at, lesson.endAt!), color: c),
+        const SizedBox(height: Space.m),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: total == 0 ? 0 : passed / total,
+            minHeight: 6,
+            color: c,
+            backgroundColor: p.line,
+          ),
         ),
+        const SizedBox(height: Space.m),
+        _Name(lesson, onOpen: onOpen),
+        const SizedBox(height: Space.m),
+        _Tiles([if (lesson.room.isNotEmpty) RoomTile(lesson, onTap: () => onOpen(lesson)), after]),
       ],
     );
   }
 }
 
-/// «Дальше · 12:40» и подсказка, если следующая пара в другом корпусе.
-class _Next extends StatelessWidget {
-  final Lesson lesson;
-  final Lesson? prev;
-  final VoidCallback? onTap;
-  const _Next({required this.lesson, this.prev, this.onTap});
+/// «1 ч 07 мин» — цифры крупно, единицы мельче.
+class _Countdown extends StatelessWidget {
+  final int minutes;
+  final Color color;
+  const _Countdown({required this.minutes, required this.color});
 
-  static String campus(String room) {
-    final m = RegExp(r'\(([^)]+)\)').firstMatch(room);
-    return m?.group(1) ?? '';
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final big = s.number(52, color: color);
+    final unit = s.body(18, weight: FontWeight.w600, color: s.p.muted);
+    return Semantics(
+      label: 'до конца ${spanText(minutes)}',
+      excludeSemantics: true,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            if (minutes >= 60) ...[
+              Text('${minutes ~/ 60}', style: big),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                child: Text('ч', style: unit),
+              ),
+              Text((minutes % 60).toString().padLeft(2, '0'), style: big),
+            ] else
+              Text('$minutes', style: big),
+            Padding(
+              padding: const EdgeInsets.only(left: 7),
+              child: Text('мин', style: unit),
+            ),
+          ],
+        ),
+      ),
+    );
   }
+}
+
+/// Название пары крупно, без засечек; нажал — экран пары.
+class _Name extends StatelessWidget {
+  final Lesson lesson;
+  final ValueChanged<Lesson> onOpen;
+  const _Name(this.lesson, {required this.onOpen});
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: () {
+      tick();
+      onOpen(lesson);
+    },
+    child: Text(lesson.title, style: AppStyle.of(context).name(18)),
+  );
+}
+
+/// Две плашки рядом одной высоты.
+class _Tiles extends StatelessWidget {
+  final List<Widget> children;
+  const _Tiles(this.children);
+
+  @override
+  Widget build(BuildContext context) => IntrinsicHeight(
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var i = 0; i < children.length; i++) ...[
+          if (i > 0) const SizedBox(width: Space.s),
+          Expanded(child: children[i]),
+        ],
+      ],
+    ),
+  );
+}
+
+class _TileBox extends StatelessWidget {
+  final Color? color;
+  final VoidCallback? onTap;
+  final List<Widget> children;
+  const _TileBox({this.color, this.onTap, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    return Semantics(
+      button: onTap != null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap == null
+            ? null
+            : () {
+                tick();
+                onTap!();
+              },
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(Space.m, 10, Space.m, 11),
+          decoration: BoxDecoration(
+            color: color ?? p.card,
+            borderRadius: BorderRadius.circular(16),
+            border: color == null ? Border.all(color: p.line) : null,
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
+        ),
+      ),
+    );
+  }
+}
+
+/// Значение плашки в одну строку: не влезает — чуть мельче, а не обрезано.
+Widget _fitLine(String text, TextStyle style) => FittedBox(
+  fit: BoxFit.scaleDown,
+  alignment: Alignment.centerLeft,
+  child: Text(text, style: style, maxLines: 1, softWrap: false),
+);
+
+/// Кабинет плашкой, залитой цветом предмета: «кабинет / А-332 / корпус МП-1».
+class RoomTile extends StatelessWidget {
+  final Lesson lesson;
+  final VoidCallback? onTap;
+  const RoomTile(this.lesson, {super.key, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final c = subjectColor(lesson.title);
+    final on = Color.lerp(c, Colors.black, 0.82)!;
+    final r = splitRoom(lesson.room);
+    return _TileBox(
+      color: c,
+      onTap: onTap,
+      children: [
+        Text(r.code.contains(',') ? 'кабинеты' : 'кабинет', style: s.body(12, color: on.withValues(alpha: 0.75))),
+        const SizedBox(height: 2),
+        _fitLine(r.code.isEmpty ? lesson.room : r.code, s.body(21, weight: FontWeight.w800, color: on)),
+        if (r.campus.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            'корпус ${r.campus}',
+            style: s.body(12, weight: FontWeight.w600, color: on),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Вторая плашка: «через / 2 ч 05 мин / преподаватель», «дальше в 16:20 / Б-304».
+class _InfoTile extends StatelessWidget {
+  final String label, value, sub;
+  final Color? subColor;
+
+  /// Короткое значение (время, кабинет) — мельче, если не влезает; длинное
+  /// (название) — с многоточием.
+  final bool fit;
+  final VoidCallback? onTap;
+  const _InfoTile({
+    required this.label,
+    required this.value,
+    this.sub = '',
+    this.subColor,
+    this.fit = true,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
-    final from = prev == null ? '' : campus(prev!.room);
-    final to = campus(lesson.room);
-    final moving = from.isNotEmpty && to.isNotEmpty && from != to;
-    final gap = prev?.endAt != null && lesson.startAt != null ? lesson.startAt!.difference(prev!.endAt!).inMinutes : 0;
-    return Tile(
+    final style = s.body(fit ? 21 : 16, weight: FontWeight.w800);
+    return _TileBox(
       onTap: onTap,
+      children: [
+        Text(label, style: s.body(12, color: p.muted)),
+        const SizedBox(height: 2),
+        fit ? _fitLine(value, style) : Text(value, style: style, maxLines: 2, overflow: TextOverflow.ellipsis),
+        if (sub.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            sub,
+            style: s.body(12, weight: subColor == null ? FontWeight.w400 : FontWeight.w700, color: subColor ?? p.muted),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Пара карточкой (владелец, 09.10, 22А): слева время начала и конца,
+/// название без засечек, точка цвета предмета и тип, кабинет плашкой,
+/// преподаватель; справа номер пары по звонку. Карточка чуть подкрашена
+/// цветом предмета; идущая — в зелёной рамке, с «идёт · ещё 1 ч 07 мин» и
+/// тонкой полоской внизу, номер залит; прошедшие — бледнее.
+class LessonCard extends StatelessWidget {
+  final Lesson lesson;
+  final DateTime at;
+  final VoidCallback? onTap;
+  const LessonCard({super.key, required this.lesson, required this.at, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final l = lesson;
+    final c = subjectColor(l.title);
+    final past = l.endAt != null && !at.isBefore(l.endAt!);
+    final live = l.startAt != null && l.endAt != null && !past && !at.isBefore(l.startAt!);
+    final total = live ? l.endAt!.difference(l.startAt!).inSeconds : 0;
+    final passed = live ? at.difference(l.startAt!).inSeconds.clamp(0, total) : 0;
+    final tint = p.dark
+        ? c.withValues(alpha: live ? 0.2 : 0.13)
+        : Color.alphaBlend(c.withValues(alpha: live ? 0.16 : 0.1), p.card);
+    Widget dotLine(Color dot, String text, TextStyle style) => Row(
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Flexible(child: Text(text, style: style)),
+      ],
+    );
+    final card = Tile(
+      onTap: onTap,
+      radius: 18,
+      padding: EdgeInsets.zero,
+      border: live ? p.ok.withValues(alpha: 0.6) : null,
+      gradient: LinearGradient(colors: [tint, p.card], stops: const [0, 0.6]),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Дальше · ${lesson.start}', style: s.eyebrow()),
-          const SizedBox(height: 6),
-          Text(lesson.title, style: s.name(17)),
-          const SizedBox(height: 6),
-          RoomLine(lesson),
-          if (moving) ...[
-            const SizedBox(height: Space.s),
-            Row(
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, Space.m, Space.m, Space.m),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.directions_walk_rounded, size: 16, color: p.warn),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'Другой корпус — $to, на переход $gap мин',
-                    style: s.body(13, weight: FontWeight.w600, color: p.warn),
+                SizedBox(
+                  // «09:00» не рвётся на «09:0/0» при крупном системном шрифте
+                  width: MediaQuery.textScalerOf(context).scale(50),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l.start, style: s.body(15, weight: FontWeight.w700)),
+                      const SizedBox(height: 1),
+                      Text(l.end, style: s.body(12, color: p.muted)),
+                    ],
                   ),
                 ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(l.title, style: s.name(15)),
+                      if (l.kind.isNotEmpty) ...[
+                        const SizedBox(height: 5),
+                        dotLine(c, l.kind.toLowerCase(), s.body(13, color: p.muted)),
+                      ],
+                      if (l.room.isNotEmpty) ...[const SizedBox(height: 7), RoomPill(l.room, color: c, size: 13)],
+                      if (l.teacher.isNotEmpty) ...[
+                        const SizedBox(height: 5),
+                        Text(l.teacher, style: s.body(13, color: p.muted)),
+                      ],
+                      if (live) ...[
+                        const SizedBox(height: 7),
+                        dotLine(
+                          p.ok,
+                          'идёт · ещё ${spanText(minutesTo(at, l.endAt!))}',
+                          s.body(13, weight: FontWeight.w700, color: p.ok),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (l.number.isNotEmpty) ...[const SizedBox(width: Space.s), PairBadge(l.number, live: live)],
               ],
             ),
-          ],
+          ),
+          if (live)
+            LinearProgressIndicator(
+              value: total == 0 ? 0 : passed / total,
+              minHeight: 3,
+              color: p.ok,
+              backgroundColor: p.ok.withValues(alpha: 0.12),
+            ),
         ],
+      ),
+    );
+    return Opacity(opacity: past ? 0.5 : 1, child: card);
+  }
+}
+
+/// Номер пары по звонку — квадратик справа («4», у сдвоенной «1–5»);
+/// у идущей залит акцентом.
+class PairBadge extends StatelessWidget {
+  final String number;
+  final bool live;
+  const PairBadge(this.number, {super.key, this.live = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final side = MediaQuery.textScalerOf(context).scale(24);
+    return Semantics(
+      label: '$number пара',
+      excludeSemantics: true,
+      child: Container(
+        constraints: BoxConstraints(minWidth: side, minHeight: side),
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: live ? p.accent : p.line, borderRadius: BorderRadius.circular(8)),
+        child: Text(
+          number,
+          style: s.body(12.5, weight: FontWeight.w700, color: live ? p.onAccent : p.muted),
+        ),
       ),
     );
   }
@@ -481,30 +1063,47 @@ class RoomLine extends StatelessWidget {
   }
 }
 
-class _SoonRow extends StatelessWidget {
-  final Deadline d;
+/// «Горит» — сроки ближе всего, одной компактной карточкой.
+class _SoonList extends StatelessWidget {
+  final List<Deadline> items;
   final DateTime at;
-  const _SoonRow(this.d, {required this.at});
+  const _SoonList(this.items, {required this.at});
 
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
-    final left = d.due.difference(at);
-    final hot = left.inHours < 24;
+    final p = s.p;
     return Tile(
-      padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
-      child: Row(
+      padding: EdgeInsets.zero,
+      child: Column(
         children: [
-          Icon(Icons.local_fire_department_outlined, size: 18, color: hot ? s.p.danger : s.p.warn),
-          const SizedBox(width: Space.s),
-          Expanded(
-            child: Text(d.subject, style: s.body(15, weight: FontWeight.w600)),
-          ),
-          const SizedBox(width: Space.s),
-          Text(
-            leftText(left),
-            style: s.body(13, weight: FontWeight.w600, color: hot ? s.p.danger : s.p.muted),
-          ),
+          for (var i = 0; i < items.length; i++) ...[
+            if (i > 0) Divider(height: 1, thickness: 1, color: p.line),
+            Builder(
+              builder: (context) {
+                final d = items[i];
+                final left = d.due.difference(at);
+                final hot = left.inHours < 24;
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: 11),
+                  child: Row(
+                    children: [
+                      Icon(Icons.local_fire_department_outlined, size: 17, color: hot ? p.danger : p.warn),
+                      const SizedBox(width: Space.s),
+                      Expanded(
+                        child: Text(d.subject, style: s.body(14, weight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: Space.s),
+                      Text(
+                        leftText(left),
+                        style: s.body(12.5, weight: FontWeight.w600, color: hot ? p.danger : p.muted),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ],
         ],
       ),
     );

@@ -5,6 +5,9 @@ class Lesson {
 
   /// Чьи это пары: поток («УИБО-01-24, УИБО-02-24…»), у преподавателя — группы.
   final String groups;
+
+  /// Номер пары по звонку: «4», у сдвоенной — «1–5» (поле `num` в API).
+  final String number;
   final DateTime? startAt, endAt;
 
   const Lesson({
@@ -16,6 +19,7 @@ class Lesson {
     required this.teacher,
     required this.status,
     this.groups = '',
+    this.number = '',
     this.startAt,
     this.endAt,
   });
@@ -29,6 +33,7 @@ class Lesson {
     teacher: j['teacher'] ?? '',
     status: j['status'] ?? '',
     groups: j['groups'] ?? '',
+    number: j['num'] == null ? '' : '${j['num']}',
     startAt: j['start_iso'] != null ? DateTime.tryParse(j['start_iso']) : null,
     endAt: j['end_iso'] != null ? DateTime.tryParse(j['end_iso']) : null,
   );

@@ -40,6 +40,6 @@ void main() {
     await t.pumpWidget(UiboApp(api: api));
     await settle(t);
     expect(find.textContaining('Без сети · данные от'), findsOneWidget);
-    expect(find.text('Весь день'), findsOneWidget); // пары из сохранённого ответа
+    expect(find.text('сегодня · 5 пар'), findsOneWidget); // пары из сохранённого ответа
   });
 }

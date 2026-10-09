@@ -4,12 +4,10 @@
 // роняет тест; заголовок не под часами, капсула не под полоской, конец
 // списка не прячется под капсулой, клавиатура не закрывает поле помощника.
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uiboshki/api/api.dart';
@@ -30,9 +28,9 @@ import 'package:uiboshki/screens/security.dart';
 import 'package:uiboshki/screens/study.dart';
 import 'package:uiboshki/screens/submit.dart';
 import 'package:uiboshki/screens/task.dart';
+import 'package:uiboshki/screens/today.dart';
 import 'package:uiboshki/theme/app_theme.dart';
 import 'package:uiboshki/widgets/capsule_tabbar.dart';
-import 'package:uiboshki/widgets/common.dart';
 
 import 'fake_api.dart';
 import 'util.dart';
@@ -69,23 +67,15 @@ void useDevice(WidgetTester t, Device d, {double keyboard = 0}) {
   addTearDown(t.platformDispatcher.clearTextScaleFactorTestValue);
 }
 
-/// Настоящие шрифты приложения: у тестового «квадратного» другая ширина.
-Future<void> loadFonts() async {
-  Future<void> one(String family, String path) async {
-    final f = File(path);
-    if (!f.existsSync()) return;
-    final l = FontLoader(family)..addFont(Future.value(ByteData.sublistView(f.readAsBytesSync())));
-    await l.load();
-  }
-
-  await one('Onest', 'assets/fonts/Onest.ttf');
-  await one('SourceSerif', 'assets/fonts/SourceSerif4.ttf');
-  final root = Platform.environment['FLUTTER_ROOT'] ?? '/home/user/sdk/flutter';
-  await one('MaterialIcons', '$root/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
-}
-
-/// Ответы стенда, где ФИО и аудитории — самые длинные.
-Api longApi({List<String>? requests, Map<String, Object?> extra = const {}}) {
+/// Ответы стенда, где ФИО и аудитории — самые длинные. [firstAt] — через
+/// сколько минут начнётся первая пара «Сегодня» (по умолчанию идёт вторая),
+/// [today] — поправить ответ /api/today под нужное состояние экрана.
+Api longApi({
+  List<String>? requests,
+  Map<String, Object?> extra = const {},
+  int firstAt = -110,
+  void Function(Map<String, dynamic> today)? today,
+}) {
   final raw = jsonEncode(demoFixtures())
       .replaceAll('Бурлаков В. В.', longTeacher)
       .replaceAll('Стебунова О. И.', longTeacher)
@@ -93,7 +83,7 @@ Api longApi({List<String>? requests, Map<String, Object?> extra = const {}}) {
   final fx = Map<String, Object?>.from(jsonDecode(raw));
   return fakeApi(
     requests: requests,
-    overrides: {...fx, ..._aroundNow(fx), 'GET /api/target/2/77': targetFixture, ...extra},
+    overrides: {...fx, ..._aroundNow(fx, firstAt, today), 'GET /api/target/2/77': targetFixture, ...extra},
   );
 }
 
@@ -102,9 +92,10 @@ String _hm(DateTime d) => '${d.hour.toString().padLeft(2, '0')}:${d.minute.toStr
 
 /// Запись стенда — на неделю 5–11 октября; тест идёт «сейчас»: неделя
 /// переезжает на текущую, а на «Сегодня» идёт вторая пара (длинное
-/// название и ФИО) — так видны большая карточка и «Дальше»; сроки —
-/// вокруг «сейчас» (горит, недели, просрочен, сдано).
-Map<String, Object?> _aroundNow(Map<String, Object?> fx) {
+/// название и ФИО) — так видны «до конца» и «дальше»; на «Сегодня» горит
+/// срок с самым длинным названием; во «Сдать» сроки — вокруг «сейчас»
+/// (горит, недели, просрочен, сдано).
+Map<String, Object?> _aroundNow(Map<String, Object?> fx, int firstAt, void Function(Map<String, dynamic>)? edit) {
   final t = DateTime.now();
   final monday = DateTime(t.year, t.month, t.day - (t.weekday - 1));
   String move(Object? v) {
@@ -118,7 +109,7 @@ Map<String, Object?> _aroundNow(Map<String, Object?> fx) {
   final today = Map<String, dynamic>.from(fx['GET /api/today'] as Map);
   final lessons = [for (final l in today['lessons'] as List) Map<String, dynamic>.from(l)];
   for (var i = 0; i < lessons.length; i++) {
-    final start = t.add(Duration(minutes: (i - 1) * 100 - 10));
+    final start = t.add(Duration(minutes: firstAt + i * 100));
     final end = start.add(const Duration(minutes: 90));
     lessons[i]
       ..['start'] = _hm(start)
@@ -127,6 +118,13 @@ Map<String, Object?> _aroundNow(Map<String, Object?> fx) {
       ..['end_iso'] = end.toIso8601String();
   }
   today['lessons'] = lessons;
+  today['deadlines'] = {
+    'active': 1,
+    'soon': [
+      {'id': 9, 'subject': 'Практика 12 · $longSubject', 'due_date': _d(t), 'due_time': '23:59', 'days': 0},
+    ],
+  };
+  edit?.call(today);
   return {
     'GET /api/today': today,
     'GET /api/deadlines?include_done=true': {'items': deadlinesAround(t)},
@@ -440,6 +438,43 @@ void main() {
     }
   }
 
+  // «Сегодня» во всех состояниях и второй вид — дни недели.
+  void otherCampus(Map<String, dynamic> j) => (j['lessons'] as List)[1]['room'] = 'А-332 (МП-1)';
+  final todayCases = <String, ({int at, void Function(Map<String, dynamic>)? edit, bool days})>{
+    'до пар': (at: 30, edit: null, days: false),
+    'перемена, другой корпус': (at: -95, edit: otherCampus, days: false),
+    'идёт пара, дальше другой корпус': (at: -10, edit: otherCampus, days: false),
+    'пары кончились': (at: -1000, edit: null, days: false),
+    'пары кончились, завтра свободно': (at: -1000, edit: (j) => j['tomorrow_first'] = null, days: false),
+    'пар нет': (at: 0, edit: (j) => j['lessons'] = [], days: false),
+    'дни недели': (at: -110, edit: null, days: true),
+  };
+  for (final d in devices) {
+    for (final p in [Palette.depth, Palette.notebook]) {
+      for (final f in FontChoice.values) {
+        for (final c in todayCases.entries) {
+          testWidgets('сегодня, ${c.key}: ${d.name} · ${p.dark ? 'тёмная' : 'светлая'} · ${f.name}', (t) async {
+            SharedPreferences.setMockInitialValues({'uib_toured': true, if (c.value.days) TodayScreen.viewKey: 'days'});
+            useDevice(t, d);
+            final api = longApi(firstAt: c.value.at, today: c.value.edit);
+            await t.pumpWidget(
+              host(
+                p,
+                f,
+                Scaffold(
+                  body: SafeArea(child: TodayScreen(api: api)),
+                ),
+              ),
+            );
+            await settle(t);
+            _belowNotch(t, d);
+            await scrollThrough(t);
+          });
+        }
+      }
+    }
+  }
+
   // Ответ помощника: «по какому предмету?» с длинными названиями, файлы и источники.
   for (final d in devices) {
     for (final answer in [
@@ -491,7 +526,7 @@ void main() {
       await settle(t);
       _belowNotch(t, d);
       final banner = t.getRect(find.textContaining('Без сети'));
-      final title = t.getRect(find.byType(ScreenTitle).first);
+      final title = t.getRect(find.byKey(const ValueKey('today:top')));
       expect(banner.bottom, lessThanOrEqualTo(title.top));
     });
   }

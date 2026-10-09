@@ -75,6 +75,9 @@ class Tile extends StatelessWidget {
   final Gradient? gradient;
   final VoidCallback? onTap;
   final double radius;
+
+  /// Рамка другого цвета — у идущей пары (по умолчанию линия темы).
+  final Color? border;
   const Tile({
     super.key,
     required this.child,
@@ -83,6 +86,7 @@ class Tile extends StatelessWidget {
     this.gradient,
     this.onTap,
     this.radius = Radii.tile,
+    this.border,
   });
 
   @override
@@ -99,7 +103,7 @@ class Tile extends StatelessWidget {
           color: gradient == null ? (color ?? p.card) : null,
           gradient: gradient,
           borderRadius: r,
-          border: Border.all(color: p.line),
+          border: Border.all(color: border ?? p.line),
         ),
         child: InkWell(
           borderRadius: r,
