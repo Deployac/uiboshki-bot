@@ -328,3 +328,33 @@ async def test_submission_rules_and_route(db, moodle, monkeypatch):
 
     moodle.edit = '<div class="alert alert-danger">Срок сдачи истёк</div>'          # сдача закрыта — говорим сразу
     assert "Срок сдачи истёк" in c.get("/api/sdo/submit-rules", params={"cmid": 4242}, headers=h).json()["closed"]
+
+
+@pytest.mark.asyncio
+async def test_submit_timeout_is_502_not_500(db, moodle, monkeypatch):
+    """3.3: СДО не дождалось PDF (таймаут загрузки) или упало что-то ещё —
+    понятный 502 «файл, возможно, не дошёл», а не 500 и не «нет связи»."""
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    await db.save_sdo_session(222, sdo_accounts.encrypt(COOKIE))
+    real_call = FakeMoodle.__call__
+
+    def slow(self, request):
+        if "repository_ajax.php?action=upload" in str(request.url):
+            raise httpx.ReadTimeout("СДО молчит", request=request)
+        return real_call(self, request)
+
+    monkeypatch.setattr(FakeMoodle, "__call__", slow)
+    c, h = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+    body = {"cmid": 4242, "name": "work.pdf", "data": base64.b64encode(b"%PDF-work").decode()}
+    res = c.post("/api/sdo/submit", json=body, headers=h)
+    assert res.status_code == 502 and "не ответило вовремя" in res.json()["detail"]
+
+    async def boom(*a, **kw):
+        raise RuntimeError("что-то странное")
+
+    monkeypatch.setattr(sdo_submit, "submit_file", boom)
+    res = c.post("/api/sdo/submit", json=body, headers=h)
+    assert res.status_code == 502 and "проверь в СДО" in res.json()["detail"]

@@ -817,8 +817,8 @@ class _PageSheetState extends State<_PageSheet> {
       });
     } on ApiError catch (e) {
       if (mounted && my == _seq) setState(() => _error = e.message);
-    } catch (_) {
-      if (mounted && my == _seq) setState(() => _error = 'Нет связи с сервером.');
+    } catch (e) {
+      if (mounted && my == _seq) setState(() => _error = errorText(e));
     }
   }
 

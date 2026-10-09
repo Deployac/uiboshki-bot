@@ -386,12 +386,7 @@ class _LoaderState<T> extends State<Loader<T>> {
       return ListView(
         children: [
           const SizedBox(height: 120),
-          Notice(
-            title: 'Не загрузилось',
-            text: 'Нет связи с сервером — проверь интернет.',
-            onRetry: _reload,
-            pose: CapyPose.sad,
-          ),
+          Notice(title: 'Не загрузилось', text: errorText(_error!), onRetry: _reload, pose: CapyPose.sad),
         ],
       );
     }

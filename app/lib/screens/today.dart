@@ -168,22 +168,42 @@ class _TodayScreenState extends State<TodayScreen> {
     Future<dynamic> extra(String path) => api.get(path).then<dynamic>((v) => v, onError: (_) => null);
     final res = await Future.wait([api.get('/today'), extra('/me'), extra('/week?start=${iso(mondayOf(now()))}')]);
     final j = res[0];
-    final lessons = [for (final l in j['lessons'] as List) Lesson.fromJson(l)];
-    final tf = j['tomorrow_first'];
+    final today = iso(now());
+    var lessonsJson = j['lessons'] as List;
+    var tf = j['tomorrow_first'];
+    var weather = '${j['weather'] ?? ''}';
+    var stale = false;
+    // Б1: утром из памяти телефона приходит вчерашний «Сегодня». Из запаса —
+    // не показываем (экран ждёт сеть); без сети — пары на сегодня из
+    // сохранённого дня (вкладка «Неделя»), а нет его — честно говорим.
+    if ('${j['date'] ?? today}' != today && (Api.cacheOnly || api.offlineSince.value != null)) {
+      if (Api.cacheOnly) throw StateError('в запасе не сегодняшний день');
+      final day = await Api.fromCache(() => api.get('/day?date=$today'));
+      if (day is! Map || day['lessons'] is! List) {
+        throw ApiError('Расписание на сегодня ещё не загружено — нужен интернет.');
+      }
+      final next = await Api.fromCache(() => api.get('/day?date=${iso(now().add(const Duration(days: 1)))}'));
+      lessonsJson = day['lessons'] as List;
+      tf = next is Map && next['lessons'] is List && (next['lessons'] as List).isNotEmpty
+          ? (next['lessons'] as List).first
+          : null;
+      weather = ''; // вчерашняя погода не нужна
+      stale = true;
+    }
+    final lessons = [for (final l in lessonsJson) Lesson.fromJson(l)];
     final soon = [
       for (final d in (j['deadlines']?['soon'] as List? ?? []))
-        if ((d['days'] ?? 0) >= 0) Deadline.fromJson(d),
+        if (stale ? '${d['due_date'] ?? today}'.compareTo(today) >= 0 : (d['days'] ?? 0) >= 0) Deadline.fromJson(d),
     ];
     final me = res[1] is Map ? res[1] as Map : const {};
     final group = me['group'] is Map ? '${me['group']['name'] ?? ''}' : '';
     final week = res[2] is Map ? res[2]['week'] : null;
     final days = res[2] is Map && res[2]['days'] is List ? res[2]['days'] as List : null;
-    final today = iso(now());
     return TodayData(
       lessons,
       tf == null ? null : Lesson.fromJson(tf),
       soon,
-      j['weather'] ?? '',
+      weather,
       name: '${me['first_name'] ?? ''}'.trim(),
       group: group,
       week: week is int ? week : null,

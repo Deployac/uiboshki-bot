@@ -159,8 +159,8 @@ class _DeadlineEditSheetState extends State<DeadlineEditSheet> {
       if (mounted) Navigator.pop(context, true);
     } on ApiError catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = 'Нет связи с сервером — не сохранилось.');
+    } catch (e) {
+      setState(() => _error = isOffline(e) ? 'Нет интернета — не сохранилось.' : errorText(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -479,8 +479,8 @@ class _RemindSheetState extends State<RemindSheet> {
       });
     } on ApiError catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = 'Нет связи с сервером.');
+    } catch (e) {
+      setState(() => _error = errorText(e));
     }
   }
 
@@ -491,8 +491,8 @@ class _RemindSheetState extends State<RemindSheet> {
       setState(() => _list.removeWhere((r) => r.at == at));
     } on ApiError catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = 'Нет связи с сервером.');
+    } catch (e) {
+      setState(() => _error = errorText(e));
     }
   }
 

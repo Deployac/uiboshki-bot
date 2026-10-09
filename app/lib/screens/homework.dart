@@ -65,8 +65,8 @@ class HomeworkScreen extends StatelessWidget {
     } on ApiError catch (e) {
       // Аккаунт без Telegram: сервер объяснит, почему не вышло.
       if (context.mounted) snack(context, e.message);
-    } catch (_) {
-      if (context.mounted) snack(context, 'Нет связи с сервером.');
+    } catch (e) {
+      if (context.mounted) snack(context, errorText(e));
     }
   }
 

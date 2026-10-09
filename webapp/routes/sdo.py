@@ -166,8 +166,15 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     except SdoSessionExpired:
         await set_sdo_status(user["id"], "expired")
         raise HTTPException(status_code=403, detail="вход в СДО устарел — подключи заново: вкладка СДО → Вход")
+    except sdo_submit.SdoUnavailable as e:
+        raise HTTPException(status_code=502, detail=str(e))
     except sdo_submit.SubmitError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        # 3.3: что угодно ещё (обрыв, таймаут, странный ответ СДО) — не 500, а
+        # понятный текст: файл мог и дойти, человек проверит в СДО
+        logger.warning(f"СДО: сдача в задание {cmid} у {user['id']} упала: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=502, detail=sdo_submit.UNAVAILABLE)
     logger.info(f"СДО: {user['id']} сдал файл в задание {cmid}")
     import sdo_grades
     sdo_grades.forget(user["id"])    # статусы и баллы — заново

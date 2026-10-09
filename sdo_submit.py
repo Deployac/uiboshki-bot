@@ -29,11 +29,17 @@ logger = logging.getLogger(__name__)
 
 MAX_BYTES = 20 * 1024 * 1024
 MAX_FILES = 3            # за раз из WebApp (владелец: «до трёх файлов»)
+UPLOAD_TIMEOUT = 120     # с на загрузку одного файла: PDF в пару МБ СДО принимает долго (3.3)
+UNAVAILABLE = "СДО не ответило вовремя — файл, возможно, не дошёл; проверь в СДО и попробуй ещё раз"
 CMID_RE = re.compile(r"/mod/(assign|quiz)/view\.php\?(?:[^#\s\"']*&)?id=(\d+)")
 
 
 class SubmitError(Exception):
     pass
+
+
+class SdoUnavailable(SubmitError):
+    """СДО не ответило или оборвало связь посреди сдачи — файл мог и дойти."""
 
 
 class NoForm(SubmitError):
@@ -251,7 +257,7 @@ async def _upload(client: httpx.AsyncClient, page: dict, name: str, data: bytes)
         "maxbytes": str(page["maxbytes"] or -1), "areamaxbytes": "-1",
     }
     resp = await client.post(f"{SDO_BASE_URL}/repository/repository_ajax.php?action=upload",
-                             data=base, files={"repo_upload_file": (name, data)})
+                             data=base, files={"repo_upload_file": (name, data)}, timeout=UPLOAD_TIMEOUT)
     try:
         res = resp.json()
     except ValueError:
@@ -326,8 +332,9 @@ async def submit_file(cookie: str, cmid: int, name: str = "", data: bytes = b"",
                     form["submitbutton"] = "Продолжить"
                     resp = await client.post(f"{SDO_BASE_URL}/mod/assign/view.php", data=form)
             resp = await get_checked(client, url)
-        except httpx.HTTPError:
-            raise SubmitError("СДО не отвечает — попробуй позже")
+        except httpx.HTTPError as e:
+            logger.warning(f"СДО: сдача в задание {cmid} оборвалась: {type(e).__name__}")
+            raise SdoUnavailable(UNAVAILABLE)
     return {"status": status_text(resp.text), "url": url}
 
 

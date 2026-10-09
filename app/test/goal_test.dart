@@ -13,6 +13,8 @@ void main() {
     expect(fmtNum(2.5), '2,5');
     expect(markWord('зачёт'), 'зачёт');
     expect(markWord('4'), '«4»');
+    expect(dayMonth('2026-08-27'), '27 августа'); // Б6: подсказка у лекции, не «2026-08-27»
+    expect(dayMonth(''), '');
   });
 
   testWidgets('предмет: цель, посещения, рост баллов; смена цели', (t) async {

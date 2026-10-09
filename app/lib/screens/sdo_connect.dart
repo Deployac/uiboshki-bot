@@ -68,8 +68,8 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
       if (mounted) setState(() => _st = Map<String, dynamic>.from(r));
     } on ApiError catch (e) {
       if (mounted) setState(() => _loadError = e.message);
-    } catch (_) {
-      if (mounted) setState(() => _loadError = 'Нет связи с сервером — проверь интернет.');
+    } catch (e) {
+      if (mounted) setState(() => _loadError = errorText(e));
     }
   }
 
@@ -84,8 +84,8 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
       if (r is Map && mounted) setState(() => _st = Map<String, dynamic>.from(r));
     } on ApiError catch (e) {
       if (mounted) setState(() => _error = e.message);
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Нет связи с сервером.');
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

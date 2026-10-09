@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -88,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       setState(() {
         _busy = false;
-        _note = 'Не получилось: $e';
+        _note = e is PlatformException ? 'Не открылся Telegram — попробуй ещё раз.' : errorText(e);
       });
     }
   }

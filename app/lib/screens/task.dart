@@ -96,8 +96,8 @@ class _TaskScreenState extends State<TaskScreen> {
       });
     } on ApiError catch (e) {
       if (mounted) setState(() => _error = e.message);
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Нет связи с сервером — проверь интернет.');
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 

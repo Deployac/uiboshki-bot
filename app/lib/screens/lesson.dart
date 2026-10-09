@@ -36,13 +36,25 @@ class LessonExtras {
   LessonExtras(this.course, this.lectures);
 }
 
-class LessonScreen extends StatelessWidget {
+class LessonScreen extends StatefulWidget {
   final Api api;
   final Lesson lesson;
   const LessonScreen({super.key, required this.api, required this.lesson});
 
+  @override
+  State<LessonScreen> createState() => _LessonScreenState();
+}
+
+class _LessonScreenState extends State<LessonScreen> {
+  Api get api => widget.api;
+  Lesson get lesson => widget.lesson;
+
+  /// Один запрос на экран (2.18): FutureBuilder в build спрашивал баллы и
+  /// файлы при каждой перерисовке — по три раза за открытие.
+  late final Future<LessonExtras> _extras = _loadExtras();
+
   /// Баллы и лекции по предмету — что найдётся; нет СДО — просто без них.
-  Future<LessonExtras> _extras() async {
+  Future<LessonExtras> _loadExtras() async {
     Course? course;
     var lectures = <FileItem>[];
     try {
@@ -179,7 +191,7 @@ class LessonScreen extends StatelessWidget {
                 ),
               ),
               FutureBuilder<LessonExtras>(
-                future: _extras(),
+                future: _extras,
                 builder: (context, snap) {
                   final x = snap.data;
                   if (x == null || (x.course == null && x.lectures.isEmpty)) return const SizedBox.shrink();

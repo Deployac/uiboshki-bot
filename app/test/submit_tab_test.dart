@@ -210,6 +210,10 @@ void main() {
     expect(find.text('3'), findsOneWidget);
     expect(find.text('38'), findsOneWidget);
     expect(colorOf(t, '38'), p.danger);
+    // 2.16: «3 ч 38 мин», а не «3 ч 38»
+    final hot = find.ancestor(of: find.text('горит · до 15:50'), matching: find.byType(Tile)).first;
+    expect(find.descendant(of: hot, matching: find.text('ч')), findsOneWidget);
+    expect(find.descendant(of: hot, matching: find.text('мин')), findsOneWidget);
 
     // недели по порядку под горящим
     final order = ['Эта неделя', 'Следующая', '19–25 октября', '26 октября – 1 ноября', 'Срок прошёл · 1'];

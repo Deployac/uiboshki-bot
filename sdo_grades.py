@@ -39,6 +39,11 @@ EXAM_MARKS = ((40, "3"), (60, "4"), (80, "5"))
 CREDIT_MARKS = ((40, "зачёт"),)
 
 _cache: dict[tuple, tuple[float, object]] = {}
+# Страницы заданий (порог «зачтено», вердикт) — для подсчёта в списке
+# предметов тем же правилом, что на экране предмета (Б4). Порог меняется
+# редко: держим дольше баллов и не стираем после сдачи.
+PAGES_SECONDS = 6 * 3600
+_pages: dict[tuple[int, int], tuple[float, dict]] = {}
 
 _RANGE = re.compile(r"(-?\d+(?:[.,]\d+)?)\s*[–—-]\s*(-?\d+(?:[.,]\d+)?)")
 _NUM = re.compile(r"-?\d+(?:[.,]\d+)?")
@@ -379,6 +384,32 @@ def order_works(works: list[dict]) -> list[dict]:
     return out
 
 
+def with_pass(w: dict, page: dict | None) -> dict:
+    """Оценка ниже проходного балла со страницы задания — не зачтено,
+    хотя журнал красит её как выставленную («4 из 8» при пороге 5)."""
+    p = page or {}
+    if w["grade"] is not None and p.get("pass") is not None and w["passed"] is True and w["grade"] < p["pass"]:
+        return dict(w, passed=False)
+    return w
+
+
+def recount(s: dict, pages: list[dict | None]) -> dict:
+    """Одно правило «зачтено» для списка предметов и экрана предмета (Б4):
+    статус ok из work_status — с проходным баллом и вердиктом со страницы
+    задания, а без страницы — по оценке журнала. Отсюда же works_need и
+    «автомат»."""
+    works = [with_pass(w, p) for w, p in zip(s["works"], pages)]
+    passed = sum(1 for w, p in zip(works, pages) if work_status(w, p) == "ok")
+    need = max(0, math.ceil(len(works) * PASS_SHARE) - passed)
+    first = s["marks"][0]["at"] if s.get("marks") else 0
+    return dict(s, works=works, works_passed=passed, works_need=need, auto=s["score"] >= first and not need)
+
+
+def known_page(user_id: int, cmid: int) -> dict | None:
+    hit = _pages.get((user_id, cmid))
+    return hit[1] if hit and time.time() - hit[0] < PAGES_SECONDS else None
+
+
 # ── загрузка из СДО ──────────────────────────────────────────────────────────
 
 def _cached(key):
@@ -439,6 +470,7 @@ async def overview(user_id: int, cookie: str, fresh: bool = False) -> dict:
             s = summarize(rep, c["name"])
             if not s["categories"] and not s["works"]:
                 return None      # курс без журнала БРС («Учебный отдел» и т.п.)
+            s = recount(s, [known_page(user_id, w["cmid"]) for w in s["works"]])
             _store(("course", user_id, c["id"]), (c, s))
             return dict(s, id=c["id"], name=c["name"], title=c["title"])
 
@@ -477,18 +509,24 @@ async def course_detail(user_id: int, cookie: str, course_id: int) -> dict:
                     return None
 
         pages = await asyncio.gather(*(page(w) for w in s["works"]))
+    for w, p in zip(s["works"], pages):
+        if p is not None:
+            _pages[(user_id, w["cmid"])] = (time.time(), p)
+    s = recount(s, pages)
     works = []
     for w, p in zip(s["works"], pages):
         p = p or {}
-        if w["grade"] is not None and p.get("pass") is not None and w["passed"] is True and w["grade"] < p["pass"]:
-            w = dict(w, passed=False)
         works.append(dict(w, pass_mark=p.get("pass"), status=work_status(w, p), due=p.get("due", ""),
                           opens=p.get("opens", ""), remaining=p.get("remaining", ""), time_limit=p.get("time_limit"),
                           can_submit=bool(p.get("can_submit")) and w["module"] == "assign",
                           url=f"{SDO_BASE_URL}/mod/{w['module']}/view.php?id={w['cmid']}"))
     works = order_works(works)
-    passed = sum(1 for w in works if w["status"] == "ok")
-    out = dict(s, id=course_id, name=course["name"], title=course["title"], works=works, works_passed=passed)
+    out = dict(s, id=course_id, name=course["name"], title=course["title"], works=works)
+    # список предметов из кэша — те же «зачтено X из Y», что здесь (Б4)
+    if hit := _cached(("all", user_id)):
+        for c in hit["courses"]:
+            if c["id"] == course_id:
+                c.update({k: s[k] for k in ("works_passed", "works_need", "auto")})
     return _store(key, out)
 
 

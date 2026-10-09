@@ -48,8 +48,8 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
       return true;
     } on ApiError catch (e) {
       if (mounted) snack(context, e.message);
-    } catch (_) {
-      if (mounted) snack(context, 'Нет связи с сервером.');
+    } catch (e) {
+      if (mounted) snack(context, errorText(e));
     }
     return false;
   }
@@ -533,7 +533,7 @@ class _Hot extends StatelessWidget {
                     children: [
                       if (h > 0) ...[Text('$h', style: s.number(44, color: c)), unit('ч')],
                       Text(h > 0 ? m.toString().padLeft(2, '0') : '$m', style: s.number(44, color: c)),
-                      if (h == 0) unit('мин'),
+                      unit('мин'),
                     ],
                   ),
                 ),

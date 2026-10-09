@@ -72,7 +72,7 @@ class _NotifyBodyState extends State<_NotifyBody> {
       try {
         fresh = await widget.api.post('/notify', body);
       } catch (e) {
-        _snack('Не сохранилось: $e');
+        _snack('Не сохранилось: ${errorText(e)}');
         try {
           fresh = await widget.api.get('/notify'); // что на самом деле сохранено
         } catch (_) {}

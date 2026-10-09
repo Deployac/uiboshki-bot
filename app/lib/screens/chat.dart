@@ -270,9 +270,9 @@ class _ChatScreenState extends State<ChatScreen> {
     } on ApiError catch (e) {
       entry.failed = true;
       answer = ChatMsg('assistant', e.message, error: true);
-    } catch (_) {
+    } catch (e) {
       entry.failed = true;
-      answer = ChatMsg('assistant', 'Нет связи с сервером — попробуй ещё раз.', error: true);
+      answer = ChatMsg('assistant', errorText(e), error: true);
     }
     if (!mounted || chat != _chat) return; // пока ждали, начали новый чат
     setState(() {

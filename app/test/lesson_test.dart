@@ -81,4 +81,45 @@ void main() {
     expect(find.text('преподаватель'), findsNothing); // без курсивной подписи над именем (2.4)
     expect(find.textContaining('УИБО-01-24, УИБО-02-24'), findsOneWidget); // чьи это пары
   });
+
+  testWidgets('2.18: карточка пары спрашивает баллы и файлы по одному разу', (t) async {
+    phone(t);
+    final asked = <String>[];
+    final api = fakeApi(requests: asked);
+    const lesson = Lesson(
+      start: '09:00',
+      end: '10:30',
+      title: 'Моделирование бизнес-процессов',
+      kind: 'лекция',
+      room: 'А-17 (В-78)',
+      teacher: '',
+      status: '',
+    );
+    final font = ValueNotifier(FontChoice.strict);
+    await t.pumpWidget(
+      ValueListenableBuilder<FontChoice>(
+        valueListenable: font,
+        builder: (_, f, _) => AppStyle(
+          p: Palette.depth,
+          font: f,
+          child: MaterialApp(
+            home: Builder(
+              builder: (context) =>
+                  TextButton(onPressed: () => openLesson(context, api, lesson), child: const Text('пара')),
+            ),
+          ),
+        ),
+      ),
+    );
+    await t.tap(find.text('пара'));
+    await settle(t);
+    // перерисовка (смена шрифта, темы) не повторяет запросы
+    font.value = FontChoice.book;
+    await settle(t);
+    font.value = FontChoice.strict;
+    await settle(t);
+    expect(find.text('Баллы БРС'), findsOneWidget);
+    expect(asked.where((k) => k == 'GET /api/sdo/grades').length, 1);
+    expect(asked.where((k) => k == 'GET /api/files').length, 1);
+  });
 }

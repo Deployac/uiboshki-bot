@@ -110,8 +110,8 @@ class _SubmitSheetState extends State<SubmitSheet> {
       setState(() => _rules = SubmitRules.fromJson(Map<String, dynamic>.from(r)));
     } on ApiError catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = 'Нет связи с сервером.');
+    } catch (e) {
+      setState(() => _error = errorText(e));
     }
   }
 
@@ -151,8 +151,8 @@ class _SubmitSheetState extends State<SubmitSheet> {
       setState(() => _done = (r is Map && r['status'] is String) ? r['status'] as String : 'Отправлено в СДО');
     } on ApiError catch (e) {
       setState(() => _error = e.message);
-    } catch (_) {
-      setState(() => _error = 'Нет связи с сервером — файл не ушёл.');
+    } catch (e) {
+      setState(() => _error = isOffline(e) ? 'Нет интернета — файл не ушёл.' : errorText(e));
     } finally {
       if (mounted) setState(() => _sending = false);
     }

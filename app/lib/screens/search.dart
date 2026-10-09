@@ -89,6 +89,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   List<Target>? _items; // null — ещё не искали (короткий запрос)
   bool _ready = true, _busy = false, _failed = false;
+  String _failedText = '';
   List<Target> _pins = [], _recents = [];
 
   @override
@@ -147,11 +148,12 @@ class _SearchScreenState extends State<SearchScreen> {
         _ready = r['ready'] != false;
         _busy = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (my != _seq || !mounted) return;
       setState(() {
         _busy = false;
         _failed = true;
+        _failedText = errorText(e);
       });
     }
   }
@@ -247,14 +249,7 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Widget> _results(BuildContext context) {
     final items = _items;
     if (_failed) {
-      return [
-        Notice(
-          title: 'Не получилось',
-          text: 'Нет связи с сервером — проверь интернет.',
-          onRetry: _search,
-          pose: CapyPose.sad,
-        ),
-      ];
+      return [Notice(title: 'Не получилось', text: _failedText, onRetry: _search, pose: CapyPose.sad)];
     }
     if (_busy || items == null) {
       return [
@@ -457,8 +452,8 @@ class _TargetScreenState extends State<TargetScreen> {
       messenger.showSnackBar(SnackBar(content: Text(on ? 'Откреплено' : 'Закреплено — будет сверху в поиске')));
     } on ApiError catch (e) {
       messenger.showSnackBar(SnackBar(content: Text('Не получилось: ${e.message}')));
-    } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Нет связи с сервером')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(errorText(e))));
     } finally {
       if (mounted) setState(() => _pinBusy = false);
     }

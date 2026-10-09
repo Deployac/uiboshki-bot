@@ -17,6 +17,12 @@ String markWord(String label) => label == 'зачёт' ? 'зачёт' : '«$labe
 
 String fmtNum(num v) => v == v.roundToDouble() ? '${v.round()}' : v.toStringAsFixed(1).replaceAll('.', ',');
 
+/// «2026-08-27» → «27 августа»; не дата — пусто.
+String dayMonth(String isoDate) {
+  final d = DateTime.tryParse(isoDate);
+  return d == null ? '' : '${d.day} ${monthsGen[d.month - 1]}';
+}
+
 class GoalCard extends StatefulWidget {
   final Api api;
   final int courseId;
@@ -210,8 +216,7 @@ class _GoalCardState extends State<GoalCard> {
   }
 
   (IconData, String) _skipLine(Map<String, dynamic> skip, String now) {
-    final d = DateTime.tryParse('${skip['date']}');
-    final day = d == null ? '' : '${d.day} ${monthsGen[d.month - 1]}';
+    final day = dayMonth('${skip['date']}');
     final after = switch ('${skip['status']}') {
       _ when skip['status'] == now => 'ничего не изменится',
       'done' => 'всё равно есть',
@@ -244,7 +249,7 @@ class AttendanceStrip extends StatelessWidget {
           children: [
             for (final l in lectures)
               Tooltip(
-                message: '${l['n']} лекция · ${l['date']}',
+                message: '${l['n']} лекция · ${dayMonth('${l['date']}')}',
                 child: Container(
                   width: 26,
                   height: 26,

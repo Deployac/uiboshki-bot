@@ -218,8 +218,10 @@ class MoreScreen extends StatelessWidget {
       final r = await api.get('/calendar/link');
       await Clipboard.setData(ClipboardData(text: '$_origin${r['ics_path']}'));
       if (context.mounted) _snack(context, 'Ссылка скопирована — Календарь → Добавить подписку');
+    } on PlatformException {
+      if (context.mounted) _snack(context, 'Не удалось скопировать — попробуй ещё раз.');
     } catch (e) {
-      if (context.mounted) _snack(context, 'Не вышло: $e');
+      if (context.mounted) _snack(context, errorText(e));
     }
   }
 

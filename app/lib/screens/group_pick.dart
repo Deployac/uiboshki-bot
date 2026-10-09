@@ -86,8 +86,8 @@ class _GroupPickScreenState extends State<GroupPickScreen> {
         _items = [for (final g in r['items'] as List) Map<String, dynamic>.from(g)];
         _note = _items.isEmpty ? 'Такой группы не нашёл — проверь, как написано: «УИБО-03-24».' : null;
       });
-    } catch (_) {
-      if (mounted) setState(() => _note = 'Нет связи с сервером.');
+    } catch (e) {
+      if (mounted) setState(() => _note = errorText(e));
     }
   }
 
