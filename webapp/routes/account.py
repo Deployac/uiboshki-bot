@@ -51,9 +51,12 @@ async def api_group_admin_request(user: dict = CurrentUser):
 @router.post("/api/me/group")
 async def api_set_group(body: GroupBody, user: dict = CurrentUser):
     import groups
-    g = await groups.choose(user["id"], body.id)
+    from webapp import deps
+    g = await groups.choose(user["id"], body.id, deps.tg_bot())
     if not g:
         raise HTTPException(404, "Такой группы нет")
+    if g.get("denied"):
+        raise HTTPException(403, g["denied"].capitalize())
     return {"group": g}
 
 

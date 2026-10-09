@@ -22,7 +22,9 @@
 
   const noop = () => {};
   const back = { show: noop, hide: noop, onClick: noop, offClick: noop };
-  const cloud = { news_seen: "v5.20", onboarded_v1: "1" };
+  // «Что нового» в демо не всплывает: прочитанным считается текущий выпуск (NEWS.id
+  // из more.js — он грузится позже, поэтому геттер; с жёстким "v5.20" лист вылез на сайте)
+  const cloud = { get news_seen() { return typeof NEWS === "undefined" ? "" : NEWS.id; }, onboarded_v1: "1" };
   window.Telegram = { WebApp: {
     initData: "demo", initDataUnsafe: { user: { id: 222, first_name: "Аня" } },
     colorScheme: "dark", themeParams: {}, platform: "ios", version: "8.0",

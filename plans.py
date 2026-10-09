@@ -25,9 +25,13 @@ async def plan_of(user_id: int) -> str:
         return SUB
     if not groups.home_id():
         return OWN          # копия бота на одну группу (ICAL_URL без id) — тарифов нет
+    import members
+    member = await members.known(user_id)
+    if member:              # в чате своей группы — своя, какую бы группу ни выбрал (владелец 09.10)
+        return OWN
     gid = await get_user_group(user_id)
     if gid and gid == groups.home_id():
-        return OWN
+        return BASE if member is False else OWN
     if gid:
         from database import get_group
         g = await get_group(gid)

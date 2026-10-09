@@ -28,10 +28,23 @@ class PushSub(BaseModel):
 async def push_subscribe(body: PushSub, request: Request, user: dict = CurrentUser):
     from database.push import save_push_sub
     from webapp.routes.auth import _device
-    if not body.endpoint.startswith("https://") or len(body.endpoint) > 1000:
+    if not push_host_ok(body.endpoint) or len(body.endpoint) > 1000:
         raise HTTPException(400, "не похоже на подписку браузера")
     await save_push_sub(user["id"], body.endpoint, body.keys.p256dh[:200], body.keys.auth[:100], _device(request))
     return {"ok": True}
+
+
+# Куда браузеры принимают пуши (Chrome/Edge/Яндекс — FCM, Firefox — Mozilla,
+# Safari — Apple). Любой другой https-адрес — отказ: сервер не шлёт POST куда
+# попало (ревью безопасности 09.10).
+PUSH_HOSTS = ("fcm.googleapis.com", "push.services.mozilla.com", "notify.windows.com", "push.apple.com")
+
+
+def push_host_ok(endpoint: str) -> bool:
+    from urllib.parse import urlsplit
+    u = urlsplit(endpoint)
+    host = (u.hostname or "").lower()
+    return u.scheme == "https" and any(host == h or host.endswith("." + h) for h in PUSH_HOSTS)
 
 
 class PushOff(BaseModel):

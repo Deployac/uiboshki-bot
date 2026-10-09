@@ -205,3 +205,259 @@ async def test_pwa_home_screen_header_below_clock(db, monkeypatch):
         assert home
     finally:
         await bot.stop_webapp(server, task)
+
+
+# ── Ночь 09.10: сайт ──
+SITE_FIO = "Константинопольский-Великорецкий Александр Владимирович"
+
+
+def _site_layout(url: str, width: int) -> dict:
+    """/about на узком экране: поиск с длинными названиями и расписание преподавателя."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": width, "height": 800})
+        page.goto(url + "/about")
+        page.fill("#schedule-query", "иванов")
+        page.wait_for_selector(".search-results button")
+        page.click(".search-results button[data-i='1']")
+        page.wait_for_selector(".schedule-heading h3")
+        res = page.evaluate("""() => {
+          const r = (q) => document.querySelector(q).getBoundingClientRect();
+          const ph = r('.phone'), ex = r('.demo-expand');
+          // слово заголовка (до пробела или дефиса) не рвётся на две строки: один прямоугольник
+          const t = document.querySelector('.schedule-heading h3').firstChild, words = [];
+          for (const m of t.textContent.matchAll(/[^\\s-]+/g)) {
+            const rg = document.createRange(); rg.setStart(t, m.index); rg.setEnd(t, m.index + m[0].length);
+            words.push([m[0], rg.getClientRects().length]);
+          }
+          return {scroll: document.documentElement.scrollWidth, inner: innerWidth, words,
+                  expandUnderPhone: ex.left < ph.right && ex.right > ph.left && ex.top < ph.bottom && ex.bottom > ph.top};
+        }""")
+        browser.close()
+    return res
+
+
+@pytest.mark.asyncio
+async def test_site_narrow_layout(db, monkeypatch):
+    """Баги сайта на узком экране: длинное название в поиске давало прокрутку
+    вбок, кнопка «демо в отдельной вкладке» пряталась под телефоном, фамилия в
+    заголовке расписания рвалась посреди слова."""
+    import bot
+    import ratelimit
+    import schedule_index
+    import webapp.routes.schedule as sched
+
+    async def search(q="", type=0, user=None):
+        return {"items": [{"type": 1, "id": 1, "title": "УИБО-03-24", "hint": "Группа"},
+                          {"type": 2, "id": 2, "title": SITE_FIO, "hint": "Преподаватель"},
+                          {"type": 1, "id": 3, "title": "ОченьДлинноеНазваниеБезПробелов" * 2, "hint": "Группа"}]}
+
+    async def target(t, i, user=None):
+        return {"type": t, "id": i, "title": SITE_FIO, "today": "2026-10-09", "stale": False, "weeks": []}
+
+    async def ready():
+        return False
+
+    monkeypatch.setattr(sched, "api_search", search)
+    monkeypatch.setattr(sched, "api_target", target)
+    monkeypatch.setattr(schedule_index, "is_ready", ready)
+    ratelimit.reset()
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        for width in (320, 375, 700):
+            res = await asyncio.to_thread(_site_layout, f"http://127.0.0.1:{port}", width)
+            assert res["scroll"] <= res["inner"], (width, res)
+            assert not res["expandUnderPhone"], width
+            if width < 700:
+                assert all(n == 1 for _, n in res["words"]), (width, res["words"])
+    finally:
+        await bot.stop_webapp(server, task)
+        ratelimit.reset()
+
+
+# ── Ночь 09.10: зона B ──
+
+def _narrow_phone(url: str, init_data: str):
+    """iPhone 320×568 в полном экране Telegram: (ширина страницы с блоком кода
+    в чате, низ кнопки «Дальше» в знакомстве)."""
+    import json
+    stub = (TG_STUB % json.dumps(init_data)).replace('platform: "tdesktop"', 'platform: "ios"') \
+        .replace('version: "7.0"', 'version: "8.0", isFullscreen: true, requestFullscreen() {}, '
+                 'safeAreaInset: { top: 20, bottom: 0 }, contentSafeAreaInset: { top: 46, bottom: 0 }') \
+        .replace("isVersionAtLeast: () => false", "isVersionAtLeast: () => true")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": 320, "height": 568})
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script(stub)
+        page.goto(url)
+        page.wait_for_function("document.querySelectorAll('#daychips button').length === 6")
+        page.evaluate("document.getElementById('onboard').classList.remove('open'); switchTab('chat');"
+                      "appendMsg('assistant', 'код', '', 'Вот:\\n\\n<pre>' + 'x = 1 + '.repeat(60) + '</pre>\\n\\nВсё.')")
+        width = page.evaluate("document.documentElement.scrollWidth")
+        page.evaluate("showOnboard(0)")
+        bottom = page.evaluate("document.querySelector('#onboard .ob-next').getBoundingClientRect().bottom")
+        browser.close()
+    return width, bottom
+
+
+@pytest.mark.asyncio
+async def test_narrow_phone_chat_code_and_onboarding(db, monkeypatch):
+    """Блок кода в ответе ИИ раздвигал страницу вбок; на 320×568 в полном
+    экране кнопка «Дальше» знакомства уезжала за нижний край."""
+    import bot
+    import config
+    import schedule_parser
+    import webapp.deps as deps
+
+    async def mirea_down(*a, **k):
+        raise RuntimeError("МИРЭА не отвечает")
+
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", mirea_down)
+    await db.upsert_user(222, "", "Alice")
+    await db.set_user_group(222, config.HOME_GROUP_ID)
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        width, bottom = await asyncio.to_thread(_narrow_phone, f"http://127.0.0.1:{port}/", _make_init_data())
+        assert width <= 320
+        assert bottom <= 568
+    finally:
+        await bot.stop_webapp(server, task)
+
+
+# ── Ночь 09.10: WebApp, часть A ──
+
+FULLSCREEN_STUB = TG_STUB.replace('platform: "tdesktop"', 'platform: "ios"').replace('version: "7.0"', 'version: "8.0"').replace(
+    "isVersionAtLeast: () => false", "isVersionAtLeast: () => true, isFullscreen: true, requestFullscreen() {}, "
+    "safeAreaInset: { top: 0, bottom: 0 }, contentSafeAreaInset: { top: 46, bottom: 0 }").replace(
+    "onEvent() {}", "onEvent(n, f) { (window.__ev[n] = window.__ev[n] || []).push(f); }")
+
+
+def _layout(url: str, init_data: str) -> dict:
+    """Геометрия на телефоне в полном экране Telegram и на компьютере → словарь замеров."""
+    import json
+    res = {}
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": 320, "height": 568})
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script("window.__ev = {};")
+        page.add_init_script(FULLSCREEN_STUB % json.dumps(init_data))
+        page.goto(url)
+        page.wait_for_function("document.querySelectorAll('#daychips button').length === 6")
+        page.evaluate("document.getElementById('onboard').classList.remove('open')")
+        # Telegram присылает отступ под полоску «Домой» уже после загрузки
+        page.evaluate("Telegram.WebApp.safeAreaInset = {top: 59, bottom: 34}; (__ev.safeAreaChanged || []).forEach(f => f())")
+        page.wait_for_timeout(200)
+        res["nav"] = page.evaluate("[parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--nav-h')),"
+                                   " document.querySelector('nav.tabs').offsetHeight]")
+        page.evaluate("openDeadlinesSeg('dl')")
+        page.wait_for_timeout(400)          # пока вкладка въезжает (transform), fixed считается от неё
+        res["fab_gap"] = page.evaluate("document.querySelector('nav.tabs').getBoundingClientRect().top"
+                                       " - document.getElementById('fab-add').getBoundingClientRect().bottom")
+        page.evaluate("openAddSheet()")
+        page.wait_for_timeout(300)
+        res["sheet_pad"] = page.evaluate("parseFloat(getComputedStyle(document.querySelector('#add-sheet .sheet')).paddingBottom)")
+        res["time_over"] = page.evaluate("document.getElementById('nd-time').getBoundingClientRect().right"
+                                         " - document.getElementById('nd-subject').getBoundingClientRect().right")
+        page.evaluate("closeAddSheet(); switchTab('search')")
+        res["search_hscroll"] = page.evaluate("document.documentElement.scrollWidth - innerWidth")
+        page.set_viewport_size({"width": 1280, "height": 800})
+        page.evaluate("switchTab('today')")
+        res["desktop_main"] = page.evaluate("document.querySelector('main').getBoundingClientRect().width")
+        browser.close()
+    return res
+
+
+@pytest.mark.asyncio
+async def test_layout_safe_area_narrow_and_wide(db, monkeypatch):
+    """Ночь 09.10: «＋» дедлайнов вставал на нижнюю панель (отступ пришёл
+    safeAreaChanged после загрузки), кнопка листа — на полоску «Домой», поле
+    времени вылезало за лист на 320px, «Поиск» ездил вбок, на компьютере всё
+    тянулось на 1280px."""
+    import bot
+    import config
+    import handlers.weather
+    import schedule_parser
+    import webapp.deps as deps
+
+    async def mirea_down(*a, **k):
+        raise RuntimeError("МИРЭА не отвечает")
+
+    async def no_weather(*a, **k):
+        return ""
+
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    await db.upsert_user(222, "", "Alice")
+    await db.set_user_group(222, config.HOME_GROUP_ID)
+    monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", mirea_down)
+    monkeypatch.setattr(handlers.weather, "get_weather_for_morning", no_weather)
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        r = await asyncio.to_thread(_layout, f"http://127.0.0.1:{port}/", _make_init_data())
+        assert r["nav"][0] == r["nav"][1], r
+        assert r["fab_gap"] >= 8, r
+        assert r["sheet_pad"] >= 18 + 34, r
+        assert r["time_over"] <= 0.5, r
+        assert r["search_hscroll"] <= 0, r
+        assert r["desktop_main"] <= 680, r
+    finally:
+        await bot.stop_webapp(server, task)
+
+
+# ── Ревью безопасности 09.10: токен из адреса ──
+def _token_in_url(url: str, token: str, pending: bool) -> bool:
+    """Открыть /app#token=… (pending — вход начат в этом браузере) → токен сохранён?"""
+    import json
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page()
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script(TG_STUB % json.dumps(""))
+        if pending:
+            page.add_init_script("if (!sessionStorage.getItem('x')) { sessionStorage.setItem('x', 1);"
+                                 " localStorage.setItem('uib_oauth_at', String(Date.now())); }")
+        page.goto(f"{url}#token={token}")
+        page.wait_for_timeout(600)
+        saved = page.evaluate("localStorage.getItem('uib_token')") == token
+        clean = "#token" not in page.url
+        browser.close()
+    return saved and clean
+
+
+@pytest.mark.asyncio
+async def test_foreign_token_link_is_ignored(db, monkeypatch):
+    import bot
+    import webapp.deps as deps
+    from database.sessions import create_session
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    await db.upsert_user(222, "", "Alice")
+    token = await create_session(222, "test")
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        url = f"http://127.0.0.1:{port}/app"
+        assert not await asyncio.to_thread(_token_in_url, url, token, False)   # чужая ссылка — мимо
+        assert await asyncio.to_thread(_token_in_url, url, token, True)        # свой вход — принят
+    finally:
+        await bot.stop_webapp(server, task)

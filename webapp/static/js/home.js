@@ -186,6 +186,15 @@ function pillRowEdge() {
   row.classList.toggle("at-end", row.scrollLeft + row.clientWidth >= row.scrollWidth - 2);
 }
 
+// Длинное название на плитке — по границе слова и с «…»: раньше резалось
+// посреди слова без знака («Анализ и диагнос · просрочен», ночь 09.10).
+function shortText(s, max) {
+  s = s || "";
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max), sp = cut.lastIndexOf(" ");
+  return (sp > max / 2 ? cut.slice(0, sp) : cut).replace(/[\s·,.:;–-]+$/, "") + "…";
+}
+
 function renderToday() {
   hideSplash();            // главная нарисована (из кэша или свежая) — заставку убираем
   document.getElementById("subtitle").textContent = todayData.weekday + ", " + todayData.label + " · " + GROUP_NAME;
@@ -201,7 +210,7 @@ function renderToday() {
   const dl = todayData.deadlines;
   document.getElementById("today-deadline-count").textContent = dl.active;
   document.getElementById("today-deadline-next").innerHTML = dl.soon.length
-    ? escapeHtml(dl.soon[0].subject.slice(0, 40) + " · " + dueText(dl.soon[0])) : "ничего не горит " + icon("party", "mood");
+    ? escapeHtml(shortText(dl.soon[0].subject, 40) + " · " + dueText(dl.soon[0])) : "ничего не горит " + icon("party", "mood");
   document.getElementById("today-notes").innerHTML = todayData.notes.map(x =>
     '<div class="note-card">' + icon("pin", "inl") + (x.subject ? "<b>" + escapeHtml(x.subject) + ":</b> " : "") + escapeHtml(x.text) + '</div>').join("");
 }

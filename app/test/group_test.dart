@@ -34,7 +34,9 @@ void main() {
     expect(find.text('Из какой ты группы?'), findsNothing);
     await t.tap(find.bySemanticsLabel('Ещё'));
     await settle(t);
-    await t.tap(find.text('Сменить'));
+    await t.ensureVisible(find.byKey(const Key('more:group')));
+    await settle(t);
+    await t.tap(find.text('Группа'));
     await settle(t);
     expect(find.text('Из какой ты группы?'), findsOneWidget);
     expect(find.byTooltip('Назад'), findsOneWidget); // не первый вход — можно вернуться

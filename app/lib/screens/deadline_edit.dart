@@ -361,7 +361,7 @@ class _ActionsSheet extends StatelessWidget {
           children: [
             Text(d.done ? 'сдано' : 'до $due', style: s.eyebrow()),
             const SizedBox(height: 4),
-            Text(d.subject, style: s.title(22)),
+            Text(d.subject, style: s.name(20)),
             if (x.description.isNotEmpty && !x.isLink) ...[
               const SizedBox(height: Space.s),
               Text(x.description, style: s.body(14, color: p.muted)),

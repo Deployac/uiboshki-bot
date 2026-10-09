@@ -335,11 +335,12 @@ function goalCard(c) {
     : line("check", markWord(g.label) + " по баллам уже набрано"));
   if (g.open_count) lines.push(line("upload", "работы: открыто " + g.open_count + " · до <b>+" + fmtNum(g.open_points) + "</b>", "openTk('todo')"));
   if (g.attendance_left) lines.push(line("users", "посещения лекций: до <b>+" + fmtNum(g.attendance_left) + "</b>", c.attendance ? "openPos()" : ""));
+  if (g.exam_left) lines.push(line("medal", "экзамен: до <b>+" + fmtNum(g.exam_left) + "</b>"));
   if (tk.total) {
     lines.push(line("checkCircle", "зачтено " + tk.passed + " из " + tk.total + " · нужно " + tk.need +
       (tk.left ? " → из " + tk.open + " открытых зачесть <b>" + tk.left + "</b>" : " " + icon("check", "inl"))));
   }
-  if (g.need && g.status !== "done") lines.push(line("sparkle", "если сдать всё и ходить на лекции — до <b>" + fmtNum(g.best) + "</b>"));
+  if (g.need && g.status !== "done") lines.push(line("sparkle", "если сдать всё, ходить на лекции" + (g.exam_left ? " и сдать экзамен" : "") + " — до <b>" + fmtNum(g.best) + "</b>"));
   if (g.lost_count) lines.push(line("warning", "ниже порога или срок прошёл: " + g.lost_count + " " + plural(g.lost_count, "работа", "работы", "работ") +
     " — не считаю, " + plural(g.lost_count, "пригодится", "пригодятся", "пригодятся") + ", если дадут пересдать"));
   if (g.skip) {

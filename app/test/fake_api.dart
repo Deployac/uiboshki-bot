@@ -36,7 +36,7 @@ Api fakeApi({
     body ??= switch (path) {
       '/api/day' => {'lessons': []},
       '/api/week' => {'week': null, 'days': []},
-      '/api/auth/start' => {'code': 'abc', 'link': 'https://t.me/UiboshkiBot?start=login_abc'},
+      '/api/auth/start' => {'code': 'abc', 'link': 'https://t.me/UiboshkiBot?start=login_abc', 'pick': 47},
       '/api/auth/poll' => {'status': 'wait'},
       '/api/auth/providers' => {
         'items': [

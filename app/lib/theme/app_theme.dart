@@ -96,6 +96,18 @@ class AppStyle extends InheritedWidget {
     fontFeatures: const [FontFeature.tabularFigures()],
   );
 
+  /// Названия пар, работ и файлов — жирным без засечек при любом шрифте:
+  /// длинное «Объектно-ориентированный…» с засечками рвалось и раздувало
+  /// карточку (владелец, 09.10, 18Б). Засечки — только у цифр и заголовков.
+  TextStyle name(double size, {Color? color}) => TextStyle(
+    fontFamily: 'Onest',
+    fontSize: size,
+    fontWeight: FontWeight.w700,
+    letterSpacing: -size * 0.01,
+    height: 1.2,
+    color: color ?? p.text,
+  );
+
   TextStyle body(double size, {FontWeight weight = FontWeight.w400, Color? color}) =>
       TextStyle(fontFamily: 'Onest', fontSize: size, fontWeight: weight, height: 1.3, color: color ?? p.text);
 

@@ -72,7 +72,7 @@ class HomeworkScreen extends StatelessWidget {
       children: [
         const BackRow(),
         ScreenTitle(
-          eyebrow: items.isEmpty ? 'задания от старосты' : '${items.length} ${_tasks(items.length)} от старосты',
+          eyebrow: items.isEmpty ? null : '${items.length} ${_tasks(items.length)} от старосты',
           title: 'ДЗ группы',
         ),
         if (items.isEmpty)
@@ -187,7 +187,7 @@ class NotesScreen extends StatelessWidget {
           padding: const EdgeInsets.only(bottom: Space.xxl),
           children: [
             const BackRow(),
-            const ScreenTitle(eyebrow: 'пометки группы к парам', title: 'Заметки'),
+            const ScreenTitle(title: 'Заметки'),
             if (total == 0)
               const Notice(
                 title: 'Заметок нет',

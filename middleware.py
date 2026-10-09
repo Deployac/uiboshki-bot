@@ -87,7 +87,13 @@ class GroupContextMiddleware(BaseMiddleware):
         user = data.get("event_from_user")
         if user:
             from database.groups import enter
+            import members
             try:
+                chat = data.get("event_chat")
+                if chat and chat.type != "private" and chat.id == await members.chat_id():
+                    await members.remember(user.id, True)      # пишет в чате своей группы — участник
+                else:
+                    await members.refresh_later(data.get("bot"), user.id)
                 await enter(user.id)
             except Exception as e:
                 logger.warning(f"группа человека: {e}")

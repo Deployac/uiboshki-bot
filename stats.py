@@ -53,7 +53,17 @@ EVENT_PATHS = [
     ("GET", "/api/lecture-search", "files"),
     ("GET", "/api/target", "search"),
 ]
-VIEWS = {"open", "deadlines", "files", "sdo", "search", "bot"}
+VIEWS = {"open", "deadlines", "files", "sdo", "search", "bot", "via_tg", "via_pwa", "via_app"}
+
+# Где открывают (09.10): Mini App в Telegram, PWA/браузер (uiboshki.ru/app) или
+# своё приложение (заголовок X-App) — видно, пошли ли PWA и приложение.
+PLATFORMS = [("via_tg", "Telegram"), ("via_pwa", "PWA и браузер"), ("via_app", "приложение")]
+
+
+def via(in_telegram: bool, x_app: str) -> str:
+    if in_telegram:
+        return "via_tg"
+    return "via_app" if x_app in ("ios", "android") else "via_pwa"
 
 # Экраны для полосок «что открывают» — подписи и цвета как в приложении
 SCREENS = [("open", "Приложение", "#4a8ff7"), ("deadlines", "Дедлайны", "#f0884b"),
@@ -136,13 +146,14 @@ async def collect(days: int = 30) -> dict:
         "screens": [(label, color, len(screens.get(k, ()))) for k, label, color in SCREENS],
         "actions": [(label, actions.get(k, 0)) for k, label in ACTIONS],
         "heat": heat,
+        "platforms": [(label, len(screens.get(k, ()))) for k, label in PLATFORMS],
     }
 
 
 # Чем пользуется — коротко, для списка «кто пользуется»
 USES = {"open": "приложение", "bot": "бот", "deadlines": "дедлайны", "files": "файлы", "download": "файлы",
         "ai": "ИИ", "summary": "конспекты", "sdo": "СДО", "sdo_connect": "СДО", "submit": "сдача работ", "search": "поиск",
-        "from_site": "пришёл с сайта"}
+        "from_site": "пришёл с сайта", "via_pwa": "PWA", "via_app": "приложение"}
 
 
 def period_label(days: int) -> str:
@@ -262,7 +273,15 @@ def summary(s: dict) -> str:
             f"{acts}"
             + (f"\nИИ сегодня: <b>{s['ai_today']}</b> вопросов, у самого активного — <b>{s['ai_top']}</b>"
                if s["ai_today"] else "")
+            + platforms_line(s.get("platforms") or [])
             + groups_line(s.get("groups") or []))
+
+
+def platforms_line(rows: list[tuple[str, int]]) -> str:
+    """«Где открывают: Telegram — 25 · PWA и браузер — 3 · приложение — 1»."""
+    if not any(n for _, n in rows):
+        return ""
+    return "\nГде открывают: " + " · ".join(f"{label} — <b>{n}</b>" for label, n in rows)
 
 
 def groups_line(rows: list[dict], top: int = 6) -> str:

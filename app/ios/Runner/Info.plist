@@ -9,7 +9,7 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Чтобы приложить фото к вопросу помощнику или сдать работу в СДО.</string>
 	<key>CFBundleDisplayName</key>
-	<string>Капибара</string>
+	<string>Kapibara</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

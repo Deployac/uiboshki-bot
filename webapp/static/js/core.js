@@ -9,8 +9,18 @@ function readToken() { try { return localStorage.getItem("uib_token") || ""; } c
 function saveToken(t) { try { if (t) localStorage.setItem("uib_token", t); else localStorage.removeItem("uib_token"); } catch (e) {} }
 // Вход через VK/Яндекс: сервер вернул сюда с токеном во фрагменте (/app#token=…,
 // webapp/routes/auth.py) — сохранить и убрать из адреса, чтобы не остался в истории.
+// Токен берём, только если вход начат в этом браузере (startOAuth, 15 минут):
+// иначе по присланной ссылке /app#token=<чужой> человек оказывался в чужом
+// аккаунте и мог вставить туда свой вход в СДО (ревью безопасности 09.10).
+function oauthPending() {
+  try {
+    const at = +localStorage.getItem("uib_oauth_at") || 0;
+    localStorage.removeItem("uib_oauth_at");
+    return Date.now() - at < 15 * 60 * 1000;
+  } catch (e) { return false; }
+}
 if (!IN_TG && location.hash.startsWith("#token=")) {
-  saveToken(decodeURIComponent(location.hash.slice(7)));
+  if (oauthPending()) saveToken(decodeURIComponent(location.hash.slice(7)));
   history.replaceState(null, "", location.pathname + location.search);
 }
 const APP_TOKEN = IN_TG ? "" : readToken();
@@ -124,6 +134,15 @@ if (tg && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0") && ["ios", "android"
     if (!tg.isFullscreen) tg.requestFullscreen();
     syncFullscreen();
   } catch (e) {}
+}
+
+// Высота нижней панели (--nav-h, chat.js: syncNavHeight) меняется и без
+// resize: Telegram присылает отступ под полоску «Домой» уже после загрузки
+// (safeAreaChanged) — панель вырастала, а «＋», тост и низ страницы
+// оставались под ней (ночь 09.10). Следим за самой панелью.
+if (window.ResizeObserver) {
+  new ResizeObserver(() => { if (typeof syncNavHeight === "function") syncNavHeight(); })
+    .observe(document.querySelector("nav.tabs"), { box: "border-box" });   // отступ — это padding
 }
 
 function initData() {
@@ -361,6 +380,7 @@ async function startOAuth(provider) {
     const res = await fetch("/api/auth/" + provider + "/start", { method: "POST", headers: { "Content-Type": "application/json" },
                                                                    body: JSON.stringify({ client: "web" }) });
     if (!res.ok) throw new Error();
+    try { localStorage.setItem("uib_oauth_at", String(Date.now())); } catch (e) {}
     location.href = (await res.json()).url;
   } catch (e) {
     document.getElementById("login-hint").textContent = "Не получилось начать вход — попробуй через минуту.";
@@ -374,7 +394,8 @@ async function startLogin() {
     const res = await fetch("/api/auth/start", { method: "POST" }).then(r => r.ok ? r.json() : Promise.reject(r));
     loginCode = res.code;
     window.open(res.link, "_blank");
-    hint.textContent = "Открыл бота — нажми там «Да, это я», а потом вернись сюда.";
+    hint.innerHTML = "Открыл бота — нажми там «Да, это я», потом это число:" +
+      '<b class="login-pick">' + escapeHtml(String(res.pick)) + "</b>";
     btn.textContent = "Открыть бота ещё раз";
     btn.disabled = false;
     btn.onclick = () => window.open(res.link, "_blank");

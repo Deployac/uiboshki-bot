@@ -91,7 +91,7 @@ async def send(sub: dict, data: dict, ttl: int = 3600) -> int:
     """Отправить пуш подписке {endpoint, p256dh, auth}. → HTTP-код сервиса
     пушей (404/410 — подписки больше нет, её надо забыть)."""
     body = encrypt(json.dumps(data, ensure_ascii=False).encode(), sub["p256dh"], sub["auth"])
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=5) as client:     # рассылка ждёт пуш — висящий адрес не тормозит всех
         r = await client.post(sub["endpoint"], content=body, headers={
             "TTL": str(ttl), "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream",
             "Authorization": vapid_header(sub["endpoint"]), "Urgency": "normal"})

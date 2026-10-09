@@ -226,6 +226,8 @@ _FENCE_RE   = re.compile(r"^\s*```")
 _HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
 _RULE_RE    = re.compile(r"^\s{0,3}([-*_])(\s*\1){2,}\s*$")
 _BULLET_RE  = re.compile(r"^(\s*)[*+-]\s+")
+_TABLE_RE   = re.compile(r"^\s*\|.*\|\s*$")
+_TABLE_SEP  = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
 _BOLD_RE    = re.compile(r"\*\*(?=\S)(.+?)(?<=\S)\*\*|__(?=\S)(.+?)(?<=\S)__")
 # Одиночные *…* — курсив, только если звёздочка не прилипла к слову/цифре
 # с внешней стороны и не отбита пробелом изнутри: "3 * x^2 * ln(x)" и
@@ -255,9 +257,44 @@ def _md_inline(line: str) -> str:
     return "".join(out)
 
 
+TABLE_PRE_WIDTH = 34   # уже — ровная таблица моноширинным; шире — списком (на телефоне не влезет)
+
+
+def _table_html(rows: list[str]) -> str:
+    """Markdown-таблица → HTML Telegram (таблиц там нет). Раньше строки шли как
+    есть, с «|---|---|» посередине (ночь 09.10). Узкая — ровно в <pre>, широкая —
+    списком «• <b>первый столбец</b> — заголовок: значение; …»."""
+    cells = [[c.strip() for c in r.strip().strip("|").split("|")] for r in rows if not _TABLE_SEP.match(r)]
+    if not cells:
+        return ""
+    n = max(len(r) for r in cells)
+    cells = [r + [""] * (n - len(r)) for r in cells]
+    plain = [[pretty_math(_BOLD_RE.sub(lambda m: m.group(1) or m.group(2), c)).replace("`", "") for c in r]
+             for r in cells]
+    widths = [max(len(r[i]) for r in plain) for i in range(n)]
+    if sum(widths) + 3 * (n - 1) <= TABLE_PRE_WIDTH:
+        lines = [" │ ".join(c.ljust(w) for c, w in zip(r, widths)).rstrip() for r in plain]
+        lines.insert(1, "─┼─".join("─" * w for w in widths))
+        return f"<pre>{esc(chr(10).join(lines))}</pre>"
+    head, body = cells[0], cells[1:] or [cells[0]]
+    out = []
+    for r in body:
+        rest = "; ".join(f"{_md_inline(h)}: {_md_inline(c)}" if h else _md_inline(c)
+                         for h, c in zip(head[1:], r[1:]) if c)
+        first = _md_inline(_BOLD_RE.sub(lambda m: m.group(1) or m.group(2), r[0]))   # и так жирный
+        out.append(f"• <b>{first}</b>" + (f" — {rest}" if rest else ""))
+    return "\n".join(out)
+
+
 def _md_to_tg_html(text: str) -> str:
-    lines, code, in_code = [], [], False
+    lines, code, in_code, table = [], [], False, []
     for line in text.split("\n"):
+        if table and (in_code or not _TABLE_RE.match(line)):
+            lines.append(_table_html(table))
+            table = []
+        if not in_code and _TABLE_RE.match(line):
+            table.append(line)
+            continue
         if _FENCE_RE.match(line):
             if in_code:
                 lines.append(f"<pre>{esc(chr(10).join(code))}</pre>")
@@ -274,6 +311,8 @@ def _md_to_tg_html(text: str) -> str:
             lines.append("──────────")
         else:
             lines.append(_md_inline(_BULLET_RE.sub(r"\1• ", line)))
+    if table:
+        lines.append(_table_html(table))
     if in_code:                        # модель не закрыла блок кода
         lines.append(f"<pre>{esc(chr(10).join(code))}</pre>")
     return "\n".join(lines)

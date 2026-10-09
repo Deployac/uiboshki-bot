@@ -6,6 +6,7 @@ import '../api/api.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'capy.dart';
+import 'capy_refresh.dart';
 
 /// «Сейчас». Для стенда и скриншотов время можно сдвинуть: --dart-define=NOW=2026-10-08T10:07:00+03:00
 DateTime now() {
@@ -75,6 +76,9 @@ class Tile extends StatelessWidget {
   final Gradient? gradient;
   final VoidCallback? onTap;
   final double radius;
+
+  /// Рамка другого цвета — у идущей пары (по умолчанию линия темы).
+  final Color? border;
   const Tile({
     super.key,
     required this.child,
@@ -83,6 +87,7 @@ class Tile extends StatelessWidget {
     this.gradient,
     this.onTap,
     this.radius = Radii.tile,
+    this.border,
   });
 
   @override
@@ -99,7 +104,7 @@ class Tile extends StatelessWidget {
           color: gradient == null ? (color ?? p.card) : null,
           gradient: gradient,
           borderRadius: r,
-          border: Border.all(color: p.line),
+          border: Border.all(color: border ?? p.line),
         ),
         child: InkWell(
           borderRadius: r,
@@ -116,12 +121,14 @@ class Tile extends StatelessWidget {
   }
 }
 
-/// Заголовок экрана: строка-подпись курсивом и крупное название с короткой
-/// прямой чертой под ним (без дуги — решение владельца).
+/// Заголовок экрана: крупное название с короткой прямой чертой под ним (без
+/// дуги — решение владельца). Строка над ним — только с данными (дата,
+/// неделя, сколько файлов); фразы-пояснения убраны (владелец, 09.10, 14А).
 class ScreenTitle extends StatelessWidget {
-  final String eyebrow, title;
+  final String? eyebrow;
+  final String title;
   final Widget? trailing;
-  const ScreenTitle({super.key, required this.eyebrow, required this.title, this.trailing});
+  const ScreenTitle({super.key, this.eyebrow, required this.title, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -135,9 +142,8 @@ class ScreenTitle extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(eyebrow, style: s.eyebrow()),
-                const SizedBox(height: 6),
-                Text(title, style: s.title(34)),
+                if (eyebrow != null) ...[Text(eyebrow!, style: s.eyebrow()), const SizedBox(height: 6)],
+                FitWords(title, style: s.title(34)),
                 const SizedBox(height: 10),
                 Container(
                   width: 34,
@@ -152,6 +158,41 @@ class ScreenTitle extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Крупный заголовок без разрыва слов посередине («Безопасн/ость»,
+/// «хозяйственн/ой»): если самое длинное слово не влезает в строку (узкий
+/// экран, крупный системный шрифт), шрифт уменьшается ровно до влезания.
+class FitWords extends StatelessWidget {
+  final String text;
+  final TextStyle style;
+
+  /// Ширина строки, если известна заранее (внутри IntrinsicHeight
+  /// LayoutBuilder нельзя); без неё — по месту.
+  final double? width;
+  const FitWords(this.text, {super.key, required this.style, this.width});
+
+  static final _gaps = RegExp(r'[\s\-‐–—/]+');
+
+  Widget _fit(BuildContext context, double max) {
+    final scaler = MediaQuery.textScalerOf(context);
+    var widest = 0.0;
+    for (final w in text.split(_gaps)) {
+      final tp = TextPainter(
+        text: TextSpan(text: w, style: style),
+        textScaler: scaler,
+        textDirection: Directionality.of(context),
+      )..layout();
+      if (tp.width > widest) widest = tp.width;
+      tp.dispose();
+    }
+    if (!max.isFinite || widest <= max) return Text(text, style: style);
+    return Text(text, style: style.copyWith(fontSize: (style.fontSize ?? 14) * max / widest * 0.98));
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      width != null ? _fit(context, width!) : LayoutBuilder(builder: (context, box) => _fit(context, box.maxWidth));
 }
 
 /// Подпись раздела внутри экрана: «Весь день», «На неделе».
@@ -178,32 +219,54 @@ class Notice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
+    final words = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: s.body(17, weight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(text, style: s.body(14, color: s.p.muted)),
+        if (onRetry != null) ...[
+          const SizedBox(height: Space.m),
+          TextButton(
+            onPressed: onRetry,
+            child: Text('Ещё раз', style: s.body(15, color: s.p.accent)),
+          ),
+        ],
+      ],
+    );
+    // «Пусто, всё хорошо» — капибара выглядывает снизу справа из-за края карточки
+    if (pose != null && pose != CapyPose.sad) {
+      const size = 84.0;
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: Space.l),
+        child: Tile(
+          padding: EdgeInsets.zero,
+          child: Stack(
+            children: [
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: size * CapyPeek.shown + 30),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(Space.l, Space.l, size + Space.l, Space.l),
+                  child: words,
+                ),
+              ),
+              Positioned(
+                right: Space.m,
+                bottom: 0,
+                child: CapyPeek(pose: pose!, size: size),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Space.l),
       child: Tile(
         child: Row(
           children: [
-            if (pose != null) ...[
-              CapyImage(pose: pose!, size: 72, color: pose == CapyPose.sad ? s.p.muted : s.p.accent),
-              const SizedBox(width: Space.l),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: s.body(17, weight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  Text(text, style: s.body(14, color: s.p.muted)),
-                  if (onRetry != null) ...[
-                    const SizedBox(height: Space.m),
-                    TextButton(
-                      onPressed: onRetry,
-                      child: Text('Ещё раз', style: s.body(15, color: s.p.accent)),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+            if (pose != null) ...[CapyImage(pose: pose!, size: 72, color: s.p.muted), const SizedBox(width: Space.l)],
+            Expanded(child: words),
           ],
         ),
       ),
@@ -229,7 +292,14 @@ class _LoaderState<T> extends State<Loader<T>> {
   @override
   void initState() {
     super.initState();
+    _fromCache();
     _reload();
+  }
+
+  /// Пока идёт сеть — прошлые данные из запаса телефона, без крутилки.
+  Future<void> _fromCache() async {
+    final d = await Api.fromCache(widget.load);
+    if (d != null && mounted && _data == null) setState(() => _data = d);
   }
 
   Future<void> _reload() async {
@@ -252,9 +322,8 @@ class _LoaderState<T> extends State<Loader<T>> {
 
   @override
   Widget build(BuildContext context) {
-    final p = AppStyle.of(context).p;
     if (_data != null) {
-      return RefreshIndicator(color: p.accent, onRefresh: _reload, child: widget.builder(context, _data as T, _reload));
+      return CapyRefresh(onRefresh: _reload, child: widget.builder(context, _data as T, _reload));
     }
     if (_error != null) {
       return ListView(
@@ -269,6 +338,6 @@ class _LoaderState<T> extends State<Loader<T>> {
         ],
       );
     }
-    return Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5));
+    return const CapyLoading();
   }
 }

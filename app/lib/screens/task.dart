@@ -8,6 +8,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import '../widgets/goal_card.dart';
 import 'files.dart';
@@ -132,8 +133,7 @@ class _TaskScreenState extends State<TaskScreen> {
       body: Backdrop(
         tint: widget.course.isEmpty ? null : subjectColor(widget.course),
         child: SafeArea(
-          child: RefreshIndicator(
-            color: p.accent,
+          child: CapyRefresh(
             onRefresh: _load,
             child: ListView(
               padding: const EdgeInsets.only(bottom: Space.xxl),
@@ -155,10 +155,7 @@ class _TaskScreenState extends State<TaskScreen> {
                     },
                   )
                 else
-                  Padding(
-                    padding: const EdgeInsets.all(Space.xxl),
-                    child: Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5)),
-                  ),
+                  Padding(padding: const EdgeInsets.all(Space.xxl), child: const CapyLoading()),
                 // вход устарел или не подключён — сразу к подключению, потом задание заново
                 if (t == null && _error != null && needsSdo(_error!))
                   Padding(

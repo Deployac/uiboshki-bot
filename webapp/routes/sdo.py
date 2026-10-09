@@ -74,7 +74,12 @@ async def api_sdo_share(body: SdoShare, user: dict = CurrentUser):
     этому входу бот берёт задания всей группы. Баллы и работы человека никто
     не видит — только список заданий и сроки."""
     from database import set_sdo_share
+    from database.groups import home, viewer_group
     from sdo_accounts import status_for
+    # своя группа берёт задания по общему входу старосты; «делиться» тут создавало
+    # дубли всех дедлайнов СДО (sdo:<группа>:<id> рядом с sdo:<id>) — ревью 09.10
+    if body.share and await viewer_group(user["id"]) == home():
+        raise HTTPException(status_code=400, detail="в этой группе задания из СДО и так приходят")
     if not await set_sdo_share(user["id"], body.share):
         raise HTTPException(status_code=400, detail="сначала подключи СДО")
     if body.share:
@@ -143,6 +148,12 @@ async def api_sdo_submit(body: SdoSubmit, user: dict = CurrentUser):
     if not cookie:
         raise HTTPException(status_code=403, detail="сначала подключи СДО: вкладка СДО → Вход")
     items = body.files or [SdoFile(name=body.name, data=body.data)]
+    # число и размер — до раскодирования: тело с сотней файлов по 20 МБ держало бы
+    # в памяти гигабайты и роняло процесс (ревью безопасности 09.10)
+    if len(items) > sdo_submit.MAX_FILES:
+        raise HTTPException(status_code=400, detail=f"за раз — не больше {sdo_submit.MAX_FILES} файлов")
+    if any(len(it.data) > sdo_submit.MAX_BYTES * 4 // 3 + 4 for it in items):
+        raise HTTPException(status_code=413, detail="файл больше 20 МБ — СДО такой не примет")
     files = []
     try:
         for it in items:

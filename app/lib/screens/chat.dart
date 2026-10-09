@@ -367,7 +367,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   padding: const EdgeInsets.only(bottom: Space.l),
                   keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   children: [
-                    const ScreenTitle(eyebrow: 'отвечает по лекциям группы', title: 'Помощник'),
+                    const ScreenTitle(title: 'Помощник'),
                     if (_log.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: Space.xl),
@@ -384,7 +384,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                 backgroundColor: p.card,
                                 side: BorderSide(color: p.line),
                                 shape: const StadiumBorder(),
-                                label: Text(q, style: s.body(13)),
+                                // у чипа текст в одну строку и обрезается молча — переносим
+                                label: Text(q, softWrap: true, maxLines: 3, style: s.body(13)),
                                 onPressed: () {
                                   _input.text = q;
                                   _send();
@@ -563,7 +564,8 @@ class _Bubble extends StatelessWidget {
                     backgroundColor: p.card,
                     side: BorderSide(color: p.accent),
                     shape: const StadiumBorder(),
-                    label: Text(c, style: s.body(13, weight: FontWeight.w600)),
+                    // длинное название предмета — в две строки, а не обрезано
+                    label: Text(c, softWrap: true, maxLines: 3, style: s.body(13, weight: FontWeight.w600)),
                     onPressed: () {
                       tick();
                       onChoose(c);

@@ -119,6 +119,8 @@ async function openTarget(type, id, title) {
   setPinButton(isPinned(type, id));
   document.getElementById("tw-label").textContent = "Эта неделя";
   document.getElementById("tw-num").textContent = "";
+  // пока недель нет (грузится или МИРЭА лежит) — стрелки не горят: нажатие ничего не делало
+  document.getElementById("tw-prev").disabled = document.getElementById("tw-next").disabled = true;
   document.getElementById("target-days").innerHTML = "";
   document.getElementById("target-stale").innerHTML = "";
   document.getElementById("target-lessons").innerHTML =

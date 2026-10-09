@@ -10,6 +10,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import 'capy.dart';
 import 'common.dart';
 
 String markWord(String label) => label == 'зачёт' ? 'зачёт' : '«$label»';
@@ -37,6 +38,11 @@ class _GoalCardState extends State<GoalCard> {
     try {
       final r = await widget.api.post('/sdo/goal/${widget.courseId}', {'label': label});
       HapticFeedback.lightImpact();
+      // Карточка в ленивом ListView: ушла за экран — создаётся заново из
+      // widget.goal. Пишем выбор и туда, иначе цель «сбрасывалась» на первую.
+      widget.goal
+        ..clear()
+        ..addAll(Map<String, dynamic>.from(r));
       setState(() {
         _g = Map<String, dynamic>.from(r);
         _error = null;
@@ -66,6 +72,7 @@ class _GoalCardState extends State<GoalCard> {
         (Icons.upload_rounded, 'работы: открыто ${g['open_count']} · до +${fmtNum(g['open_points'] ?? 0)}'),
       if ((g['attendance_left'] ?? 0) > 0)
         (Icons.groups_outlined, 'посещения лекций: до +${fmtNum(g['attendance_left'])}'),
+      if ((g['exam_left'] ?? 0) > 0) (Icons.workspace_premium_outlined, 'экзамен: до +${fmtNum(g['exam_left'])}'),
       if ((tk['total'] ?? 0) > 0)
         (
           Icons.task_alt_rounded,
@@ -73,7 +80,11 @@ class _GoalCardState extends State<GoalCard> {
               '${(tk['left'] ?? 0) > 0 ? ' → из ${tk['open']} открытых зачесть ${tk['left']}' : ''}',
         ),
       if (need > 0 && status != 'done')
-        (Icons.auto_awesome_outlined, 'если сдать всё и ходить на лекции — до ${fmtNum(g['best'] ?? 0)}'),
+        (
+          Icons.auto_awesome_outlined,
+          'если сдать всё, ходить на лекции${(g['exam_left'] ?? 0) > 0 ? ' и сдать экзамен' : ''}'
+              ' — до ${fmtNum(g['best'] ?? 0)}',
+        ),
       if ((g['lost_count'] ?? 0) > 0)
         (
           Icons.warning_amber_rounded,
@@ -98,6 +109,16 @@ class _GoalCardState extends State<GoalCard> {
             children: [
               Text('Цель', style: s.title(20)),
               const Spacer(),
+              // набрал — капибара прыгает, не хватит — грустит (17Б)
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: switch (status) {
+                  'done' => CapyHop(key: const ValueKey('goal:joy'), size: 46, color: p.ok),
+                  'no' => CapySigh(key: const ValueKey('goal:sad'), size: 46, color: p.muted),
+                  _ => const SizedBox.shrink(),
+                },
+              ),
+              const SizedBox(width: Space.s),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(

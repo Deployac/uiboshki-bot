@@ -4,6 +4,8 @@ import aiosqlite
 
 from database._conn import connect
 
+MAX_SUBS = 5
+
 
 async def save_push_sub(user_id: int, endpoint: str, p256dh: str, auth: str, device: str = ""):
     async with connect() as db:
@@ -12,6 +14,12 @@ async def save_push_sub(user_id: int, endpoint: str, p256dh: str, auth: str, dev
             "ON CONFLICT(endpoint) DO UPDATE SET user_id = excluded.user_id, p256dh = excluded.p256dh, "
             "auth = excluded.auth, device = excluded.device",
             (endpoint, user_id, p256dh, auth, device[:120]))
+        # не больше MAX_SUBS устройств на человека — старые вытесняются (ревью безопасности 09.10:
+        # сотни подписок на «висящий» адрес задерживали рассылку всем)
+        await db.execute(
+            "DELETE FROM push_subs WHERE user_id = ? AND endpoint NOT IN "
+            "(SELECT endpoint FROM push_subs WHERE user_id = ? ORDER BY rowid DESC LIMIT ?)",
+            (user_id, user_id, MAX_SUBS))
         await db.commit()
 
 
@@ -28,5 +36,13 @@ async def delete_push_sub(endpoint: str, user_id: int | None = None) -> int:
         sql, args = sql + " AND user_id = ?", args + [user_id]
     async with connect() as db:
         cur = await db.execute(sql, args)
+        await db.commit()
+        return cur.rowcount
+
+
+async def delete_user_push_subs(user_id: int) -> int:
+    """«Выйти везде» — и пуши со всех устройств."""
+    async with connect() as db:
+        cur = await db.execute("DELETE FROM push_subs WHERE user_id = ?", (user_id,))
         await db.commit()
         return cur.rowcount

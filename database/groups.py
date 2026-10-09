@@ -95,11 +95,16 @@ def file_scope_sql(alias: str = "f") -> str:
 
 async def viewer_group(user_id: int | None) -> int:
     """Группа, чьи общие данные видит человек. Не выбрал (только что пришёл —
-    приложение и бот тут же спрашивают группу) — своя, как было до этапа 1."""
+    приложение и бот тут же спрашивают группу) — своя, как было до этапа 1.
+    Своя группа — только участникам её чата в Telegram (members.py, владелец
+    09.10): известно, что человек не в чате, — 0, данных своей группы нет."""
     if not home():
         return 0
     gid = await get_user_group(user_id) if user_id else None
-    return gid or home()
+    if gid and gid != home():
+        return gid
+    import members
+    return 0 if user_id and await members.known(user_id) is False else home()
 
 
 async def add_group_admin(group_id: int, user_id: int, added_by: int):
@@ -135,6 +140,14 @@ def g_or_home(group_id: int | None) -> int:
         return group_id
     cur = current_group.get()
     return home() if cur is None else cur
+
+
+def row_group(group_id: int | None) -> int:
+    """Группа СТРОКИ базы (дедлайн, ДЗ, заметка): NULL — всегда своя группа.
+    Не g_or_home: та подставляет группу запроса, и общий дедлайн УИБО-03-24
+    для человека из другой группы считался «его» — староста чужой группы мог
+    его править и удалять (ревью безопасности 09.10)."""
+    return home() if group_id is None else group_id
 
 
 async def enter(user_id: int) -> int:

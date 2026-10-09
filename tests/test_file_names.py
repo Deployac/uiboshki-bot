@@ -110,3 +110,34 @@ def test_single_unnumbered_test_not_numbered_and_same_type_duplicates_kept():
     ch = tidy_titles([_f(1, "Аттестация_Вопросы на сессию", category="control"),
                       _f(2, "Открытые источники", file_name="a.docx"), _f(3, "Открытые источники", file_name="b.docx")])
     assert ch == {1: "Аттестация Вопросы на сессию"}       # не «Тест 1», дубли без «(DOCX)»
+
+
+# Настоящие названия из СДО (скрин владельца 09.10, «Архитектура предприятия»):
+# лекции пришли транслитом — по-русски, английские термины остаются.
+ARCH = [
+    ("Lektsiya 01 Arhitektura predpriyatiya", "Лекция 1. Архитектура предприятия"),
+    ("Lektsiya 02 Frameworks TOGAF ArchiMate ARIS", "Лекция 2. Frameworks TOGAF ArchiMate ARIS"),
+    ("Lektsiya 03 Biznes arhitektura", "Лекция 3. Бизнес архитектура"),
+    ("Lektsiya 04 Modeli ARIS", "Лекция 4. Модели ARIS"),
+    ("Lektsiya 05 Protsessnaya arhitektura", "Лекция 5. Процессная архитектура"),
+    ("Lektsiya 06 ArchiMate 4", "Лекция 6. ArchiMate 4"),
+    ("Lektsiya 07 Baseline Target Gap", "Лекция 7. Baseline Target Gap"),
+    ("Lektsiya 08 Roadmap Governance", "Лекция 8. Roadmap Governance"),
+]
+
+
+def test_translit_lectures_back_to_russian():
+    files = [_f(i, t, "Архитектура предприятия", t.replace(" ", "_") + ".pptx") for i, (t, _) in enumerate(ARCH)]
+    files += [_f(100 + i, f"Лекция {i}", "Архитектура предприятия", f"l{i}.pdf") for i in range(1, 9)]
+    ch = tidy_titles(files)
+    assert [ch.get(i) for i in range(len(ARCH))] == [new for _, new in ARCH]
+    assert not any(100 + i in ch for i in range(1, 9))         # русские — как были
+
+
+def test_translit_only_lesson_titles():
+    from file_categories import detect_category
+    from translit import from_translit
+    assert detect_category("Lektsiya 05 Protsessnaya arhitektura") == "lecture"
+    for t in ["Lecture 1 Intro", "ArchiMate 3.1 Specification", "Лекция 5. Презентация", "Roadmap"]:
+        assert from_translit(t) == t
+    assert from_translit("Prakticheskaya rabota 3") == "Практическая работа 3"

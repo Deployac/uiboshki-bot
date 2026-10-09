@@ -91,14 +91,24 @@ def _download_name(f: dict, file_path: str = "") -> str:
     return re.sub(r'[\\/:*?"<>|]+', " ", f.get("title") or "file").strip()[:100] + ext
 
 
+async def _visible_file(file_id: int, user: dict) -> dict:
+    """Файл по номеру — только если виден группе человека. Раньше ссылка на
+    скачивание, страница и конспект отдавались по любому номеру: перебором
+    выкачивались файлы всех групп (ревью безопасности 09.10)."""
+    from database import get_file_by_id
+    from database.files import file_visible
+    from database.groups import viewer_group
+    f = await get_file_by_id(file_id)
+    if not f or not await file_visible(file_id, await viewer_group(user["id"])):
+        raise HTTPException(404, "Файл не найден")
+    return f
+
+
 @router.post("/api/files/{file_id}/link")
 async def api_file_link(file_id: int, request: Request, user: dict = CurrentUser):
     import time
     from urllib.parse import quote
-    from database import get_file_by_id
-    f = await get_file_by_id(file_id)
-    if not f:
-        raise HTTPException(404, "Файл не найден")
+    f = await _visible_file(file_id, user)
     try:
         tf = await deps.tg_bot().get_file(f["file_id"])
     except Exception as e:
@@ -172,7 +182,9 @@ async def api_file_edit(file_id: int, body: FileMeta, user: dict = CurrentUser):
     f = next((x for x in await get_files() if x["id"] == file_id), None)
     if not f:
         raise HTTPException(status_code=404, detail="файл не найден")
-    if f.get("uploaded_by") != user["id"] and not await is_editor(user["id"]):
+    from database.groups import row_group
+    # староста — группы самого файла: файл своей группы, общий с чужой, её староста не правит
+    if f.get("uploaded_by") != user["id"] and not await is_editor(user["id"], row_group(f.get("group_id"))):
         raise HTTPException(status_code=403, detail="править файл может тот, кто его загрузил, или староста")
     title, subject = body.title.strip(), body.subject.strip()
     if not title or len(title) > 120:
@@ -207,21 +219,15 @@ async def _summary_view(f: dict, s: dict | None = None) -> dict:
 @router.get("/api/summary/{file_id}")
 async def api_summary(file_id: int, user: dict = CurrentUser):
     """Конспект файла, если его уже кто-то сделал (иначе summary: null)."""
-    from database import get_file_by_id
-    f = await get_file_by_id(file_id)
-    if not f:
-        raise HTTPException(404, "Файл не найден")
-    return await _summary_view(f)
+    return await _summary_view(await _visible_file(file_id, user))
 
 
 @router.post("/api/summary/{file_id}")
 async def api_summary_make(file_id: int, user: dict = CurrentUser):
     """«Сделать конспект»: первый нажавший ждёт ИИ, дальше конспект у всех."""
     import lecture_summary
-    from database import get_file_by_id, get_file_summary
-    f = await get_file_by_id(file_id)
-    if not f:
-        raise HTTPException(404, "Файл не найден")
+    from database import get_file_summary
+    f = await _visible_file(file_id, user)
     import ai_quota
     why = None if await get_file_summary(file_id) else await ai_quota.gate(user["id"], kind="summary")
     if why:
@@ -296,11 +302,8 @@ def _pg_sig(file_id: int, page: int, exp: int) -> str:
 @router.get("/api/files/{file_id}/page/{page}")
 async def api_file_page(file_id: int, page: int, request: Request, user: dict = CurrentUser):
     import time
-    from database import get_file_by_id
     from semantic_index import open_index
-    f = await get_file_by_id(file_id)
-    if not f:
-        raise HTTPException(404, "Файл не найден")
+    f = await _visible_file(file_id, user)
     async with open_index() as db:
         rows = await (await db.execute(
             "SELECT page_from, page_to, kind, text FROM chunks WHERE file_id=? ORDER BY page_from, id", (file_id,))).fetchall()

@@ -1,16 +1,21 @@
-// «Ещё» — кто я и из какой группы, уведомления, безопасность, предметы по
-// выбору, календарь в телефоне, шрифт, тема, выход.
+// «Ещё» (дизайн 23Б, владелец 09.10): сверху кто я и группа, под ними баллы
+// БРС одной цифрой и одной фразой (нажал — «Учёба»), ниже настройки плитками
+// по две; действия с пояснениями — строками под плитками.
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/api.dart';
+import '../api/links.dart';
+import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
-import '../api/links.dart';
+import '../widgets/goal_card.dart';
 import 'notify.dart';
+import 'sdo_connect.dart';
 import 'security.dart';
+import 'study.dart';
 
 class MoreScreen extends StatelessWidget {
   final Api api;
@@ -20,6 +25,13 @@ class MoreScreen extends StatelessWidget {
 
   /// «Группа» → выбрать другую (оболочка перестроит экраны).
   final VoidCallback? onGroup;
+
+  /// Карточка баллов → вкладка «Учёба» (её переключает оболочка).
+  final VoidCallback? onStudy;
+
+  /// Подключил СДО отсюда — оболочка перезагрузит «Учёбу» (иначе там висит
+  /// «Подключить СДО», пока не потянешь экран).
+  final VoidCallback? onSdo;
   const MoreScreen({
     super.key,
     required this.api,
@@ -27,6 +39,8 @@ class MoreScreen extends StatelessWidget {
     required this.onLogout,
     this.onUnauthorized,
     this.onGroup,
+    this.onStudy,
+    this.onSdo,
   });
 
   @override
@@ -39,72 +53,71 @@ class MoreScreen extends StatelessWidget {
       builder: (context, me, _) => ListView(
         padding: const EdgeInsets.only(bottom: 120),
         children: [
-          ScreenTitle(eyebrow: 'профиль и настройки', title: me['first_name'] ?? 'Ещё'),
-          const Section('Моя группа'),
+          _Profile(me: me),
+          // баллы грузятся сами по себе: СДО не отвечает — остальной экран работает
+          _PointsCard(api: api, me: me, onOpen: onStudy, onSdo: onSdo),
+          const SizedBox(height: Space.m),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: Tile(
-              onTap: onGroup,
-              child: Row(
-                children: [
-                  Icon(Icons.groups_outlined, color: p.accent),
-                  const SizedBox(width: Space.m),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(me['group']?['name'] ?? 'не выбрана', style: s.body(16, weight: FontWeight.w600)),
-                        Text('расписание и сроки — этой группы', style: s.body(13, color: p.muted)),
-                      ],
+            child: FutureBuilder<Map<String, String>>(
+              future: appLinks(api),
+              builder: (context, snap) {
+                final links = _links(snap.data ?? const {});
+                return _TileGrid(
+                  items: [
+                    _TileItem(
+                      key: const Key('more:notify'),
+                      icon: Icons.notifications_none_rounded,
+                      title: 'Уведомления',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => NotifyScreen(api: api, onUnauthorized: onUnauthorized),
+                        ),
+                      ),
                     ),
-                  ),
-                  Text(
-                    'Сменить',
-                    style: s.body(14, weight: FontWeight.w600, color: p.accent),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (me['group'] != null && me['group']['own'] != true)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.l, 0),
-              child: _AdminRequest(api: api),
-            ),
-          const Section('Шрифт'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: Row(
-              children: [
-                for (final f in FontChoice.values) ...[
-                  if (f != FontChoice.values.first) const SizedBox(width: Space.s),
-                  Expanded(
-                    child: _FontCard(choice: f, selected: s.font == f, onTap: () => onFont(f)),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          const Section('Тема'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Space.l),
-            child: Tile(
-              child: Row(
-                children: [
-                  Icon(p.dark ? Icons.dark_mode_outlined : Icons.light_mode_outlined, color: p.accent),
-                  const SizedBox(width: Space.m),
-                  Expanded(
-                    child: Text(
-                      p.dark ? '«Глубина» — тёмная, как в телефоне' : '«Тетрадь» — светлая, как в телефоне',
-                      style: s.body(15),
+                    _TileItem(
+                      key: const Key('more:theme'),
+                      icon: Icons.palette_outlined,
+                      title: 'Тема и шрифт',
+                      onTap: () => _themeSheet(context),
                     ),
-                  ),
-                ],
-              ),
+                    _TileItem(
+                      key: const Key('more:security'),
+                      icon: Icons.shield_outlined,
+                      title: 'Безопасность',
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => SecurityScreen(api: api, onLogout: onLogout, onUnauthorized: onUnauthorized),
+                        ),
+                      ),
+                    ),
+                    _TileItem(
+                      key: const Key('more:calendar'),
+                      icon: Icons.event_available_outlined,
+                      title: 'Календарь',
+                      onTap: () => _copyCalendar(context),
+                    ),
+                    _TileItem(
+                      key: const Key('more:group'),
+                      icon: Icons.swap_horiz_rounded,
+                      title: 'Группа',
+                      onTap: onGroup,
+                    ),
+                    // «Новости и связь» — если сервер знает ссылки (/api/meta → links)
+                    if (links.isNotEmpty)
+                      _TileItem(
+                        key: const Key('more:links'),
+                        icon: Icons.forum_outlined,
+                        title: 'Новости и связь',
+                        onTap: () => showLinksSheet(context, links),
+                      ),
+                  ],
+                );
+              },
             ),
           ),
           _Optional(api: api),
-          const Section('Настройки'),
+          const SizedBox(height: Space.m),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
             child: Tile(
@@ -112,46 +125,20 @@ class MoreScreen extends StatelessWidget {
               child: Column(
                 children: [
                   _MenuRow(
-                    icon: Icons.notifications_none_rounded,
-                    title: 'Уведомления',
-                    sub: 'утро, пары, дедлайны — что и в какие дни',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => NotifyScreen(api: api, onUnauthorized: onUnauthorized),
-                      ),
-                    ),
-                  ),
-                  Divider(height: 1, color: p.line),
-                  _MenuRow(
-                    icon: Icons.shield_outlined,
-                    title: 'Безопасность',
-                    sub: 'устройства, вход без Telegram',
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SecurityScreen(api: api, onLogout: onLogout, onUnauthorized: onUnauthorized),
-                      ),
-                    ),
-                  ),
-                  Divider(height: 1, color: p.line),
-                  _MenuRow(
-                    icon: Icons.event_available_outlined,
-                    title: 'Календарь в телефоне',
-                    sub: 'пары и дедлайны — подпиской',
-                    onTap: () => _copyCalendar(context),
-                  ),
-                  Divider(height: 1, color: p.line),
-                  _MenuRow(
                     icon: Icons.group_add_outlined,
                     title: 'Позвать',
                     sub: 'ссылка на бота — для одногруппников',
                     onTap: () => _invite(context),
                   ),
-                  _LinkRows(api: api),
+                  if (me['group'] != null && me['group']['own'] != true) ...[
+                    Divider(height: 1, color: p.line),
+                    _AdminRequest(api: api),
+                  ],
                 ],
               ),
             ),
           ),
-          const Section('Аккаунт'),
+          const SizedBox(height: Space.s),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
             child: Tile(
@@ -186,6 +173,38 @@ class MoreScreen extends StatelessWidget {
     );
   }
 
+  /// Ссылки «Новости и связь»: канал бота и «Написать нам» — что задал сервер.
+  static List<(IconData, String, String, String, String)> _links(Map<String, String> l) => [
+    if ((l['channel'] ?? '').isNotEmpty)
+      (
+        Icons.campaign_outlined,
+        'Канал бота',
+        'Новости, как всё устроено и что нового',
+        'Открыть канал',
+        _url(l['channel']!),
+      ),
+    if ((l['contact'] ?? '').isNotEmpty)
+      (
+        Icons.chat_bubble_outline_rounded,
+        'Написать нам',
+        'Идея, ошибка или вопрос — ответим',
+        'Написать',
+        _url(l['contact']!),
+      ),
+  ];
+
+  /// «@имя» → https://t.me/имя
+  static String _url(String v) => v.startsWith('@') ? 'https://t.me/${v.substring(1)}' : v;
+
+  /// «Тема и шрифт» — лист: шрифт выбирается, тема — как в телефоне.
+  Future<void> _themeSheet(BuildContext context) => showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppStyle.of(context).p.cardSolid,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (_) => _ThemeSheet(onFont: onFont),
+  );
+
   /// Адрес сервера для ссылок наружу (на стенде base пустой — тот же сайт).
   static String get _origin => Api.base.isEmpty ? Uri.base.origin : Api.base;
 
@@ -213,20 +232,516 @@ class MoreScreen extends StatelessWidget {
   }
 }
 
+/// Шапка: кружок с первой буквой имени, имя и группа — без подписи над ними
+/// (владелец: «профиль и настройки» курсивом смотрелись странно).
+class _Profile extends StatelessWidget {
+  final Map<String, dynamic> me;
+  const _Profile({required this.me});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final first = '${me['first_name'] ?? ''}'.trim();
+    final user = '${me['username'] ?? ''}'.trim();
+    final name = first.isNotEmpty ? first : (user.isNotEmpty ? '@$user' : 'Ещё');
+    final letter = first.isNotEmpty ? first.characters.first.toUpperCase() : '';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.xl, Space.l, Space.xl, Space.l),
+      child: Row(
+        children: [
+          ExcludeSemantics(
+            child: Container(
+              width: 52,
+              height: 52,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: p.accent, shape: BoxShape.circle),
+              child: letter.isEmpty
+                  ? Icon(Icons.person_rounded, color: p.onAccent)
+                  : Text(
+                      letter,
+                      textScaler: TextScaler.noScaling,
+                      style: s.body(22, weight: FontWeight.w800, color: p.onAccent).copyWith(height: 1),
+                    ),
+            ),
+          ),
+          const SizedBox(width: Space.m),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: s.name(22)),
+                const SizedBox(height: 2),
+                Text('${me['group']?['name'] ?? 'группа не выбрана'}', style: s.body(14, color: p.muted)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Баллы БРС одной фразой: средний балл по журналам, на сколько предметов уже
+/// хватает первой отметки («3» у экзамена, зачёт у зачёта; порог — свой у
+/// курса) и где баллов меньше всего.
+class PointsSummary {
+  /// Предметов в журнале; из них с отметками — rated, первая уже есть — reached.
+  final int total, rated, reached, average;
+
+  /// Где баллов меньше всего (null — предмет один, сравнивать не с чем).
+  final Course? lowest;
+
+  /// Какие первые отметки встречаются: «3», зачёт.
+  final List<String> firsts;
+
+  /// Баллов нет нигде (начало семестра, журналы пустые).
+  final bool blank;
+
+  const PointsSummary._(this.total, this.rated, this.reached, this.average, this.lowest, this.firsts, this.blank);
+
+  factory PointsSummary.of(List<Course> courses) {
+    if (courses.isEmpty) return const PointsSummary._(0, 0, 0, 0, null, [], true);
+    var rated = 0, reached = 0;
+    final firsts = <String>[];
+    for (final c in courses) {
+      if (c.marks.isEmpty) continue;
+      final first = c.marks.reduce((a, b) => b.at < a.at ? b : a);
+      rated++;
+      if (c.score >= first.at) reached++;
+      if (!firsts.contains(first.label)) firsts.add(first.label);
+    }
+    firsts.sort((a, b) => (a == 'зачёт' ? 1 : 0) - (b == 'зачёт' ? 1 : 0)); // «3» раньше зачёта
+    final sum = courses.fold<num>(0, (acc, c) => acc + c.score);
+    final lowest = courses.reduce((a, b) => b.score < a.score ? b : a);
+    return PointsSummary._(
+      courses.length,
+      rated,
+      reached,
+      (sum / courses.length).round(),
+      courses.length > 1 ? lowest : null,
+      firsts,
+      courses.every((c) => c.score <= 0),
+    );
+  }
+
+  /// Фраза кусками: (текст, жирный).
+  List<(String, bool)> get parts {
+    if (total == 0) return const [('Пока пусто — преподаватели ещё не завели журналы.', false)];
+    String of(int n) => plural(n, 'предмета', 'предметов', 'предметов'); // «из 21 предмета»
+    if (blank) {
+      return [(total > 1 ? 'Баллов пока нет — ни в одном из $total ${of(total)}.' : 'Баллов пока нет.', false)];
+    }
+    final mark = firsts.map(markWord).join(' или ');
+    return [
+      if (rated > 0 && reached == 0) ('На $mark пока не хватает ни в одном из $rated ${of(rated)}.', false),
+      if (reached > 0) ...[('На $mark хватает в ', false), ('$reached из $rated', true), (' ${of(rated)}.', false)],
+      if (lowest != null) ...[
+        (' Меньше всего — ', false),
+        (lowest!.title, true),
+        (', ${fmtNum(lowest!.score)}.', false),
+      ],
+    ];
+  }
+
+  String get sentence => parts.map((x) => x.$1).join().trim();
+}
+
+typedef _Points = ({List<Course> courses, String? problem});
+
+/// «Баллы БРС, в среднем»: большая цифра и одна фраза. Без своего входа в СДО —
+/// «Подключи СДО», ведёт на вход. Не загрузилось — тихая строка, экран живёт.
+class _PointsCard extends StatefulWidget {
+  final Api api;
+
+  /// Ответ /me: пришёл новый (потянул экран вниз) — баллы тоже заново.
+  final Object me;
+  final VoidCallback? onOpen, onSdo;
+  const _PointsCard({required this.api, required this.me, this.onOpen, this.onSdo});
+
+  @override
+  State<_PointsCard> createState() => _PointsCardState();
+}
+
+class _PointsCardState extends State<_PointsCard> {
+  _Points? _d;
+  bool _failed = false, _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(_PointsCard old) {
+    super.didUpdateWidget(old);
+    // при первом запуске /me приходит дважды (запас, потом сеть) — баллы уже грузятся
+    if (!identical(old.me, widget.me) && !_busy) _load(cache: false);
+  }
+
+  Future<_Points> _fetch() async {
+    try {
+      final j = await widget.api.get('/sdo/grades');
+      return (courses: [for (final c in j['courses'] as List) Course.fromJson(c)], problem: null);
+    } on ApiError catch (e) {
+      return (courses: <Course>[], problem: e.message);
+    }
+  }
+
+  Future<void> _load({bool cache = true}) async {
+    _busy = true;
+    try {
+      if (cache) {
+        final c = await Api.fromCache(_fetch);
+        if (c != null && mounted && _d == null) setState(() => _d = c);
+      }
+      final d = await _fetch();
+      if (mounted) {
+        setState(() {
+          _d = d;
+          _failed = false;
+        });
+      }
+    } catch (_) {
+      // нет сети и запаса — тихая строка «не загрузились» (если прошлых баллов нет);
+      // вход в бота устарел — это решит загрузка /me
+      if (mounted) setState(() => _failed = _d == null);
+    } finally {
+      _busy = false;
+    }
+  }
+
+  Future<void> _connect() async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => SdoConnectScreen(api: widget.api)));
+    widget.onSdo?.call();
+    if (mounted) await _load(cache: false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final d = _d;
+    if (d == null && _failed) {
+      return _Quiet(text: 'Баллы не загрузились — нажми, чтобы попробовать ещё раз', onTap: () => _load(cache: false));
+    }
+    if (d != null && d.problem != null) {
+      if (needsSdo(d.problem!)) {
+        final expired = d.problem!.contains('устарел');
+        return _Quiet(
+          key: const Key('more:sdo'),
+          icon: Icons.school_outlined,
+          title: expired ? 'Вход в СДО устарел — подключи заново' : 'Подключи СДО — тут будут баллы',
+          text: 'Баллы БРС по каждому предмету и сколько до зачёта или «3»',
+          onTap: _connect,
+        );
+      }
+      return _Quiet(text: 'Баллы не видны: ${d.problem}', onTap: () => _load(cache: false));
+    }
+    return _PointsBody(sum: d == null ? null : PointsSummary.of(d.courses), onTap: widget.onOpen);
+  }
+}
+
+class _PointsBody extends StatelessWidget {
+  /// null — ещё считаем.
+  final PointsSummary? sum;
+  final VoidCallback? onTap;
+  const _PointsBody({required this.sum, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final sum = this.sum;
+    final words = Text.rich(
+      TextSpan(
+        children: sum == null
+            ? [
+                TextSpan(
+                  text: 'Считаю баллы…',
+                  style: TextStyle(color: p.muted),
+                ),
+              ]
+            : [
+                for (final (text, bold) in sum.parts)
+                  TextSpan(
+                    text: text,
+                    style: bold ? const TextStyle(fontWeight: FontWeight.w700) : null,
+                  ),
+              ],
+      ),
+      style: s.body(14).copyWith(height: 1.45),
+    );
+    final number = sum == null || sum.total == 0 ? null : Text('${sum.average}', style: s.number(44));
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Space.l),
+      child: Tile(
+        key: const Key('more:points'),
+        radius: Radii.card,
+        onTap: onTap,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Баллы БРС, в среднем', style: s.body(13, color: p.muted)),
+                ),
+                if (onTap != null) Icon(Icons.chevron_right_rounded, size: 20, color: p.muted),
+              ],
+            ),
+            const SizedBox(height: Space.s),
+            if (number == null)
+              words
+            else
+              // цифра слева, фраза справа; узко или крупный шрифт — фраза под цифрой
+              LayoutBuilder(
+                builder: (context, box) => box.maxWidth / MediaQuery.textScalerOf(context).scale(1) >= 280
+                    ? Row(
+                        children: [
+                          number,
+                          const SizedBox(width: Space.l),
+                          Expanded(child: words),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          number,
+                          const SizedBox(height: Space.s),
+                          words,
+                        ],
+                      ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Карточка-строка вместо баллов: «Подключи СДО» или тихая подсказка.
+class _Quiet extends StatelessWidget {
+  final IconData icon;
+  final String? title;
+  final String text;
+  final VoidCallback onTap;
+  const _Quiet({super.key, this.icon = Icons.cloud_off_rounded, this.title, required this.text, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Space.l),
+      child: Tile(
+        radius: title == null ? Radii.tile : Radii.card,
+        onTap: onTap,
+        child: Row(
+          children: [
+            if (title == null) Icon(icon, size: 20, color: p.muted) else _IconBox(icon: icon),
+            const SizedBox(width: Space.m),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (title != null) Text(title!, style: s.body(16, weight: FontWeight.w600)),
+                  Text(text, style: s.body(13, color: p.muted)),
+                ],
+              ),
+            ),
+            if (title != null) Icon(Icons.chevron_right_rounded, color: p.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Значок в мягком квадрате цвета акцента — у плиток настроек.
+class _IconBox extends StatelessWidget {
+  final IconData icon;
+  const _IconBox({required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(color: p.accent.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(11)),
+      child: Icon(icon, size: 19, color: p.accent),
+    );
+  }
+}
+
+class _TileItem {
+  final Key key;
+  final IconData icon;
+  final String title;
+  final VoidCallback? onTap;
+  const _TileItem({required this.key, required this.icon, required this.title, required this.onTap});
+}
+
+/// Настройки плитками по две; нечётная последняя — во всю ширину строкой.
+class _TileGrid extends StatelessWidget {
+  final List<_TileItem> items;
+  const _TileGrid({required this.items});
+
+  static const _gap = Space.s;
+
+  /// Один размер надписей на всю сетку: самое длинное слово («Безопасность»,
+  /// «Уведомления») влезает в половину строки целиком, не рвётся на «…ни/я»
+  /// на узком экране с крупным шрифтом — и плитки не разнобой по размеру.
+  TextStyle _fit(BuildContext context, TextStyle style, double width) {
+    final scaler = MediaQuery.textScalerOf(context);
+    var widest = 0.0;
+    for (final it in items) {
+      for (final w in it.title.split(' ')) {
+        final tp = TextPainter(
+          text: TextSpan(text: w, style: style),
+          textScaler: scaler,
+          textDirection: Directionality.of(context),
+        )..layout();
+        if (tp.width > widest) widest = tp.width;
+        tp.dispose();
+      }
+    }
+    return widest <= width ? style : style.copyWith(fontSize: style.fontSize! * width / widest * 0.98);
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      // Text добавляет к стилю тему (интервал букв) — меряем тем же, что рисуем
+      final base = DefaultTextStyle.of(context).style.merge(AppStyle.of(context).body(15, weight: FontWeight.w600));
+      final style = _fit(context, base, (box.maxWidth - _gap) / 2 - 2 * Space.m - 2);
+      return Column(
+        children: [
+          for (var i = 0; i < items.length; i += 2)
+            Padding(
+              padding: EdgeInsets.only(top: i == 0 ? 0 : _gap),
+              child: i + 1 < items.length
+                  ? IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(
+                            child: _SettingTile(item: items[i], style: style),
+                          ),
+                          const SizedBox(width: _gap),
+                          Expanded(
+                            child: _SettingTile(item: items[i + 1], style: style),
+                          ),
+                        ],
+                      ),
+                    )
+                  : _SettingTile(item: items[i], style: style, wide: true),
+            ),
+        ],
+      );
+    },
+  );
+}
+
+class _SettingTile extends StatelessWidget {
+  final _TileItem item;
+  final TextStyle style;
+
+  /// Во всю ширину — строкой: значок слева, название справа.
+  final bool wide;
+  const _SettingTile({required this.item, required this.style, this.wide = false});
+
+  @override
+  Widget build(BuildContext context) => Tile(
+    key: item.key,
+    onTap: item.onTap,
+    padding: const EdgeInsets.all(Space.m),
+    child: wide
+        ? Row(
+            children: [
+              _IconBox(icon: item.icon),
+              const SizedBox(width: Space.m),
+              Expanded(child: Text(item.title, style: style)),
+            ],
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _IconBox(icon: item.icon),
+              const SizedBox(height: Space.s + 2),
+              Text(item.title, style: style),
+            ],
+          ),
+  );
+}
+
+/// Лист «Тема и шрифт»: шрифт — «Книжный» или «Строгий»; тема — как в телефоне.
+class _ThemeSheet extends StatelessWidget {
+  final ValueChanged<FontChoice> onFont;
+  const _ThemeSheet({required this.onFont});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.l),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Тема и шрифт', style: s.title(22)),
+            const SizedBox(height: Space.m),
+            Row(
+              children: [
+                for (final f in FontChoice.values) ...[
+                  if (f != FontChoice.values.first) const SizedBox(width: Space.s),
+                  Expanded(
+                    child: _FontCard(choice: f, selected: s.font == f, onTap: () => onFont(f)),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: Space.s),
+            Tile(
+              child: Row(
+                children: [
+                  Icon(p.dark ? Icons.dark_mode_outlined : Icons.light_mode_outlined, color: p.accent),
+                  const SizedBox(width: Space.m),
+                  Expanded(
+                    child: Text(
+                      p.dark ? 'Тема «Глубина» — тёмная, как в телефоне' : 'Тема «Тетрадь» — светлая, как в телефоне',
+                      style: s.body(15),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MenuRow extends StatelessWidget {
   final IconData icon;
   final String title, sub;
-  final VoidCallback onTap;
+
+  /// null — строка не нажимается (запрос уже отправлен).
+  final VoidCallback? onTap;
   const _MenuRow({required this.icon, required this.title, required this.sub, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     return InkWell(
-      onTap: () {
-        tick();
-        onTap();
-      },
+      onTap: onTap == null
+          ? null
+          : () {
+              tick();
+              onTap!();
+            },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
         child: Row(
@@ -242,7 +757,7 @@ class _MenuRow extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: s.p.muted),
+            if (onTap != null) Icon(Icons.chevron_right_rounded, color: s.p.muted),
           ],
         ),
       ),
@@ -431,7 +946,7 @@ class _FontCard extends StatelessWidget {
 }
 
 /// «Я староста этой группы» — запрос владельцу бота (одобрит — можно вести
-/// общие сроки, ДЗ и заметки группы).
+/// общие сроки, ДЗ и заметки группы). Строкой под плитками: действие с пояснением.
 class _AdminRequest extends StatefulWidget {
   final Api api;
   const _AdminRequest({required this.api});
@@ -444,66 +959,78 @@ class _AdminRequestState extends State<_AdminRequest> {
   String? _note;
 
   @override
-  Widget build(BuildContext context) {
-    final s = AppStyle.of(context);
-    return Tile(
-      onTap: _note != null
-          ? null
-          : () async {
-              try {
-                await widget.api.post('/me/group/admin');
-                setState(() => _note = 'Запрос отправлен — ответ придёт в бота.');
-              } on ApiError catch (e) {
-                setState(() => _note = e.message);
-              }
-            },
-      padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
-      child: Row(
-        children: [
-          Icon(Icons.verified_user_outlined, color: s.p.muted, size: 20),
-          const SizedBox(width: Space.m),
-          Expanded(child: Text(_note ?? 'Я староста этой группы', style: s.body(15))),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) => _MenuRow(
+    icon: Icons.verified_user_outlined,
+    title: 'Я староста этой группы',
+    sub: _note ?? 'спрошу владельца бота — сможешь вести общие сроки и ДЗ',
+    onTap: _note != null
+        ? null
+        : () async {
+            try {
+              await widget.api.post('/me/group/admin');
+              setState(() => _note = 'Запрос отправлен — ответ придёт в бота.');
+            } on ApiError catch (e) {
+              setState(() => _note = e.message);
+            }
+          },
+  );
 }
 
-/// «Канал бота» и «Написать нам» — если сервер их знает (/api/meta → links).
-class _LinkRows extends StatelessWidget {
-  final Api api;
-  const _LinkRows({required this.api});
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppStyle.of(context).p;
-    return FutureBuilder<Map<String, String>>(
-      future: appLinks(api),
-      builder: (context, snap) {
-        final l = snap.data ?? const {};
-        final rows = [
-          if ((l['channel'] ?? '').isNotEmpty)
-            (Icons.campaign_outlined, 'Канал бота', 'новости и как всё устроено', _url(l['channel']!)),
-          if ((l['contact'] ?? '').isNotEmpty)
-            (Icons.chat_bubble_outline_rounded, 'Написать нам', 'идея, ошибка, вопрос', _url(l['contact']!)),
-        ];
-        return Column(
+/// Лист «Новости и связь»: что за ссылка — и кнопка «Перейти», решает человек.
+Future<void> showLinksSheet(BuildContext context, List<(IconData, String, String, String, String)> links) {
+  final s = AppStyle.of(context);
+  final p = s.p;
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: p.cardSolid,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.l),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            for (final (icon, title, sub, url) in rows) ...[
-              Divider(height: 1, color: p.line),
-              _MenuRow(
-                icon: icon,
-                title: title,
-                sub: sub,
-                onTap: () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+            Text('Новости и связь', style: s.title(22)),
+            const SizedBox(height: Space.m),
+            for (final (icon, title, sub, button, url) in links)
+              Padding(
+                padding: const EdgeInsets.only(bottom: Space.s),
+                child: Tile(
+                  child: Row(
+                    children: [
+                      Icon(icon, color: p.accent),
+                      const SizedBox(width: Space.m),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(title, style: s.body(16, weight: FontWeight.w600)),
+                            Text(sub, style: s.body(13, color: p.muted)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: Space.s),
+                      FilledButton(
+                        key: Key('go:$title'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: p.accent,
+                          foregroundColor: p.onAccent,
+                          shape: const StadiumBorder(),
+                        ),
+                        onPressed: () {
+                          tick();
+                          launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                        },
+                        child: Text(button),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ],
           ],
-        );
-      },
-    );
-  }
-
-  /// «@имя» → https://t.me/имя
-  static String _url(String v) => v.startsWith('@') ? 'https://t.me/${v.substring(1)}' : v;
+        ),
+      ),
+    ),
+  );
 }

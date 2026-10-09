@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api/api.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import 'files.dart';
 import '../api/links.dart';
@@ -134,7 +135,6 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final p = AppStyle.of(context).p;
     final st = _st;
     return Scaffold(
       body: Backdrop(
@@ -143,12 +143,9 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
             padding: const EdgeInsets.only(bottom: Space.xxl),
             children: [
               const BackRow(),
-              const ScreenTitle(eyebrow: 'свой вход · online-edu.mirea.ru', title: 'Вход в СДО'),
+              const ScreenTitle(title: 'Вход в СДО'),
               if (st == null && _loadError == null)
-                Padding(
-                  padding: const EdgeInsets.all(Space.xxl),
-                  child: Center(child: CircularProgressIndicator(color: p.accent, strokeWidth: 2.5)),
-                )
+                Padding(padding: const EdgeInsets.all(Space.xxl), child: const CapyLoading())
               else if (st == null)
                 Notice(
                   title: 'Не загрузилось',
