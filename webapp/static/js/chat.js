@@ -161,7 +161,9 @@ function appendMsg(role, content, reasoning, html, att, scroll = true, files, so
   if (content || html) {
     const textNode = document.createElement("div");
     // html собирает сервер (utils.md_to_tg_html_chunks): всё, кроме <b>/<i>/<code>/<pre>, экранировано
-    if (html) textNode.innerHTML = html; else textNode.textContent = content;
+    // переносы строк вокруг блока кода не нужны (white-space: pre-wrap): блок сам
+    // с новой строки, а лишние \n давали две-три пустые строки до и после кода
+    if (html) textNode.innerHTML = html.replace(/\n*(<pre>[\s\S]*?<\/pre>)\n*/g, "$1"); else textNode.textContent = content;
     // номера фрагментов [1], [2] от поиска по смыслу — нажимаемые: страница лекции
     if (html && sources && sources.some(f => f.n)) {
       textNode.innerHTML = textNode.innerHTML.replace(/\[(\d{1,2})\]/g, (m, n) =>

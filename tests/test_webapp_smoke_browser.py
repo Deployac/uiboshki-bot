@@ -278,3 +278,59 @@ async def test_site_narrow_layout(db, monkeypatch):
     finally:
         await bot.stop_webapp(server, task)
         ratelimit.reset()
+
+
+# ── Ночь 09.10: зона B ──
+
+def _narrow_phone(url: str, init_data: str):
+    """iPhone 320×568 в полном экране Telegram: (ширина страницы с блоком кода
+    в чате, низ кнопки «Дальше» в знакомстве)."""
+    import json
+    stub = (TG_STUB % json.dumps(init_data)).replace('platform: "tdesktop"', 'platform: "ios"') \
+        .replace('version: "7.0"', 'version: "8.0", isFullscreen: true, requestFullscreen() {}, '
+                 'safeAreaInset: { top: 20, bottom: 0 }, contentSafeAreaInset: { top: 46, bottom: 0 }') \
+        .replace("isVersionAtLeast: () => false", "isVersionAtLeast: () => true")
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": 320, "height": 568})
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script(stub)
+        page.goto(url)
+        page.wait_for_function("document.querySelectorAll('#daychips button').length === 6")
+        page.evaluate("document.getElementById('onboard').classList.remove('open'); switchTab('chat');"
+                      "appendMsg('assistant', 'код', '', 'Вот:\\n\\n<pre>' + 'x = 1 + '.repeat(60) + '</pre>\\n\\nВсё.')")
+        width = page.evaluate("document.documentElement.scrollWidth")
+        page.evaluate("showOnboard(0)")
+        bottom = page.evaluate("document.querySelector('#onboard .ob-next').getBoundingClientRect().bottom")
+        browser.close()
+    return width, bottom
+
+
+@pytest.mark.asyncio
+async def test_narrow_phone_chat_code_and_onboarding(db, monkeypatch):
+    """Блок кода в ответе ИИ раздвигал страницу вбок; на 320×568 в полном
+    экране кнопка «Дальше» знакомства уезжала за нижний край."""
+    import bot
+    import config
+    import schedule_parser
+    import webapp.deps as deps
+
+    async def mirea_down(*a, **k):
+        raise RuntimeError("МИРЭА не отвечает")
+
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(schedule_parser, "fetch_schedule_raw", mirea_down)
+    await db.upsert_user(222, "", "Alice")
+    await db.set_user_group(222, config.HOME_GROUP_ID)
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        width, bottom = await asyncio.to_thread(_narrow_phone, f"http://127.0.0.1:{port}/", _make_init_data())
+        assert width <= 320
+        assert bottom <= 568
+    finally:
+        await bot.stop_webapp(server, task)

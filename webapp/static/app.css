@@ -839,7 +839,6 @@
   .sec-ic { width: 34px; height: 34px; border-radius: 10px; flex: none; display: flex; align-items: center; justify-content: center;
     background: rgba(52,211,153,.13); color: #34d399; font-size: 17px; }
   .sec-ic .ico { vertical-align: 0; }
-  #security-sheet .sheet { max-height: 88vh; overflow-y: auto; }
 
   /* ── Уведомления: конструктор ── */
   .more-grid .sq.t-bell { background: linear-gradient(145deg, #fbbf24, #f0884b); }
@@ -1161,3 +1160,37 @@
   .login-card .primary { width: 100%; margin-bottom: 12px; }
   .dev-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--bg-raised); margin-top: 6px; }
   .dev-row div { flex: 1; } .dev-row b { display: block; font-size: 14px; } .dev-row span { font-size: 12px; color: var(--hint); }
+
+  /* ── Ночь 09.10: СДО, файлы, чат, листы ── */
+  /* Блок кода в ответе ИИ (<pre>) не переносится: длинная строка раздвигала
+     пузырь и всю страницу вбок. Теперь код листается внутри своей плашки. */
+  .msg pre { margin: 8px 0; padding: 8px 10px; border-radius: 10px; background: var(--bg-raised);
+    font-size: 12.5px; line-height: 1.4; white-space: pre; overflow-x: auto; max-width: 100%; }
+  .msg code { font-size: .9em; overflow-wrap: anywhere; }
+  .msg pre code { overflow-wrap: normal; }
+  .think summary::before { content: none; }   /* без эмодзи в интерфейсе */
+  /* Экран предмета на 320px: «Посещаемость» налезала на полоску — полоска
+     сжимается, название целым словом */
+  .cat-row .nm { min-width: auto; }
+  .cat-row .mb { flex: 0 1 70px; width: auto; min-width: 28px; }
+  /* «‹ Анализ и диагностика финансово-хозяйственной…» над ТК и посещениями —
+     одной строкой с многоточием, а не тремя строками по центру */
+  #tk-back, #pos-back { display: block; max-width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Полный экран Telegram: низ листа — над полоской «Домой» (env() там 0),
+     верх — ниже часов и кнопок Telegram */
+  html.fullscreen .sheet { padding-bottom: calc(18px + max(env(safe-area-inset-bottom), var(--safe-bottom, 0px)));
+    max-height: min(88vh, calc(100% - var(--safe-top, 0px) - 12px)); }
+  /* открыт лист или «Ещё» — полоса фона под часами тоже затемняется
+     (в светлой теме сверху оставалась белая полоса над тёмным фоном) */
+  html.fullscreen body:has(.sheet-backdrop.open, .more-backdrop.open)::before { display: none; }
+  /* Знакомство на низком экране: «Дальше» уезжало за край — теперь листается */
+  .onboard { overflow-y: auto; }
+  .onboard > * { flex-shrink: 0; }
+  @media (max-height: 640px) {
+    .ob-logo { margin-bottom: 12px; }
+    .ob-ic { width: 76px; height: 76px; border-radius: 22px; }
+    .ob-ic .ico { width: 38px; height: 38px; }
+    .ob-card h2 { margin: 16px 0 8px; font-size: 22px; }
+    .ob-card p { font-size: 14.5px; }
+    .ob-act { margin-top: 12px; }
+  }

@@ -1044,3 +1044,52 @@ def test_demo_news_seen_follows_current_release():
     зашитый номер (после смены id на v5.50 лист вылез поверх демо)."""
     demo = (STATIC / "site" / "demo.js").read_text(encoding="utf-8")
     assert 'news_seen: "v' not in demo and "NEWS.id" in demo
+
+
+# ── Ночь 09.10: зона B (СДО, файлы, чат, «Ещё» и листы) ──
+
+def _night_b_css():
+    return CSS.split("Ночь 09.10: СДО, файлы, чат, листы")[1]
+
+
+def test_chat_code_block_scrolls_inside_bubble():
+    # блок кода в ответе ИИ раздвигал страницу вбок (320px: ширина 1149px)
+    rule = re.search(r"\.msg pre \{([^}]*)\}", _night_b_css()).group(1)
+    assert "overflow-x: auto" in rule and "max-width: 100%" in rule
+    # и без лишних пустых строк вокруг блока
+    assert r'html.replace(/\n*(<pre>[\s\S]*?<\/pre>)\n*/g, "$1")' in JS["js/chat.js"]
+
+
+def test_no_emoji_in_reasoning_summary():
+    # «Ход мыслей» был с эмодзи мозга — в интерфейсе эмодзи не используем
+    assert ".think summary::before { content: none; }" in _night_b_css()
+
+
+def test_subject_category_name_not_under_bar():
+    # 320px: «Посещаемость» налезала на мини-полоску — полоска сжимается, а не имя
+    css = _night_b_css()
+    assert ".cat-row .nm { min-width: auto; }" in css
+    assert re.search(r"\.cat-row \.mb \{[^}]*flex: 0 1 70px", css)
+
+
+def test_long_subject_back_button_one_line():
+    # «‹ Анализ и диагностика финансово-хозяйственной…» шёл тремя строками по центру
+    rule = re.search(r"#tk-back, #pos-back \{([^}]*)\}", _night_b_css()).group(1)
+    assert "text-overflow: ellipsis" in rule and "white-space: nowrap" in rule and "text-align: left" in rule
+
+
+def test_fullscreen_sheets_clear_home_bar_and_top_buttons():
+    # полный экран Telegram: env() там 0 — низ листа (кнопка «Загрузить в СДО»)
+    # уходил под полоску «Домой», верх длинного листа — под кнопки Telegram
+    rule = re.search(r"html\.fullscreen \.sheet \{([^}]*)\}", _night_b_css()).group(1)
+    assert "var(--safe-bottom" in rule and "var(--safe-top" in rule
+    # своя max-height у листа «Безопасность» (с id) перебивала бы правило
+    assert "#security-sheet .sheet { max-height" not in CSS
+    # открытый лист затемняет и полосу под часами (светлая тема — белая полоса)
+    assert "html.fullscreen body:has(.sheet-backdrop.open, .more-backdrop.open)::before { display: none; }" in CSS
+
+
+def test_onboarding_fits_short_screen():
+    # 320×568 в полном экране: «Дальше» уезжало за нижний край
+    css = _night_b_css()
+    assert ".onboard { overflow-y: auto; }" in css and "@media (max-height: 640px)" in css
