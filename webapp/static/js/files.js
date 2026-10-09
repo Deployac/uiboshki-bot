@@ -35,6 +35,7 @@ function catLabel(c) {
 // Файл с текстом нажимается целиком (кроме кнопок) — открывается конспект.
 // Пилюля у названия: «есть текст» — ИИ прочитал файл и сделает конспект,
 // «конспект» — уже готов (дизайн-ревью, п. 14: крошечный значок не замечали).
+// «Лекция 8. Тема» — номер заголовком, тема строкой под ним (владелец, 09.10).
 function fileCard(f, withPlace) {
   const sub = withPlace ? (f.subject || "Без предмета") + " · " + catText(f.category_label) : (f.file_name || "");
   const badge = f.has_summary ? '<span class="fpill sum">' + icon("sparkle") + 'конспект</span>'
@@ -42,7 +43,8 @@ function fileCard(f, withPlace) {
   return '<div class="file-card" id="fc-' + f.id + '">' +
     fileTypeIcon(f.file_name) +
     '<div class="fbody' + (f.has_text ? ' tap" onclick="openSummary(' + f.id + ')' : '') + '">' +
-    '<div class="ft">' + escapeHtml(f.title) + (badge ? '\u2060' + badge : '') + '</div>' +
+    '<div class="ft">' + escapeHtml(f.head || f.title) + (badge ? '\u2060' + badge : '') + '</div>' +
+    (f.topic ? '<div class="ftopic">' + escapeHtml(f.topic) + '</div>' : '') +
     '<div class="fs">' + escapeHtml(sub) + '</div></div>' +
     '<button class="dl" onclick="downloadFile(' + f.id + ', this)" aria-label="Скачать">' + icon("download") + '</button>' +
     '<button onclick="openFile(' + f.id + ', this)">В чат</button>' +

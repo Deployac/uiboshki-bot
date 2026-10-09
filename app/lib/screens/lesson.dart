@@ -24,6 +24,12 @@ bool sameSubject(String a, String b) {
   return n(a) == n(b) || (n(a).length > 12 && n(b).startsWith(n(a))) || (n(b).length > 12 && n(a).startsWith(n(b)));
 }
 
+/// Одна лекция в PDF и PPTX — одной строкой (как в «Файлах»).
+Iterable<FileItem> _uniqueLectures(Iterable<FileItem> files) {
+  final seen = <String>{};
+  return files.where((f) => seen.add('${f.head}|${f.topic}'.toLowerCase()));
+}
+
 class LessonExtras {
   final Course? course;
   final List<FileItem> lectures;
@@ -172,7 +178,7 @@ class LessonScreen extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(horizontal: Space.l),
                           child: _CourseStrip(api: api, course: x.course!, color: c),
                         ),
-                      for (final f in x.lectures.reversed.take(3))
+                      for (final f in _uniqueLectures(x.lectures.reversed).take(3))
                         Padding(
                           padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.l, 0),
                           child: Tile(
@@ -183,7 +189,13 @@ class LessonScreen extends StatelessWidget {
                                 Icon(Icons.menu_book_outlined, size: 20, color: p.muted),
                                 const SizedBox(width: Space.m),
                                 Expanded(
-                                  child: Text(f.title, style: s.body(15, weight: FontWeight.w600)),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(f.head, style: s.body(15, weight: FontWeight.w600)),
+                                      if (f.topic.isNotEmpty) Text(f.topic, style: s.body(13, color: p.muted)),
+                                    ],
+                                  ),
                                 ),
                                 if (f.hasText)
                                   Text(

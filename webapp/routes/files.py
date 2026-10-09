@@ -35,6 +35,7 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
     # шлёт документ — см. handlers/start.py: cmd_start_deeplink.
     from database import get_file_ids_with_summary, get_file_ids_with_text
     from file_categories import CATEGORIES, LABELS, category_of
+    from file_names import split_title
     from database import is_editor
     with_text = await get_file_ids_with_text()
     with_summary = await get_file_ids_with_summary()
@@ -42,8 +43,12 @@ async def api_files(subject: str = "", q: str = "", user: dict = CurrentUser):
     out = []
     for f in items:
         cat = category_of(f)
+        # «Лекция 8. Тема» — номер заголовком, тема строкой под ним (владелец, 09.10);
+        # «Презентация» не тема: PDF и слайды одной лекции — одна строка в приложении
+        head, topic = split_title(f["title"])
         out.append({
             "id": f["id"], "title": f["title"], "subject": f.get("subject") or "",
+            "head": head or f["title"], "topic": "" if topic == "Презентация" else topic,
             "file_name": f.get("file_name") or "", "has_text": f["id"] in with_text,
             "has_summary": f["id"] in with_summary,
             "category": cat, "category_label": LABELS[cat],
@@ -120,8 +125,17 @@ async def api_file_link(file_id: int, request: Request, user: dict = CurrentUser
     return {"url": f"{base}/dl/{file_id}/{quote(name, safe='')}?exp={exp}&sig={_dl_sig(file_id, exp)}", "file_name": name}
 
 
+# «Просмотр» в браузере (?view=1) — только типы, которые браузер не исполнит:
+# PDF, картинки, офисные файлы (Safari на iPhone их листает); остальное — загрузкой
+_VIEW_TYPES = {"application/pdf", "image/png", "image/jpeg", "text/plain",
+               "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+               "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+               "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+               "application/vnd.ms-powerpoint", "application/msword", "application/vnd.ms-excel"}
+
+
 @router.get("/dl/{file_id}/{name}")
-async def download_file(file_id: int, name: str, exp: int, sig: str):
+async def download_file(file_id: int, name: str, exp: int, sig: str, view: int = 0):
     import hmac
     import mimetypes
     import time
@@ -139,8 +153,10 @@ async def download_file(file_id: int, name: str, exp: int, sig: str):
     # что имя и Content-Type берём из базы (иначе подменой пути .pdf
     # превращается в .html с типом text/html).
     name = _download_name(f, tf.file_path or "")
-    return Response(data.getvalue(), media_type=mimetypes.guess_type(name)[0] or "application/octet-stream",
-                    headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name, safe='')}"})
+    mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    how = "inline" if view and mime in _VIEW_TYPES else "attachment"
+    return Response(data.getvalue(), media_type=mime,
+                    headers={"Content-Disposition": f"{how}; filename*=UTF-8''{quote(name, safe='')}"})
 
 
 

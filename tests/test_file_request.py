@@ -110,9 +110,38 @@ async def test_download_link_is_signed_and_expires(db, monkeypatch):
     resp = c.get(path)                                   # без initData — по подписи
     assert resp.status_code == 200 and resp.content == b"%PDF-1.4 test"
     assert "attachment" in resp.headers["content-disposition"]
+    # «Просмотр» в приложении: PDF — открыть в браузере, а не качать
+    assert c.get(path + "&view=1").headers["content-disposition"].startswith("inline")
     assert c.get(path.replace("sig=", "sig=0")).status_code == 403
     monkeypatch.setattr(time, "time", lambda: 4102444800.0)  # 2100 год — ссылка протухла
     assert c.get(path).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_view_never_inlines_html(db, monkeypatch):
+    # файл .html, открытый «Просмотром» на нашем адресе, исполнился бы как страница сайта
+    from types import SimpleNamespace
+    from io import BytesIO
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    from database import add_file
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    fid = await add_file("страница", OPD, "TGH", "x.html", 0)
+
+    class FakeBot:
+        async def get_file(self, file_id):
+            return SimpleNamespace(file_path="documents/x.html")
+
+        async def download_file(self, path):
+            return BytesIO(b"<script>alert(1)</script>")
+
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr(server.deps, "WEBAPP_URL", "https://app.example")
+    monkeypatch.setattr(server.deps, "tg_bot", lambda: FakeBot())
+    c = TestClient(server.app)
+    url = c.post(f"/api/files/{fid}/link", headers={"X-Telegram-Init-Data": _make_init_data()}).json()["url"]
+    resp = c.get(url.removeprefix("https://app.example") + "&view=1")
+    assert resp.headers["content-disposition"].startswith("attachment")
 
 
 @pytest.mark.asyncio
