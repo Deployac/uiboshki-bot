@@ -23,6 +23,55 @@ String dayMonth(String isoDate) {
   return d == null ? '' : '${d.day} ${monthsGen[d.month - 1]}';
 }
 
+String _points(num n) => '${fmtNum(n)} ${plural(n.ceil(), 'балл', 'балла', 'баллов')}';
+
+/// Главная строка «Цели» называет то, что мешает (2.1, 2.19): «Нужно зачесть
+/// ещё 4 работы», «Не хватает 12 баллов», ««4» выходит автоматом», ««4»
+/// автоматом, на «5» нужно 20 баллов на экзамене». Автомат — только «3» и «4»
+/// (sdo_goal.final_mark), «5» — через экзамен.
+String goalHeadline(Map<String, dynamic> g) {
+  final label = markWord('${g['label']}');
+  final tk = Map<String, dynamic>.from(g['tk'] ?? {});
+  final works = (tk['left'] as num?)?.toInt() ?? 0;
+  final need = (g['need'] as num?) ?? 0;
+  final pending = g['exam_pending'] == true;
+  if (pending && g['auto_ok'] != true) {
+    final short = (g['exam_short'] as num?) ?? 0;
+    if (short > 0) return 'Не хватает ${_points(short)}'; // даже с полным экзаменом
+    final exam = (g['need_exam'] as num?) ?? 0;
+    final onExam = exam > 0
+        ? 'на $label нужно ${_points(exam)} на экзамене'
+        : 'на $label хватит любого балла на экзамене';
+    final auto = g['auto'];
+    return auto != null ? '${markWord('$auto')} автоматом, $onExam' : onExam[0].toUpperCase() + onExam.substring(1);
+  }
+  if (g['status'] == 'done') return pending ? '$label выходит автоматом' : 'Баллов хватает';
+  if (need > 0) return 'Не хватает ${_points(need)}';
+  if (works > 0) return 'Нужно зачесть ещё $works ${plural(works, 'работу', 'работы', 'работ')}';
+  return 'Баллов хватает';
+}
+
+/// Строка под главной: сколько нужно для цели и второй путь (экзамен, автомат).
+String goalSubline(Map<String, dynamic> g) {
+  final tk = Map<String, dynamic>.from(g['tk'] ?? {});
+  final works = (tk['left'] as num?)?.toInt() ?? 0;
+  final need = (g['need'] as num?) ?? 0;
+  final pending = g['exam_pending'] == true, autoOk = g['auto_ok'] == true;
+  final parts = [
+    'для ${g['label'] == 'зачёт' ? 'зачёта' : markWord('${g['label']}')} нужно ${_points((g['at'] as num?) ?? 0)}',
+  ];
+  if (pending && autoOk && need > 0 && ((g['need_exam'] as num?) ?? 0) > 0) {
+    parts.add('или ${_points(g['need_exam'] as num)} на экзамене');
+  }
+  if (need > 0 && works > 0 && (autoOk || !pending)) {
+    parts.add('и зачесть ещё $works ${plural(works, 'работу', 'работы', 'работ')}');
+  }
+  if (pending && !autoOk && g['auto'] == null && g['auto_best'] != null) {
+    parts.add('${markWord('${g['auto_best']}')} можно получить автоматом');
+  }
+  return parts.join(' · ');
+}
+
 class GoalCard extends StatefulWidget {
   final Api api;
   final int courseId;
@@ -65,12 +114,14 @@ class _GoalCardState extends State<GoalCard> {
     final g = _g;
     final status = '${g['status'] ?? 'ok'}';
     final (Color tone, String verdict) = switch (status) {
+      'done' when g['exam_pending'] == true => (p.ok, 'автомат'),
       'done' => (p.ok, '${markWord('${g['label']}')} есть'),
       'tight' => (p.warn, 'впритык'),
       'no' => (p.danger, 'не хватит'),
       _ => (p.ok, 'дойдёшь'),
     };
     final need = (g['need'] as num?) ?? 0;
+    final headline = goalHeadline(g);
     final tk = Map<String, dynamic>.from(g['tk'] ?? {});
     final marks = [for (final m in (g['marks'] as List? ?? [])) '$m'];
     final lines = <(IconData, String)>[
@@ -176,17 +227,9 @@ class _GoalCardState extends State<GoalCard> {
             ),
           ),
           const SizedBox(height: Space.l),
-          Text(
-            need > 0
-                ? 'ещё ${fmtNum(need)} ${plural(need.ceil(), 'балл', 'балла', 'баллов')}'
-                : 'по баллам уже набрано',
-            style: s.title(26, color: need > 0 ? p.text : p.ok),
-          ),
+          Text(headline, style: s.title(headline.length > 28 ? 21 : 26, color: status == 'done' ? p.ok : p.text)),
           const SizedBox(height: 4),
-          Text(
-            'до ${markWord('${g['label']}')} — ${fmtNum(g['at'] ?? 0)} из баллов БРС',
-            style: s.body(13, color: p.muted),
-          ),
+          Text(goalSubline(g), style: s.body(13, color: p.muted)),
           const SizedBox(height: Space.m),
           for (final (ic, text) in lines)
             Padding(
