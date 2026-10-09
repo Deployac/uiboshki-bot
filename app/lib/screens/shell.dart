@@ -39,7 +39,7 @@ const _tour = [
   'вся неделя лентой, сверху — дни: нажми, и лента приедет',
   'что сдать и до какого срока, отметка «сдал»',
   'баллы, цель по предмету, посещения',
-  'настройки, шрифт, группа и выход',
+  'баллы в среднем, настройки, шрифт, группа и выход',
 ];
 
 class Shell extends StatefulWidget {
@@ -174,6 +174,7 @@ class _ShellState extends State<Shell> {
         onLogout: widget.onLogout,
         onUnauthorized: un,
         onGroup: () => pickGroup(),
+        onStudy: () => setState(() => _index = tabByName('study')),
       ),
     ];
     return Scaffold(

@@ -77,6 +77,8 @@ void main() {
     await settle(t);
     await t.tap(find.bySemanticsLabel('Ещё'));
     await settle(t);
+    await t.tap(find.text('Тема и шрифт')); // шрифт — в листе «Тема и шрифт»
+    await settle(t);
     await t.tap(find.text('Строгий'));
     await settle(t);
     final prefs = await SharedPreferences.getInstance();
