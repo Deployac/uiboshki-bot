@@ -1,15 +1,12 @@
-// «Сегодня» — два вида одного экрана, переключатель значками справа сверху,
-// выбор запоминается (владелец, 09.10, 21А/21В и 22А).
-// Главный: группа с неделей и погода одной строкой, капибара, приветствие по
+// «Сегодня» (владелец, 09.10, 21А/21В): группа с неделей и погода одной строкой, капибара, приветствие по
 // времени суток; ближайшая пара крупно — время, название, кабинет плашкой
 // цвета предмета и «через»; во время пары — сколько до конца, полоска и где
 // следующая. Ниже пары дня карточками с номером пары и что горит по срокам.
-// Второй вид — дни недели плитками и пары выбранного дня (today_days.dart).
+// Второй вид пар (дни недели плитками) живёт на вкладке «Неделя» (владелец, 09.10).
 // Время тикает раз в 30 секунд.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api.dart';
 import '../api/models.dart';
@@ -18,7 +15,6 @@ import '../theme/tokens.dart';
 import '../widgets/capy.dart';
 import '../widgets/common.dart';
 import 'lesson.dart';
-import 'today_days.dart';
 import 'week.dart' show mondayOf;
 
 class TodayData {
@@ -113,9 +109,6 @@ class TodayScreen extends StatefulWidget {
   final VoidCallback? onUnauthorized;
   const TodayScreen({super.key, required this.api, this.onUnauthorized});
 
-  /// Какой вид открыт: 'main' — сводка дня, 'days' — дни недели.
-  static const viewKey = 'uib_today_view';
-
   @override
   State<TodayScreen> createState() => _TodayScreenState();
 }
@@ -123,37 +116,16 @@ class TodayScreen extends StatefulWidget {
 class _TodayScreenState extends State<TodayScreen> {
   Timer? _timer;
 
-  /// Второй вид (дни недели); null — выбор ещё читается из памяти телефона.
-  bool? _days;
-
   @override
   void initState() {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 30), (_) => setState(() {}));
-    _readView();
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
-  }
-
-  Future<void> _readView() async {
-    var days = false;
-    try {
-      days = (await SharedPreferences.getInstance()).getString(TodayScreen.viewKey) == 'days';
-    } catch (_) {}
-    if (mounted) setState(() => _days = days);
-  }
-
-  Future<void> _setView(bool days) async {
-    if (days == _days) return;
-    tick();
-    setState(() => _days = days);
-    try {
-      await (await SharedPreferences.getInstance()).setString(TodayScreen.viewKey, days ? 'days' : 'main');
-    } catch (_) {}
   }
 
   Future<TodayData> _load() async {
@@ -183,39 +155,25 @@ class _TodayScreenState extends State<TodayScreen> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final days = _days;
-    if (days == null) return const SizedBox.shrink();
-    return Loader<TodayData>(
-      load: _load,
-      onUnauthorized: widget.onUnauthorized,
-      builder: (context, d, _) {
-        final top = TodayTop(data: d, days: days, onView: _setView);
-        return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 280),
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeInCubic,
-          layoutBuilder: (current, previous) =>
-              Stack(alignment: Alignment.topCenter, children: [...previous, ?current]),
-          child: days
-              ? TodayDays(key: const ValueKey('today:days'), data: d, api: widget.api, top: top)
-              : _MainView(key: const ValueKey('today:main'), data: d, api: widget.api, top: top),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => Loader<TodayData>(
+    load: _load,
+    onUnauthorized: widget.onUnauthorized,
+    builder: (context, d, _) => _MainView(
+      key: const ValueKey('today:main'),
+      data: d,
+      api: widget.api,
+      top: TodayTop(data: d),
+    ),
+  );
 }
 
-/// Шапка обоих видов: группа с неделей и погода одной строкой (не влезает —
-/// погода только температурой, совсем узко — второй строкой), справа —
-/// переключатель видов, в обоих видах на одном месте.
+/// Шапка: группа с неделей и погода одной строкой (не влезает — погода
+/// только температурой, совсем узко — второй строкой).
 class TodayTop extends StatelessWidget {
   final TodayData data;
-  final bool days;
-  final ValueChanged<bool> onView;
-  const TodayTop({super.key, required this.data, required this.days, required this.onView});
+  const TodayTop({super.key, required this.data});
 
-  // на 390 pt (iPhone) «УИБО-03-24 · 6 неделя» и «+12° пасмурно» влезают рядом с переключателем
+  // на 320 pt «УИБО-03-24 · 6 неделя» и «+12° пасмурно» влезают в строку
   static const _gap = 5.0, _pad = 8.0, _padV = 4.5;
 
   @override
@@ -225,7 +183,7 @@ class TodayTop extends StatelessWidget {
     final head = [if (data.group.isNotEmpty) data.group, if (data.week != null) '${data.week} неделя'].join(' · ');
     // меряем тем же стилем, каким рисует Text (с межбуквенным из темы); подписи
     // в шапке растут с системным шрифтом не больше чем на 15 % — иначе на
-    // 320 pt группа с неделей не влезает рядом с переключателем
+    // 320 pt группа с неделей не влезает в строку
     final style = DefaultTextStyle.of(context).style
         .merge(s.body(12, weight: FontWeight.w600))
         .copyWith(letterSpacing: 0);
@@ -259,10 +217,8 @@ class TodayTop extends StatelessWidget {
                   final room = box.maxWidth - 1; // запас на округление
                   sky = used + width(full) <= room || used + width(wx.temp) > room ? full : wx.temp;
                 }
-                // первая строка подписей — по центру переключателя, перенос — под ней
-                final chip = scaler.scale(12) * 1.3 + 2 * _padV;
                 return Padding(
-                  padding: EdgeInsets.only(top: ((ViewToggle.height - chip) / 2).clamp(0, 20)),
+                  padding: const EdgeInsets.only(top: 6),
                   child: Wrap(
                     spacing: _gap,
                     runSpacing: _gap,
@@ -284,8 +240,6 @@ class TodayTop extends StatelessWidget {
               },
             ),
           ),
-          const SizedBox(width: 6),
-          ViewToggle(days: days, onChanged: onView),
         ],
       ),
     );
@@ -320,57 +274,6 @@ class _Chip extends StatelessWidget {
           onTap!();
         },
         child: chip,
-      ),
-    );
-  }
-}
-
-/// Переключатель двух видов «Сегодня» — значками, без подписей «Главное /
-/// По дням» (владелец, 09.10): сводка дня и дни недели.
-class ViewToggle extends StatelessWidget {
-  final bool days;
-  final ValueChanged<bool> onChanged;
-  const ViewToggle({super.key, required this.days, required this.onChanged});
-
-  /// Высота: кнопка 30 и поля по 3.
-  static const height = 36.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final p = AppStyle.of(context).p;
-    Widget seg(IconData icon, String tip, bool on, bool value) => Tooltip(
-      message: tip,
-      child: Semantics(
-        button: true,
-        selected: on,
-        label: tip,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => onChanged(value),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 240),
-            curve: Curves.easeOutCubic,
-            width: 36,
-            height: 30,
-            decoration: BoxDecoration(
-              color: on ? p.accent : p.accent.withValues(alpha: 0),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, size: 18, color: on ? p.onAccent : p.muted),
-          ),
-        ),
-      ),
-    );
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(13)),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          seg(Icons.wb_sunny_outlined, 'Сводка дня', !days, false),
-          const SizedBox(width: 2),
-          seg(Icons.calendar_view_week_rounded, 'Дни недели', days, true),
-        ],
       ),
     );
   }

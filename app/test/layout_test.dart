@@ -29,6 +29,7 @@ import 'package:uiboshki/screens/study.dart';
 import 'package:uiboshki/screens/submit.dart';
 import 'package:uiboshki/screens/task.dart';
 import 'package:uiboshki/screens/today.dart';
+import 'package:uiboshki/screens/week.dart';
 import 'package:uiboshki/theme/app_theme.dart';
 import 'package:uiboshki/widgets/capsule_tabbar.dart';
 
@@ -438,23 +439,22 @@ void main() {
     }
   }
 
-  // «Сегодня» во всех состояниях и второй вид — дни недели.
+  // «Сегодня» во всех состояниях.
   void otherCampus(Map<String, dynamic> j) => (j['lessons'] as List)[1]['room'] = 'А-332 (МП-1)';
-  final todayCases = <String, ({int at, void Function(Map<String, dynamic>)? edit, bool days})>{
-    'до пар': (at: 30, edit: null, days: false),
-    'перемена, другой корпус': (at: -95, edit: otherCampus, days: false),
-    'идёт пара, дальше другой корпус': (at: -10, edit: otherCampus, days: false),
-    'пары кончились': (at: -1000, edit: null, days: false),
-    'пары кончились, завтра свободно': (at: -1000, edit: (j) => j['tomorrow_first'] = null, days: false),
-    'пар нет': (at: 0, edit: (j) => j['lessons'] = [], days: false),
-    'дни недели': (at: -110, edit: null, days: true),
+  final todayCases = <String, ({int at, void Function(Map<String, dynamic>)? edit})>{
+    'до пар': (at: 30, edit: null),
+    'перемена, другой корпус': (at: -95, edit: otherCampus),
+    'идёт пара, дальше другой корпус': (at: -10, edit: otherCampus),
+    'пары кончились': (at: -1000, edit: null),
+    'пары кончились, завтра свободно': (at: -1000, edit: (j) => j['tomorrow_first'] = null),
+    'пар нет': (at: 0, edit: (j) => j['lessons'] = []),
   };
   for (final d in devices) {
     for (final p in [Palette.depth, Palette.notebook]) {
       for (final f in FontChoice.values) {
         for (final c in todayCases.entries) {
           testWidgets('сегодня, ${c.key}: ${d.name} · ${p.dark ? 'тёмная' : 'светлая'} · ${f.name}', (t) async {
-            SharedPreferences.setMockInitialValues({'uib_toured': true, if (c.value.days) TodayScreen.viewKey: 'days'});
+            SharedPreferences.setMockInitialValues({'uib_toured': true});
             useDevice(t, d);
             final api = longApi(firstAt: c.value.at, today: c.value.edit);
             await t.pumpWidget(
@@ -471,6 +471,31 @@ void main() {
             await scrollThrough(t);
           });
         }
+      }
+    }
+  }
+
+  // «Неделя» в обоих видах: заголовок, стрелки и переключатель влезают.
+  for (final d in devices) {
+    for (final f in FontChoice.values) {
+      for (final view in ['list', 'days']) {
+        testWidgets('неделя, $view: ${d.name} · ${f.name}', (t) async {
+          SharedPreferences.setMockInitialValues({'uib_toured': true, WeekScreen.viewKey: view});
+          useDevice(t, d);
+          await t.pumpWidget(
+            host(
+              Palette.depth,
+              f,
+              Scaffold(
+                body: SafeArea(child: WeekScreen(api: longApi())),
+              ),
+            ),
+          );
+          await settle(t);
+          expect(find.byTooltip(view == 'days' ? 'По дням' : 'Лентой'), findsOneWidget);
+          _belowNotch(t, d);
+          await scrollThrough(t);
+        });
       }
     }
   }

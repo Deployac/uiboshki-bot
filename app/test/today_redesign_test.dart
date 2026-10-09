@@ -1,8 +1,8 @@
 // «Сегодня» по выбору владельца (09.10): главный вид 21А — группа с неделей и
 // погода одной строкой, приветствие с именем; во время пары 21В — «до конца»
-// и где следующая; пары карточками с номером пары; второй вид 22А — дни
-// недели, переключатель значками на одном месте, выбор запоминается, свайп
-// листает дни.
+// и где следующая; пары карточками с номером пары. Второй вид 22А — дни
+// недели плитками — на вкладке «Неделя»: переключатель там, выбор
+// запоминается, свайп листает недели, а не дни.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -160,60 +160,86 @@ void main() {
     expect(find.byType(LessonScreen), findsOneWidget);
   });
 
-  testWidgets('переключатель: дни недели, на том же месте, запоминается; свайп — соседний день', (t) async {
+  testWidgets('на «Сегодня» переключателя нет — только сводка дня', (t) async {
+    phone(t);
+    await t.pumpWidget(_wrap(TodayScreen(api: fakeApi(overrides: _answers([])))));
+    await settle(t);
+    expect(find.byType(ViewToggle), findsNothing);
+    expect(find.byKey(const ValueKey('today:main')), findsOneWidget);
+  });
+
+  testWidgets('«Неделя»: переключатель видов, запоминается; свайп по дням — соседняя неделя', (t) async {
     phone(t);
     final monday = mondayOf(now());
+    final next = monday.add(const Duration(days: 7));
     final ti = now().weekday - 1;
-    Map<String, Object?> day(int i) =>
-        _lesson(monday.add(Duration(days: i, hours: 10)), i + 1, 'Предмет: ${weekdays[i]}', 'А-${100 + i} (МП-1)');
-    final api = fakeApi(
-      overrides: _answers(
-        [day(ti)],
-        days: {
-          for (var i = 0; i < 7; i++)
-            'GET /api/day?date=${iso(monday.add(Duration(days: i)))}': {
-              'lessons': [day(i)],
-            },
-        },
-      ),
+    Map<String, Object?> day(DateTime d, String who) => _lesson(
+      d.add(const Duration(hours: 10)),
+      d.weekday,
+      'Предмет: $who ${weekdays[d.weekday - 1]}',
+      'А-100 (МП-1)',
     );
-    await t.pumpWidget(_wrap(TodayScreen(api: api)));
+    final asked = <String>[];
+    final api = fakeApi(
+      requests: asked,
+      overrides: {
+        'GET /api/week?start=${iso(monday)}': {'week': 6, 'days': []},
+        'GET /api/week?start=${iso(next)}': {'week': 7, 'days': []},
+        for (var i = 0; i < 7; i++) ...{
+          'GET /api/day?date=${iso(monday.add(Duration(days: i)))}': {
+            'lessons': [day(monday.add(Duration(days: i)), 'эта')],
+          },
+          'GET /api/day?date=${iso(next.add(Duration(days: i)))}': {
+            'lessons': [day(next.add(Duration(days: i)), 'след')],
+          },
+        },
+      },
+    );
+    await t.pumpWidget(_wrap(WeekScreen(api: api)));
     await settle(t);
-    expect(find.text('Эта неделя'), findsNothing);
-    final where = t.getRect(find.byTooltip('Дни недели'));
-
-    await t.tap(find.byTooltip('Дни недели'));
+    final where = t.getRect(find.byTooltip('По дням'));
+    await t.tap(find.byTooltip('По дням'));
     await settle(t);
-    expect(find.text('Эта неделя'), findsOneWidget);
-    expect(find.text('6 неделя'), findsOneWidget);
-    expect(t.getRect(find.byTooltip('Дни недели')), where); // переключатель не сдвинулся
-    expect((await SharedPreferences.getInstance()).getString(TodayScreen.viewKey), 'days');
+    expect(t.getRect(find.byTooltip('По дням')), where); // переключатель не сдвинулся
+    expect((await SharedPreferences.getInstance()).getString(WeekScreen.viewKey), 'days');
     // открыт сегодняшний день, у пары — номер
     expect(find.text('сегодня · 1 пара'), findsOneWidget);
-    final today = find.text('Предмет: ${weekdays[ti]}');
+    final today = find.text('Предмет: эта ${weekdays[ti]}');
     expect(today, findsOneWidget);
     expect(find.descendant(of: find.byType(LessonCard), matching: find.text('${ti + 1}')), findsOneWidget);
-
-    // свайп вбок — соседний день (в субботу и воскресенье — назад)
-    final k = ti < 5 ? 1 : -1;
-    await t.fling(today, Offset(-400.0 * k, 0), 1500);
-    await settle(t);
-    expect(find.text('Предмет: ${weekdays[ti + k]}'), findsOneWidget);
-    expect(find.text('Предмет: ${weekdays[ti]}'), findsNothing);
 
     // нажал плитку — её день
     await t.tap(find.byKey(ValueKey('day:${iso(monday)}')));
     await settle(t);
-    expect(find.text('Предмет: ${weekdays[0]}'), findsOneWidget);
+    expect(find.text('Предмет: эта ${weekdays[0]}'), findsOneWidget);
 
-    // заново открытый экран — сразу в днях недели; обратно — сводка дня
-    await t.pumpWidget(_wrap(TodayScreen(key: UniqueKey(), api: api)));
+    // свайп вбок — следующая неделя, а не соседний день; открыта на первом дне с парами
+    await t.fling(find.text('Предмет: эта ${weekdays[0]}'), const Offset(-400, 0), 1500);
     await settle(t);
-    expect(find.text('Эта неделя'), findsOneWidget);
-    await t.tap(find.byTooltip('Сводка дня'));
+    expect(asked, contains('GET /api/week?start=${iso(next)}'));
+    expect(find.textContaining('7 неделя'), findsOneWidget);
+    expect(find.text('Предмет: след ${weekdays[0]}'), findsOneWidget);
+    expect(find.byKey(ValueKey('day:${iso(next)}')), findsOneWidget);
+    // стрелка — обратно
+    await t.tap(find.byTooltip('Прошлая неделя'));
     await settle(t);
-    expect(find.text('Эта неделя'), findsNothing);
-    expect(find.byKey(const ValueKey('today:main')), findsOneWidget);
-    expect((await SharedPreferences.getInstance()).getString(TodayScreen.viewKey), 'main');
+    expect(find.textContaining('6 неделя'), findsOneWidget);
+
+    // заново открытый экран — сразу по дням; обратно — лента
+    await t.pumpWidget(_wrap(WeekScreen(key: UniqueKey(), api: api)));
+    await settle(t);
+    expect(find.byKey(ValueKey('day:${iso(monday)}')), findsOneWidget);
+    await t.tap(find.byTooltip('Лентой'));
+    await settle(t);
+    expect(find.byKey(ValueKey('day:${iso(monday)}')), findsNothing);
+    expect((await SharedPreferences.getInstance()).getString(WeekScreen.viewKey), 'list');
+  });
+
+  testWidgets('выбор «дни недели» со старой «Сегодня» переносится на «Неделю»', (t) async {
+    phone(t);
+    SharedPreferences.setMockInitialValues({WeekScreen.oldViewKey: 'days'});
+    await t.pumpWidget(_wrap(WeekScreen(api: fakeApi())));
+    await settle(t);
+    expect(find.byKey(ValueKey('day:${iso(mondayOf(now()))}')), findsOneWidget);
   });
 }
