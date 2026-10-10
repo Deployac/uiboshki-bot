@@ -100,8 +100,9 @@ async def cmd_aitest(message: Message):
             await message.answer(f"Не вышло: {e}")
             return
         kind = "vote" if mode == "vote" else "report"
-        await ai_bench.save(html, kind)
-    hint = ("Открой и в каждом блоке выбери лучший ответ, модели — в конце:" if kind == "vote"
+        await ai_bench.save(html, kind, plan.get("key"))
+    hint = ("Открой и в каждом блоке выбери лучший ответ, модели — в конце. Выбор — на сервере; "
+            "скинь ссылку Claude, итог он посмотрит сам:" if kind == "vote"
             else "Таблица и все ответы с баллами:")
     await message.answer(f"{summary}\n\n{hint}\n{link(kind)}")
 

@@ -147,7 +147,9 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
 (необязательно), `OPENROUTER_API_KEY` (необязательно: `/aitest` — выбор модели
 ИИ для других групп, `ai_bench.py`: отбор многих моделей с судьёй и ценой,
 `/aitest list` — без прогона, `/aitest vote id…` — слепое голосование
-финалистов; страницы по подписанной ссылке `/aitest?k=report|vote&exp=&sig=`;
+финалистов; страницы по подписанной ссылке `/aitest?k=report|vote&exp=&sig=`,
+выбор слепого теста — на сервере (`/aitest/pick`), итог текстом — та же ссылка
+с `&view=result` (владелец присылает ссылку, Claude читает через WebFetch);
 бюджет прогона `AITEST_BUDGET_USD`, судья `AITEST_JUDGE`; OpenRouter закрывает
 аккаунту OpenAI/Anthropic/Google — `AITEST_SKIP_VENDORS`, нынешняя Gemini — своим
 ключом, `gemini-direct`; своя группа остаётся на Gemini — владелец 10.10), `WEBAPP_URL`, `PORT`, `SDO_SESSION_COOKIE`,

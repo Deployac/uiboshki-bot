@@ -461,3 +461,57 @@ async def test_foreign_token_link_is_ignored(db, monkeypatch):
         assert await asyncio.to_thread(_token_in_url, url, token, True)        # свой вход — принят
     finally:
         await bot.stop_webapp(server, task)
+
+
+def _vote_page(url: str) -> dict:
+    """Слепой тест ИИ на телефоне: длинное свёрнуто, «Лучший» уходит на сервер
+    и держится после перезагрузки без копии в браузере."""
+    out = {"errors": []}
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": 390, "height": 760})
+        page.on("pageerror", lambda e: out["errors"].append(str(e)))
+        page.goto(url)
+        out["more"] = page.locator("button.more").count()
+        page.click("[data-i='0'][data-j='1'] button")
+        page.wait_for_function("document.getElementById('cnt').textContent.includes('выбрано 1')")
+        page.wait_for_timeout(300)
+        page.evaluate("localStorage.clear()")
+        page.reload()
+        page.wait_for_function("document.querySelector(\"[data-i='0'][data-j='1']\").classList.contains('on')")
+        page.click("button.more")
+        out["open"] = page.locator(".t.cut").count()
+        out["wide"] = page.evaluate("document.documentElement.scrollWidth > innerWidth")
+        page.click(".bar button")
+        out["res"] = page.inner_text("#res")
+        browser.close()
+    return out
+
+
+@pytest.mark.asyncio
+async def test_ai_vote_page_keeps_picks_on_server(db, monkeypatch):
+    import ai_bench
+    import bot
+    import webapp.deps as deps
+    from webapp.routes import aitest
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    items = [{"kind": "Конспект", "title": "Лекция 1", "subject": "БД", "answers": [
+        {"text": ("длинный конспект\n" * 80) if m == "a/x" else "коротко", "model": m, "cost": 0.001, "secs": 2}
+        for m in ("a/x", "b/y")]}]
+    key = ai_bench.vote_key(items, {"a/x": "Икс", "b/y": "Игрек"})
+    await ai_bench.save(ai_bench.page(items, key["names"]), "vote", key)
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        q = aitest.link("vote").split("/aitest")[1]
+        out = await asyncio.to_thread(_vote_page, f"http://127.0.0.1:{port}/aitest{q}")
+    finally:
+        await bot.stop_webapp(server, task)
+    assert not out["errors"], out["errors"]
+    assert out["more"] == 1 and out["open"] == 0 and not out["wide"]        # свёрнут только длинный
+    assert "Игрек: побед 1" in out["res"]
+    assert await ai_bench.vote_picks() == {"0": 1}
