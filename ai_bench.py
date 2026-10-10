@@ -55,6 +55,7 @@ PINNED = [
 ]
 # нынешняя модель — своим ключом Gemini, не через OpenRouter
 GEMINI_DIRECT = "gemini-direct"
+GEMINI_TRIES, GEMINI_WAIT = 3, 20.0       # в первом отборе 4 ответа из 20 упали на лимите
 # разработчики, чьи модели OpenRouter не продаёт аккаунту владельца (регион)
 SKIP_VENDORS = {v.strip() for v in os.getenv("AITEST_SKIP_VENDORS", "openai,anthropic,google").split(",") if v.strip()}
 # судья — сильная, но недорогая; первая, что есть у OpenRouter (нет ни одной —
@@ -71,8 +72,10 @@ RUB = 85                                                    # ₽ за $ — д�
 
 QUESTIONS = 20
 LECTURES = 4
-ANSWER_TOKENS = 4000          # с запасом: у «думающих» моделей мысли — в том же лимите
-SUMMARY_TOKENS = 4000
+ANSWER_TOKENS = 8000          # с запасом: у «думающих» моделей мысли — в том же лимите
+SUMMARY_TOKENS = 8000         # (на 4000 первый отбор обрезал конспекты у Qwen, DeepSeek, Solar)
+INTENT_TOKENS = 2000
+JUDGE_TOKENS = 8000           # на 2000 судья обрывался и пачка оставалась без баллов
 SUMMARY_CHARS = 60_000        # ~15–20 тыс. токенов — как средняя лекция
 CHARS_PER_TOKEN = 3           # русский текст, грубо — для прикидки цены
 JUDGE_BATCH = 8               # ответов судье за раз
@@ -256,12 +259,16 @@ async def ask_gemini(system: str, user: str, max_tokens: int, temperature: float
     """Ответ нынешней модели своим ключом (gemini_solver) — в том же виде, что ask."""
     import gemini_solver
     started = time.monotonic()
-    try:
-        text = await gemini_solver.generate_text(
-            [{"role": "user", "content": user}], system, max_output_tokens=max_tokens,
-            temperature=0.3 if temperature is None else temperature)
-    except Exception as e:
-        return {"text": f"[ошибка: {e}]", "cost": 0.0, "secs": time.monotonic() - started, "error": True}
+    for attempt in range(GEMINI_TRIES):     # бесплатный лимит в минуту: подождать и ещё раз
+        try:
+            text = await gemini_solver.generate_text(
+                [{"role": "user", "content": user}], system, max_output_tokens=max_tokens,
+                temperature=0.3 if temperature is None else temperature)
+            break
+        except Exception as e:
+            if attempt + 1 == GEMINI_TRIES:
+                return {"text": f"[ошибка: {e}]", "cost": 0.0, "secs": time.monotonic() - started, "error": True}
+            await asyncio.sleep(GEMINI_WAIT)
     cut = text.endswith(gemini_solver.TRUNCATED_NOTE)
     text = text.removesuffix(gemini_solver.TRUNCATED_NOTE).strip()
     return {"text": text or "[пустой ответ]", "cost": 0.0, "secs": time.monotonic() - started,
@@ -278,13 +285,36 @@ def pick_judge(models: dict) -> str | None:
 
 # ── Задачи на данных группы ─────────────────────────────────────────────────
 
+# вопросы, как у студентов направления (бизнес-информатика): добирают, когда
+# в истории решалки мало своих — чат WebApp вопросы не хранит
+SAMPLE_QUESTIONS = [
+    "Что такое нормализация базы данных и чем 2НФ отличается от 3НФ?",
+    "Напиши SQL-запрос: студенты со средним баллом выше 4, по фамилии",
+    "Как посчитать NPV, если вложили 100 тыс., доход 40 тыс. в год три года, ставка 10%?",
+    "Объясни, что такое эластичность спроса по цене и как её считать",
+    "Найди производную функции y = x² · ln x",
+    "Почему в выборочной дисперсии делят на n − 1, а не на n?",
+    "Какие блоки в бизнес-модели Остервальдера?",
+    "Как проверить гипотезу о равенстве средних двух выборок?",
+    "Как на ER-диаграмме показать связь многие-ко-многим?",
+    "Сделай SWOT-анализ кофейни у университета",
+    "Напиши на Python функцию: среднее и медиана списка без библиотек",
+    "Что такое точка безубыточности и как её найти?",
+    "Чем корреляция отличается от причинно-следственной связи? Пример",
+    "Чем ООО отличается от ИП?",
+    "Переведи на английский: «Компания увеличила выручку на 15% за счёт новых клиентов»",
+    "Чем нотация BPMN отличается от IDEF0?",
+]
+
+
 def pick_questions(rows: list[tuple[str, str]], n: int = QUESTIONS) -> list[tuple[str, str]]:
-    """Разные вопросы, по кругу по предметам: без команд, коротышек и повторов."""
+    """Разные вопросы, по кругу по предметам: без команд, коротышек, повторов и
+    задач с фото (в истории — только подпись «[фото] …», самой картинки нет)."""
     seen, by_subject = set(), {}
     for text, subject in rows:
         t = (text or "").strip()
         key = " ".join(t.lower().split())
-        if len(t) < 15 or len(t) > 800 or t.startswith("/") or key in seen:
+        if len(t) < 15 or len(t) > 800 or t.startswith(("/", "[фото]")) or key in seen:
             continue
         seen.add(key)
         by_subject.setdefault(subject or "", []).append((t, subject or ""))
@@ -301,24 +331,32 @@ async def _questions() -> list[tuple[str, str]]:
     async with connect() as db:
         rows = await (await db.execute(
             "SELECT task_text, subject FROM solver_history ORDER BY id DESC LIMIT 500")).fetchall()
-    return pick_questions([(r[0], r[1]) for r in rows])
+    got = pick_questions([(r[0], r[1]) for r in rows])
+    have = {q for q, _ in got}
+    return got + [(q, "") for q in SAMPLE_QUESTIONS if q not in have][:max(0, QUESTIONS - len(got))]
 
 
 async def _lectures(n: int = LECTURES) -> list[dict]:
-    """Лекции с текстом, по одной на предмет — самые свежие."""
+    """Лекции с текстом, по одной на предмет из разных предметов: сначала файлы
+    типа «лекция», среди них — самые свежие (первый отбор брал последние 300
+    файлов — все оказались одного предмета, и конспект вышел один)."""
     from database._conn import connect
     async with connect() as db:
         rows = await (await db.execute(
-            "SELECT f.id, f.title, f.subject, t.content FROM files f JOIN file_text t ON t.file_id = f.id "
-            "WHERE t.char_count > 5000 ORDER BY f.id DESC LIMIT 300")).fetchall()
-    out, used = [], set()
-    for fid, title, subject, content in rows:
-        if subject in used:
-            continue
-        used.add(subject)
-        out.append({"id": fid, "title": title, "subject": subject or "", "text": content[:SUMMARY_CHARS]})
-        if len(out) == n:
-            break
+            "SELECT f.id, f.title, f.subject FROM files f JOIN file_text t ON t.file_id = f.id "
+            "WHERE t.char_count > 5000 AND COALESCE(f.subject, '') != '' "
+            "ORDER BY COALESCE(f.category, '') = 'lecture' DESC, f.id DESC")).fetchall()
+        picked, used = [], set()
+        for fid, title, subject in rows:
+            if subject not in used:
+                used.add(subject)
+                picked.append((fid, title, subject))
+            if len(picked) == n:
+                break
+        out = []
+        for fid, title, subject in picked:
+            (content,) = await (await db.execute("SELECT content FROM file_text WHERE file_id = ?", (fid,))).fetchone()
+            out.append({"id": fid, "title": title, "subject": subject, "text": content[:SUMMARY_CHARS]})
     return out
 
 
@@ -360,7 +398,7 @@ async def build_tasks(intents: bool = True) -> list[dict]:
     if intents:
         for phrase, want in INTENT_CASES:
             tasks.append({"kind": "Намерение", "title": phrase, "subject": "", "system": intent_router.SYSTEM_PROMPT,
-                          "user": phrase, "tokens": 300, "out": 5, "chunks": 0, "want": want, "judge_context": ""})
+                          "user": phrase, "tokens": INTENT_TOKENS, "out": 5, "chunks": 0, "want": want, "judge_context": ""})
     if not any(t["kind"] != "Намерение" for t in tasks):
         raise RuntimeError("нет ни вопросов в истории решалки, ни лекций с текстом")
     return tasks
@@ -426,19 +464,24 @@ async def judge_task(client, key: str, judge: str, task: dict, answers: dict[str
         letters = "ABCDEFGH"[:len(part)]
         body = task["judge_context"] + "\n\n" + "\n\n".join(
             f"=== Ответ {letters[i]} ===\n{answers[m]['text'][:6000]}" for i, m in enumerate(part))
-        res = await ask(client, key, judge, JUDGE_SYSTEM, body, 2000, temperature=0)
-        got = parse_scores(res["text"], letters)
+        for _ in range(2):                  # не разобрали баллы — ещё раз
+            res = await ask(client, key, judge, JUDGE_SYSTEM, body, JUDGE_TOKENS, temperature=0)
+            got = parse_scores(res["text"], letters)
+            task["judge_cost"] = task.get("judge_cost", 0.0) + res["cost"]
+            if got:
+                break
         for i, m in enumerate(part):
             if letters[i] in got:
                 scores[m] = got[letters[i]]
-        task.setdefault("judge_cost", 0.0)
-        task["judge_cost"] += res["cost"]
     return scores
 
 
 def pareto(rows: list[dict]) -> set[str]:
-    """Модели, лучше которых за те же деньги нет: никто не выше по баллу и не дешевле сразу."""
+    """Модели, лучше которых за те же деньги нет: никто не выше по баллу и не дешевле сразу.
+    Нынешняя Gemini — мерка, а не участник: на бесплатном ключе она «0 ₽» и иначе
+    затмила бы всех (так и вышло в первом отборе)."""
     best = set()
+    rows = [r for r in rows if r["id"] != GEMINI_DIRECT]
     for r in rows:
         if r["q_score"] is None:
             continue

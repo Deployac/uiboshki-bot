@@ -116,6 +116,7 @@ def _fake_openrouter(monkeypatch, calls, judge_calls, left=5.0):
         text = "files" if system == intent_router.SYSTEM_PROMPT else f"ответ {model} по лекции"
         return {"text": text, "cost": 0.001, "secs": 0.5, "error": False}
 
+    monkeypatch.setattr(ai_bench, "SAMPLE_QUESTIONS", [])                   # только вопрос из истории
     monkeypatch.setattr(ai_bench, "_get", fake_get)
     monkeypatch.setattr(ai_bench, "balance", fake_balance)
     monkeypatch.setattr(ai_bench, "ask", fake_ask)
@@ -195,3 +196,68 @@ async def test_current_gemini_joins_by_own_key(group_data, monkeypatch):
     assert len(gemini_calls) == len(plan["tasks"]) and gemini_calls[-1]["temperature"] == 0  # намерения — без фантазии
     assert "наш ключ, бесплатно · сейчас у нас" in html and "обрыв" in html
     assert "ответ Gemini [1]" in html and "ответ обрезан" not in html
+
+
+async def test_questions_skip_photos_and_fill_with_samples(db, monkeypatch):
+    """Чат WebApp вопросы не хранит, а в истории решалки их мало — добираем
+    примерами; задачи с фото (в истории только подпись) не берём."""
+    from database._conn import connect
+    async with connect() as c:
+        await c.executemany("INSERT INTO solver_history (user_id, task_text, answer, subject) VALUES (1, ?, 'x', ?)",
+                            [("[фото] реши задачу с картинки", "Математика"),
+                             ("Как считать NPV инвестиционного проекта?", "Финансы")])
+        await c.commit()
+    monkeypatch.setattr(ai_bench, "QUESTIONS", 4)
+    got = await ai_bench._questions()
+    assert got[0] == ("Как считать NPV инвестиционного проекта?", "Финансы")
+    assert [q for q, _ in got[1:]] == ai_bench.SAMPLE_QUESTIONS[:3]
+    assert not any(q.startswith("[фото]") for q, _ in got)
+
+
+async def test_lectures_one_per_subject_preferring_lectures(db):
+    """Первый отбор взял последние 300 файлов — все одного предмета, конспект
+    вышел один. Теперь — по предмету на лекцию, сначала файлы типа «лекция»."""
+    text = "Текст лекции про учёт и анализ. " * 300
+    old = await db.add_file("Лекция 1", "Анализ данных", "tg1", "a.pdf", 1, category="lecture")
+    await db.save_file_text(old, text)
+    for i in range(3):
+        fid = await db.add_file(f"Доп {i}", "Учёт", f"tg{i + 2}", f"u{i}.pdf", 1, category="other")
+        await db.save_file_text(fid, text)
+    lec = await db.add_file("Лекция 2", "Учёт", "tg9", "u.pdf", 1, category="lecture")
+    await db.save_file_text(lec, text)
+    got = await ai_bench._lectures(4)
+    assert sorted((x["subject"], x["title"]) for x in got) == [("Анализ данных", "Лекция 1"), ("Учёт", "Лекция 2")]
+
+
+def test_pareto_ignores_free_baseline():
+    rows = [{"id": ai_bench.GEMINI_DIRECT, "q_score": 10, "q_rub": 0.0},
+            {"id": "a/cheap", "q_score": 8, "q_rub": 3.0}, {"id": "b/dear", "q_score": 7, "q_rub": 9.0}]
+    assert ai_bench.pareto(rows) == {"a/cheap"}
+
+
+async def test_judge_retries_unparsed_answer(monkeypatch):
+    replies = iter(["думаю…", '{"A": 7}'])
+
+    async def fake_ask(client, key, model, system, user, max_tokens, temperature=None):
+        return {"text": next(replies), "cost": 0.01, "secs": 1, "error": False}
+
+    monkeypatch.setattr(ai_bench, "ask", fake_ask)
+    task = {"judge_context": "Вопрос: x"}
+    got = await ai_bench.judge_task(None, "k", "j", task, {"m/one": {"text": "ответ", "error": False}})
+    assert got == {"m/one": 7} and task["judge_cost"] == 0.02
+
+
+async def test_gemini_retries_on_limit(monkeypatch):
+    import gemini_solver
+    calls = []
+
+    async def flaky(history, system, **kw):
+        calls.append(1)
+        if len(calls) < 3:
+            raise gemini_solver.GeminiError("Лимит запросов (HTTP 429)")
+        return "ответ"
+
+    monkeypatch.setattr(gemini_solver, "generate_text", flaky)
+    monkeypatch.setattr(ai_bench, "GEMINI_WAIT", 0)
+    res = await ai_bench.ask_gemini("s", "u", 100)
+    assert res["text"] == "ответ" and not res["error"] and len(calls) == 3
