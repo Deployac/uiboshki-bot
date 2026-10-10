@@ -144,9 +144,13 @@ A 192.0.2.1 с оранжевым облаком + Redirect Rule корень �
 модели через запятую на случай 429, по умолчанию gemini-2.5-flash), `AI_DAILY_LIMIT` (вопросов к ИИ в
 сутки на человека, 0 — без лимита, старосте не действует; счёт — `ai_quota.py`, по
 дню МСК в settings, классификатор намерений не считается), `DEEPSEEK_API_KEY`
-(необязательно), `OPENROUTER_API_KEY` (необязательно: `/aitest` — слепое
-сравнение моделей ИИ на вопросах и лекциях группы, `ai_bench.py`, страница
-голосования по подписанной ссылке `/aitest?exp=&sig=`), `WEBAPP_URL`, `PORT`, `SDO_SESSION_COOKIE`,
+(необязательно), `OPENROUTER_API_KEY` (необязательно: `/aitest` — выбор модели
+ИИ для других групп, `ai_bench.py`: отбор многих моделей с судьёй и ценой,
+`/aitest list` — без прогона, `/aitest vote id…` — слепое голосование
+финалистов; страницы по подписанной ссылке `/aitest?k=report|vote&exp=&sig=`;
+бюджет прогона `AITEST_BUDGET_USD`, судья `AITEST_JUDGE`; OpenRouter закрывает
+аккаунту OpenAI/Anthropic/Google — `AITEST_SKIP_VENDORS`, нынешняя Gemini — своим
+ключом, `gemini-direct`; своя группа остаётся на Gemini — владелец 10.10), `WEBAPP_URL`, `PORT`, `SDO_SESSION_COOKIE`,
 `SDO_SYNC_INTERVAL_HOURS` (6), `SDO_CRYPT_KEY` (необязательно, ключ шифрования
 входов студентов в СДО; без него — производный от `BOT_TOKEN`), `SDO_KEEP_COURSES` (по умолчанию «Учебный отдел»),
 `OPTIONAL_SUBJECTS` (предметы по выбору, по умолчанию «Военная кафедра»: пары

@@ -55,6 +55,15 @@ SYSTEM_PROMPT = (
 )
 
 
+def parse_intent(raw: str) -> str:
+    """Ответ модели → намерение из списка (лишние слова и знаки не мешают)."""
+    raw = (raw or "").strip().lower()
+    for intent in INTENTS:
+        if intent in raw:
+            return intent
+    return "none"
+
+
 async def classify_intent(text: str) -> str:
     text = (text or "").strip()
     if not gemini_solver.GEMINI_API_KEY or len(text) < 3 or len(text) > MAX_CLASSIFY_CHARS:
@@ -67,11 +76,7 @@ async def classify_intent(text: str) -> str:
             [{"role": "user", "content": text}], SYSTEM_PROMPT,
             temperature=0, max_output_tokens=None, timeout=10, fallback=False,
         )
-        raw = raw.strip().lower()
-        for intent in INTENTS:
-            if intent in raw:
-                return intent
-        return "none"
+        return parse_intent(raw)
     except Exception as e:
         logger.warning(f"intent classify failed: {e}")
         return "none"
