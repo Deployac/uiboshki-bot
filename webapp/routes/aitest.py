@@ -39,7 +39,7 @@ def _check(k: str, exp: int, sig: str) -> None:
 
 
 @router.get("/aitest")
-async def aitest_page(k: str = "vote", exp: int = 0, sig: str = "", view: str = ""):
+async def aitest_page(k: str = "vote", exp: int = 0, sig: str = "", view: str = "", full: str = ""):
     import ai_bench
     _check(k, exp, sig)
     html = await ai_bench.load(k)
@@ -48,7 +48,7 @@ async def aitest_page(k: str = "vote", exp: int = 0, sig: str = "", view: str = 
     if k == "vote" and view == "result":
         return PlainTextResponse(await ai_bench.vote_result(), headers=HEADERS)
     if k == "report" and view == "text":
-        return PlainTextResponse(ai_bench.report_text(html), headers=HEADERS)
+        return PlainTextResponse(ai_bench.report_text(html, full=full[:40]), headers=HEADERS)
     return HTMLResponse(html, headers=HEADERS)
 
 

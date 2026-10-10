@@ -139,6 +139,8 @@ async def test_screen_on_group_data(group_data, monkeypatch):
     text = ai_bench.report_text(html, cut=10)                                # коротко — для Claude по ссылке
     assert "<" not in text and "★ qwen3.7-flash | 8.0" in text and "нужно schedule_today" in text
     assert "ответ chea…" in text and "ответ cheap/a по лекции" not in text    # ответы — началом
+    text = ai_bench.report_text(html, cut=10, full="QWEN3.7")                # одну модель — целиком
+    assert "ответ qwen/qwen3.7-flash по лекции" in text and "ответ cheap/a по лекции" not in text
 
 
 async def test_budget_follows_account_balance(group_data, monkeypatch):

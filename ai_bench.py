@@ -692,18 +692,28 @@ def report_page(rows: list[dict], tasks: list[dict], judge: str | None, cost: fl
 <section>{"".join(out)}</section>{intents}{"".join(blocks)}</body></html>"""
 
 
-def report_text(page_html: str, cut: int = 150) -> str:
+def report_text(page_html: str, cut: int = 150, full: str = "") -> str:
     """Отбор текстом (&view=text) — для Claude: полная страница с ответами
     слишком длинная, чтение по ссылке обрывается на середине. Ответы — по
-    первым cut символов, баллы, цена и пометки — целиком."""
+    первым cut символов, баллы, цена и пометки — целиком; ответы модели, в
+    имени которой есть full (&full=ling), — целиком: разобрать их подробно."""
     import html as html_lib
 
+    def plain(fragment: str) -> str:
+        return html_lib.unescape(re.sub(r"<[^>]+>", "", re.sub(r"<br>", "\n", fragment))).strip()
+
     def short(m: re.Match) -> str:
-        text = re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))).strip()
-        return f'<div class="t">{html_lib.escape(text[:cut] + ("…" if len(text) > cut else ""))}</div></div>'
+        name, answer = m.group(1), m.group(3)
+        if full and full.lower() in plain(name).lower():
+            text = plain(answer)
+        else:
+            text = re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", " ", answer))).strip()
+            text = text[:cut] + ("…" if len(text) > cut else "")
+        return f'<div class="a"><b>{name}</b>{m.group(2)}<div class="t">{html_lib.escape(text)}</div></div>'
 
     body = page_html.split("<body>", 1)[-1]
-    body = re.sub(r'<div class="t">(.*?)</div></div>', short, body, flags=re.S)
+    body = re.sub(r'<div class="a"><div class="h"><b>(.*?)</b>(.*?)<div class="t">(.*?)</div></div>',
+                  short, body, flags=re.S)
     body = re.sub(r"<br>|</div>|</section>|</summary>|</p>|</h1>", "\n", body)
     body = re.sub(r'<span class="(n|sub)">', " | ", body)
     text = html_lib.unescape(re.sub(r"<[^>]+>", "", body))

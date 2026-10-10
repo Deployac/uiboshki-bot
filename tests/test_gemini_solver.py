@@ -177,9 +177,10 @@ async def test_rate_limited_model_falls_back(monkeypatch):
     text = await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}])
     assert text == "ответ запасной" and calls == ["main", "gone", "spare"]
 
-    calls.clear()                                              # основная «отдыхает» — сразу запасные
+    calls.clear()                                              # основная «отдыхает» — сразу запасная,
     assert await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}]) == "ответ запасной"
-    assert calls == ["gone", "spare"]
+    assert calls == ["spare"]                                  # пропавшую (404) больше не дёргаем
+    gemini_solver._missing.clear()
 
     calls.clear()                                              # классификатор — без запасных
     with pytest.raises(gemini_solver.GeminiError, match="Лимит"):
@@ -199,3 +200,35 @@ async def test_rate_limited_model_falls_back(monkeypatch):
     with pytest.raises(gemini_solver.GeminiError, match="не найдена"):
         await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}])
     assert calls == ["main"]
+
+
+@pytest.mark.asyncio
+async def test_resting_primary_tried_when_spare_is_gone(monkeypatch):
+    """10.10: запасной gemini-2.5-flash у Google не стало (404), и после 429
+    основная 10 минут «отдыхала» — весь ИИ отвечал «модель не найдена».
+    Теперь основная идёт после запасных, а пропавшая запасная запоминается."""
+    calls = []
+    replies = {"main": (200, {"candidates": [{"content": {"parts": [{"text": "ответ основной"}]}}]}),
+               "gone": (404, {"error": {}})}
+
+    def handler(request):
+        model = request.url.path.split("/models/")[1].split(":")[0]
+        calls.append(model)
+        status, body = replies[model]
+        return httpx.Response(status, json=body)
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(gemini_solver.httpx, "AsyncClient",
+                        lambda *a, **kw: real_client(*a, transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(gemini_solver, "GEMINI_API_KEY", "k")
+    monkeypatch.setattr(gemini_solver, "GEMINI_MODEL", "main")
+    monkeypatch.setattr(gemini_solver, "GEMINI_FALLBACK_MODELS", ["gone"])
+    gemini_solver._rest_primary()                              # основная недавно упёрлась в лимит
+    assert await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}]) == "ответ основной"
+    assert calls == ["gone", "main"]
+    calls.clear()
+    assert await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}]) == "ответ основной"
+    assert calls == ["main"] and gemini_solver.rest_status() == (0.0, [])   # запасных не осталось
+    replies["main"] = (429, {"error": {}})
+    with pytest.raises(gemini_solver.GeminiError, match="Лимит"):    # не «модель не найдена»
+        await gemini_solver._generate([{"role": "user", "parts": [{"text": "?"}]}])
