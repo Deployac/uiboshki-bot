@@ -21,6 +21,10 @@
    ответы перемешаны и подписаны «Ответ 1…N», староста отмечает лучший, не
    зная модели, и только в конце открывает, где какая.
 
+Аккаунту владельца OpenRouter закрывает модели OpenAI, Anthropic и Google
+(регион оплаты) — их разработчики в SKIP_VENDORS, а нынешняя Gemini идёт в
+сравнение напрямую, своим ключом (GEMINI_DIRECT: бесплатный лимит, цена 0).
+
 Страницы — последние, в settings, по подписанной ссылке (webapp/routes/aitest.py).
 """
 
@@ -49,10 +53,15 @@ PINNED = [
     "openai/gpt-oss-120b",
     "deepseek/deepseek-v4.1-flash",
 ]
-BASELINE = PINNED[0]
-# судья — сильная, но недорогая; первая, что есть у OpenRouter
+# нынешняя модель — своим ключом Gemini, не через OpenRouter
+GEMINI_DIRECT = "gemini-direct"
+# разработчики, чьи модели OpenRouter не продаёт аккаунту владельца (регион)
+SKIP_VENDORS = {v.strip() for v in os.getenv("AITEST_SKIP_VENDORS", "openai,anthropic,google").split(",") if v.strip()}
+# судья — сильная, но недорогая; первая, что есть у OpenRouter (нет ни одной —
+# самая дорогая из моделей до JUDGE_MAX_IN $ за 1 млн токенов входа)
 JUDGES = [j for j in [os.getenv("AITEST_JUDGE", "")] if j] + [
-    "deepseek/deepseek-v4-pro", "~deepseek/deepseek-pro-latest", "anthropic/claude-haiku-5.5"]
+    "deepseek/deepseek-v4-pro", "~deepseek/deepseek-pro-latest"]
+JUDGE_MAX_IN = 1.5
 MAX_IN = float(os.getenv("AITEST_MAX_IN", "0.5"))          # $ за 1 млн токенов входа
 LIMIT = int(os.getenv("AITEST_MODELS", "24"))
 PER_VENDOR = 3
@@ -125,11 +134,15 @@ def usable(m: dict) -> bool:
     """Обычная платная модель с текстом и окном под лекции: без «:free» (лимит 50
     запросов в день), «:batch» (ответ до суток), псевдонимов «~» и роутеров."""
     return (m["text"] and m["in"] >= 0 and m["out"] >= 0 and (m["in"] or m["out"])
-            and m["ctx"] >= MIN_CTX and ":" not in m["id"] and not m["id"].startswith("~"))
+            and m["ctx"] >= MIN_CTX and ":" not in m["id"] and not m["id"].startswith("~")
+            and m["id"].split("/")[0] not in SKIP_VENDORS)
 
 
 def resolve(want: str, models: dict) -> str | None:
-    """Точный id или самый короткий подходящий, который начинается с want."""
+    """Точный id или самый короткий подходящий, который начинается с want
+    (модели закрытых разработчиков — SKIP_VENDORS — не находятся)."""
+    if want.split("/")[0].lstrip("~") in SKIP_VENDORS:
+        return None
     if want in models:
         return want
     found = [i for i, m in models.items() if i.startswith(want) and usable(m)]
@@ -237,6 +250,30 @@ async def ask(client: httpx.AsyncClient, key: str, model: str, system: str, user
                 "cut": choice.get("finish_reason") == "length"}
     except Exception as e:
         return {"text": f"[ошибка: {type(e).__name__}]", "cost": 0.0, "secs": time.monotonic() - started, "error": True}
+
+
+async def ask_gemini(system: str, user: str, max_tokens: int, temperature: float | None = None) -> dict:
+    """Ответ нынешней модели своим ключом (gemini_solver) — в том же виде, что ask."""
+    import gemini_solver
+    started = time.monotonic()
+    try:
+        text = await gemini_solver.generate_text(
+            [{"role": "user", "content": user}], system, max_output_tokens=max_tokens,
+            temperature=0.3 if temperature is None else temperature)
+    except Exception as e:
+        return {"text": f"[ошибка: {e}]", "cost": 0.0, "secs": time.monotonic() - started, "error": True}
+    cut = text.endswith(gemini_solver.TRUNCATED_NOTE)
+    text = text.removesuffix(gemini_solver.TRUNCATED_NOTE).strip()
+    return {"text": text or "[пустой ответ]", "cost": 0.0, "secs": time.monotonic() - started,
+            "error": not text, "cut": cut}
+
+
+def pick_judge(models: dict) -> str | None:
+    found = next((r for j in JUDGES if (r := resolve(j, models))), None)
+    if found:
+        return found
+    pool = [m for m in models.values() if usable(m) and m["in"] * 1e6 <= JUDGE_MAX_IN]
+    return max(pool, key=lambda m: (m["in"], m["id"]))["id"] if pool else None
 
 
 # ── Задачи на данных группы ─────────────────────────────────────────────────
@@ -428,7 +465,7 @@ def table(tasks: list[dict], ids: list[str], models: dict) -> list[dict]:
 
         flags = Counter(f for t in tasks for f in t["answers"][mid]["flags"])
         rows.append({
-            "id": mid, "name": models.get(mid, {}).get("name", mid), "baseline": mid == resolve(BASELINE, models),
+            "id": mid, "name": models.get(mid, {}).get("name", mid), "baseline": mid == GEMINI_DIRECT,
             "image": models.get(mid, {}).get("image", False),
             "q_score": avg(q), "s_score": avg(s),
             "intent": round(100 * sum(a.get("intent") == t["want"] for t, a in it) / len(it)) if it else None,
@@ -451,7 +488,11 @@ async def prepare(key: str, wanted: list[str] | None = None, *, intents: bool = 
     async with httpx.AsyncClient(timeout=TIMEOUT) as client:
         models = parse_models(await _get(client, key, "/models"))
         left = await balance(client, key)
-    judge = next((r for j in JUDGES if (r := resolve(j, models))), None)
+    judge = pick_judge(models)
+    from config import GEMINI_API_KEY
+    if GEMINI_API_KEY:                      # нынешняя модель — своим ключом, бесплатно
+        models[GEMINI_DIRECT] = {"id": GEMINI_DIRECT, "name": "Gemini 3.1 Flash-Lite · наш ключ, бесплатно",
+                                 "in": 0.0, "out": 0.0, "ctx": 1_000_000, "text": True, "image": True}
     missing = [w for w in wanted or [] if not resolve(w, models)]
     ids = list(dict.fromkeys(r for w in wanted if (r := resolve(w, models)))) if wanted else pick(models)
     if not ids:
@@ -459,6 +500,8 @@ async def prepare(key: str, wanted: list[str] | None = None, *, intents: bool = 
     tasks = await build_tasks(intents)
     budget = BUDGET_USD if left is None else min(BUDGET_USD, max(0.0, left * 0.9))
     ids, dropped, est = fit_budget(ids, models, tasks, models[judge] if judge and intents else None, budget)
+    if GEMINI_DIRECT in models and not wanted:
+        ids = [GEMINI_DIRECT] + ids
     lines = [f"Моделей: {len(ids)}, задач на каждую: {len(tasks)}, примерно ${est:.2f}"
              + (f" (на счёте ${left:.2f})" if left is not None else "") + "."]
     if intents:
@@ -467,7 +510,7 @@ async def prepare(key: str, wanted: list[str] | None = None, *, intents: bool = 
     if dropped:
         lines.append(f"Не влезли в бюджет ${budget:.2f}: " + ", ".join(models[i]["name"] for i in dropped) + ".")
     if missing:
-        lines.append("Нет у OpenRouter: " + ", ".join(missing) + ".")
+        lines.append("Нет у OpenRouter или закрыто аккаунту: " + ", ".join(missing) + ".")
     return {"models": models, "ids": ids, "judge": judge, "tasks": tasks, "text": "\n".join(lines)}
 
 
@@ -475,10 +518,16 @@ async def _answer_all(client, key: str, tasks: list[dict], ids: list[str]) -> No
     import intent_router
     sem = asyncio.Semaphore(PARALLEL)
 
+    gemini_sem = asyncio.Semaphore(2)        # бесплатный лимит Gemini — по чуть-чуть
+
     async def one(task, mid):
-        async with sem:
-            temp = 0 if task["kind"] == "Намерение" else None
-            res = await ask(client, key, mid, task["system"], task["user"], task["tokens"], temperature=temp)
+        temp = 0 if task["kind"] == "Намерение" else None
+        if mid == GEMINI_DIRECT:
+            async with gemini_sem:
+                res = await ask_gemini(task["system"], task["user"], task["tokens"], temp)
+        else:
+            async with sem:
+                res = await ask(client, key, mid, task["system"], task["user"], task["tokens"], temperature=temp)
         res["flags"] = checks(res["text"], task["kind"], task["chunks"]) if not res["error"] else []
         if res.get("cut"):
             res["flags"].append("обрыв")
