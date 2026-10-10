@@ -136,6 +136,9 @@ async def test_screen_on_group_data(group_data, monkeypatch):
     assert "нужно schedule_today" in html                                    # ошибки классификатора — списком
     await ai_bench.save(html, "report")
     assert await ai_bench.load("report") == html and await ai_bench.load("vote") is None
+    text = ai_bench.report_text(html, cut=10)                                # коротко — для Claude по ссылке
+    assert "<" not in text and "★ qwen3.7-flash | 8.0" in text and "нужно schedule_today" in text
+    assert "ответ chea…" in text and "ответ cheap/a по лекции" not in text    # ответы — началом
 
 
 async def test_budget_follows_account_balance(group_data, monkeypatch):
@@ -155,6 +158,43 @@ async def test_vote_hides_models_until_reveal(group_data, monkeypatch):
     assert "qwen3.7-flash" not in visible and "Ответ 2" in html             # имён моделей не видно
     secret = json.loads(base64.b64decode(re.search(r'atob\("([^"]+)"\)', html).group(1)))
     assert set(secret["names"]) == {"qwen/qwen3.7-flash", "cheap/a"}          # ключ — для «Показать модели»
+    assert plan["key"] == secret and len(secret["blocks"]) == 2               # тот же ключ — серверу
+
+
+async def test_vote_picks_live_on_server(db, monkeypatch):
+    """Выбор в слепом тесте — на сервере по той же подписанной ссылке (на
+    iPhone копировать итог неудобно), итог текстом — &view=result для Claude."""
+    import webapp.server as server
+    from webapp import deps
+    from webapp.routes import aitest
+    monkeypatch.setattr(deps, "BOT_TOKEN", "123:abc")
+    monkeypatch.setattr(deps, "WEBAPP_URL", "https://www.uiboshki.ru")
+    items = [{"kind": k, "title": f"задача {k}", "subject": "БД", "answers": [
+        {"text": "ответ", "model": m, "cost": 0.001, "secs": 2.0} for m in ("a/x", "b/y")]}
+        for k in ("Вопрос", "Конспект")]
+    key = ai_bench.vote_key(items, {"a/x": "Икс", "b/y": "Игрек"})
+    await ai_bench.save(ai_bench.page(items, key["names"]), "vote", key)
+    q = aitest.link("vote").split("uiboshki.ru/aitest")[1]
+    c = TestClient(server.app)
+    assert c.get("/aitest/pick" + q).json() == {"picks": {}}
+    assert c.post("/aitest/pick" + q, json={"i": 0, "j": 1}).json() == {"picks": {"0": 1}}
+    assert c.post("/aitest/pick" + q, json={"i": 1, "j": 0}).json() == {"picks": {"0": 1, "1": 0}}
+    assert c.post("/aitest/pick" + q, json={"i": 1, "j": -1}).json() == {"picks": {"0": 1}}   # снять
+    assert c.post("/aitest/pick" + q, json={"i": 5, "j": 0}).status_code == 400
+    assert c.post("/aitest/pick" + q, json={"i": 0, "j": 2}).status_code == 400
+    assert c.post("/aitest/pick" + q.replace("sig=", "sig=0"), json={"i": 0, "j": 0}).status_code == 404
+    report_q = aitest.link("report").split("uiboshki.ru/aitest")[1]
+    assert c.post("/aitest/pick" + report_q, json={"i": 0, "j": 0}).status_code == 404     # подпись отбора не годится
+    r = c.get("/aitest" + q + "&view=result")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/plain")
+    assert "выбрано 1 из 2" in r.text and "Игрек (b/y): побед 1 (вопрос 1, конспект 0)" in r.text
+    assert "1. Вопрос · БД · задача Вопрос → Игрек" in r.text and "2. Конспект · БД · задача Конспект → не выбран" in r.text
+    assert "Слепой тест ИИ" in c.get("/aitest" + q).text                     # без view — сама страница
+    await ai_bench.save("<body><h1>Отбор</h1><div class=\"t\">длинный ответ</div></div></body>", "report")
+    text = c.get("/aitest" + report_q + "&view=text")
+    assert text.headers["content-type"].startswith("text/plain") and text.text == "Отбор\nдлинный ответ\n"
+    await ai_bench.save(ai_bench.page(items, key["names"]), "vote", key)
+    assert c.get("/aitest/pick" + q).json() == {"picks": {}}                 # новый тест — выбор с нуля
 
 
 async def test_page_links_are_signed_per_kind(db, monkeypatch):
