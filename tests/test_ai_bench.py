@@ -1,5 +1,6 @@
-"""Слепой тест моделей ИИ (ai_bench.py, /aitest): выбор вопросов, страница
-без имён моделей, прогон и подписанная ссылка на страницу."""
+"""Выбор модели ИИ (ai_bench.py, /aitest): список моделей у OpenRouter,
+бюджет, автопроверки, судья, таблица «балл · цена», слепое голосование и
+подписанные ссылки на страницы."""
 import base64
 import json
 import re
@@ -10,29 +11,80 @@ from fastapi.testclient import TestClient
 import ai_bench
 
 
-def test_pick_questions_skips_junk_and_rotates_subjects():
-    rows = [("/start", "А"), ("коротко", "А"), ("Как считать NPV проекта?", "Финансы"),
-            ("как считать  npv проекта?", "Финансы"),                       # повтор
-            ("Что такое нормализация БД?", "Базы"), ("Объясни ROI по лекции", "Финансы")]
-    got = ai_bench.pick_questions(rows, 3)
-    assert [s for _, s in got] == ["Финансы", "Базы", "Финансы"]           # по кругу по предметам
-    assert all(not q.startswith("/") and len(q) >= 15 for q, _ in got)
+def _m(mid, pin, pout, ctx=128_000, image=False, out=("text",)):
+    """Модель в формате /api/v1/models; цены — $ за 1 млн токенов."""
+    return {"id": mid, "name": f"Vendor: {mid.split('/')[-1]}", "context_length": ctx,
+            "pricing": {"prompt": str(pin / 1e6), "completion": str(pout / 1e6)},
+            "architecture": {"input_modalities": ["text"] + (["image"] if image else []),
+                             "output_modalities": list(out)}}
 
 
-def test_page_hides_models_until_reveal():
-    items = [{"kind": "Вопрос", "title": "Что такое NPV?", "subject": "Финансы", "answers": [
-        {"model": m, "text": f"**ответ** {i}", "cost": 0.0001, "secs": 1.2, "error": False}
-        for i, m in enumerate(ai_bench.MODELS)]}]
-    html = ai_bench.page(items)
-    visible = re.sub(r'atob\("[^"]+"\)', "", html)
-    assert not any(label in visible for label in ai_bench.MODELS.values())  # имён моделей не видно
-    assert "Ответ 4" in html and "<b>ответ</b>" in html
-    secret = json.loads(base64.b64decode(re.search(r'atob\("([^"]+)"\)', html).group(1)))
-    assert [a[0] for a in secret["key"][0]] == list(ai_bench.MODELS)       # ключ — для «Показать модели»
+CATALOG = {"data": [
+    _m("google/gemini-3.1-flash-lite-preview", 0.25, 1.5, image=True),   # нынешняя — по началу id
+    _m("qwen/qwen3.7-flash", 0.03, 0.13),
+    _m("deepseek/deepseek-v4-pro", 0.4, 1.2),                           # судья
+    _m("cheap/a", 0.01, 0.02), _m("cheap/b", 0.02, 0.04), _m("cheap/c", 0.03, 0.05), _m("cheap/d", 0.04, 0.06),
+    _m("mid/x", 0.2, 0.8), _m("dear/y", 2.0, 8.0),                      # дороже потолка входа
+    _m("free/z:free", 0, 0), _m("cheap/a:batch", 0.005, 0.01), _m("~cheap/latest", 0.01, 0.02),
+    _m("small/ctx", 0.01, 0.01, ctx=8000), _m("img/gen", 0.01, 0.01, out=("image",)),
+    _m("router/auto", -1, -1),
+]}
 
 
-@pytest.mark.asyncio
-async def test_run_on_group_data(db, monkeypatch):
+def test_pick_takes_baseline_and_cheap_spread_skipping_odd_variants(monkeypatch):
+    models = ai_bench.parse_models(CATALOG)
+    got = ai_bench.pick(models, limit=6)
+    assert got[:2] == ["google/gemini-3.1-flash-lite-preview", "qwen/qwen3.7-flash"]   # PINNED первыми
+    assert len(got) == 6 and "dear/y" not in got
+    assert not any(":" in i or i.startswith("~") or i in ("small/ctx", "img/gen", "router/auto") for i in got)
+    assert sum(i.startswith("cheap/") for i in got) <= ai_bench.PER_VENDOR             # не больше трёх от одного
+    assert "mid/x" in got                                                               # и не только самые дешёвые
+    assert models["qwen/qwen3.7-flash"]["name"] == "qwen3.7-flash"
+
+
+def test_fit_budget_drops_most_expensive_but_keeps_pinned():
+    models = ai_bench.parse_models(CATALOG)
+    tasks = [{"kind": "Вопрос", "system": "", "user": "x" * 30_000, "out": 700, "judge_context": "x" * 30_000}]
+    ids = ["google/gemini-3.1-flash-lite-preview", "cheap/a", "mid/x"]
+    kept, dropped, cost = ai_bench.fit_budget(ids, models, tasks, models["deepseek/deepseek-v4-pro"], 0.011)
+    assert dropped == ["mid/x"] and kept == ["google/gemini-3.1-flash-lite-preview", "cheap/a"]
+    kept, dropped, _ = ai_bench.fit_budget(ids, models, tasks, None, 0)
+    assert kept == ["google/gemini-3.1-flash-lite-preview"]                           # нынешняя — всегда
+
+
+def test_checks_catch_rule_breaks():
+    assert ai_bench.checks("x² + √y [1] по лекции [2]", "Вопрос", 3) == []
+    assert ai_bench.checks("Ответ по формуле дроби $\\frac{a}{b}$ [7]", "Вопрос", 3) == ["LaTeX", "выдуманные [n]"]
+    assert ai_bench.checks("# Итог\nответ без ссылок", "Вопрос", 2) == ["заголовки #", "без ссылок [n]"]
+    assert ai_bench.checks("The answer is simple and clear", "Конспект") == ["не по-русски"]
+    assert ai_bench.checks("Вот код:\n```python\nprint('hello world from python')\n```", "Вопрос") == []
+
+
+def test_parse_scores_tolerates_noise():
+    assert ai_bench.parse_scores('Итог: ```json\n{"A": 8, "b": "6", "C": 15, "Z": 3}\n```', "ABC") == \
+        {"A": 8, "B": 6, "C": 10}
+    assert ai_bench.parse_scores("не знаю", "AB") == {}
+
+
+def test_table_scores_errors_as_zero_and_marks_pareto():
+    def ans(score, cost, error=False, intent=None):
+        return {"score": score, "cost": cost, "secs": 2.0, "error": error, "flags": [], "intent": intent}
+    tasks = [
+        {"kind": "Вопрос", "answers": {"a/good": ans(9, 0.001), "b/cheap": ans(7, 0.0001), "c/bad": ans(6, 0.002)}},
+        {"kind": "Вопрос", "answers": {"a/good": ans(9, 0.001), "b/cheap": ans(None, 0, error=True),
+                                        "c/bad": ans(6, 0.002)}},
+        {"kind": "Намерение", "want": "files", "answers": {"a/good": ans(None, 0, intent="files"),
+                                                            "b/cheap": ans(None, 0, intent="none"),
+                                                            "c/bad": ans(None, 0, intent="files")}},
+    ]
+    rows = {r["id"]: r for r in ai_bench.table(tasks, ["a/good", "b/cheap", "c/bad"], {})}
+    assert rows["b/cheap"]["q_score"] == 3.5 and rows["b/cheap"]["errors"] == 1        # ошибка — 0 баллов
+    assert rows["a/good"]["q_rub"] == 85.0 and rows["a/good"]["intent"] == 100
+    assert rows["a/good"]["star"] and rows["b/cheap"]["star"] and not rows["c/bad"]["star"]
+
+
+@pytest.fixture
+async def group_data(db):
     from database._conn import connect
     async with connect() as c:
         await c.execute("INSERT INTO solver_history (user_id, task_text, answer, subject) VALUES "
@@ -40,33 +92,80 @@ async def test_run_on_group_data(db, monkeypatch):
         await c.commit()
     fid = await db.add_file("Лекция 1", "Финансы", "tg", "l1.pdf", 1)
     await db.save_file_text(fid, "Дисконтирование денежных потоков. " * 400)
-    calls = []
 
-    async def fake_ask(client, key, model, system, user, max_tokens):
-        calls.append((model, user[:20]))
-        return {"text": f"ответ {model}", "cost": 0.001, "secs": 0.5, "error": False}
 
+def _fake_openrouter(monkeypatch, calls, judge_calls, left=5.0):
+    async def fake_get(client, key, path):
+        assert path == "/models"
+        return CATALOG
+
+    async def fake_balance(client, key):
+        return left
+
+    async def fake_ask(client, key, model, system, user, max_tokens, temperature=None):
+        if system == ai_bench.JUDGE_SYSTEM:
+            judge_calls.append(user)
+            letters = re.findall(r"=== Ответ ([A-H]) ===", user)
+            return {"text": json.dumps({x: 8 if "qwen" in user.split(f"Ответ {x} ===")[1][:40] else 5
+                                        for x in letters}), "cost": 0.01, "secs": 1, "error": False}
+        calls.append(model)
+        import intent_router
+        text = "files" if system == intent_router.SYSTEM_PROMPT else f"ответ {model} по лекции"
+        return {"text": text, "cost": 0.001, "secs": 0.5, "error": False}
+
+    monkeypatch.setattr(ai_bench, "_get", fake_get)
+    monkeypatch.setattr(ai_bench, "balance", fake_balance)
     monkeypatch.setattr(ai_bench, "ask", fake_ask)
-    html, summary = await ai_bench.run("k")
-    assert len(calls) == 2 * len(ai_bench.MODELS)                            # вопрос и конспект — всем моделям
-    assert "1 вопросов и 1 конспектов" in summary and "$0.008" in summary
-    await ai_bench.save(html)
-    assert await ai_bench.load() == html
 
 
-@pytest.mark.asyncio
-async def test_page_link_is_signed(db, monkeypatch):
+async def test_screen_on_group_data(group_data, monkeypatch):
+    calls, judge_calls = [], []
+    _fake_openrouter(monkeypatch, calls, judge_calls)
+    plan = await ai_bench.prepare("k", ["qwen/qwen3.7-flash", "cheap/a", "нет/такой"])
+    assert plan["ids"] == ["qwen/qwen3.7-flash", "cheap/a"] and plan["judge"] == "deepseek/deepseek-v4-pro"
+    assert "Нет у OpenRouter: нет/такой" in plan["text"] and "на счёте $5.00" in plan["text"]
+    html, summary = await ai_bench.screen("k", plan)
+    n_tasks = 2 + len(ai_bench.INTENT_CASES)                                 # вопрос, конспект, намерения
+    assert len(calls) == 2 * n_tasks and len(judge_calls) == 2               # судья — по разу на вопрос и конспект
+    assert "Отбор готов: 2 моделей" in summary and "qwen3.7-flash (8.0" in summary
+    assert "★ qwen3.7-flash" in html and "qwen/qwen3.7-flash" in html and "ответ cheap/a по лекции" in html
+    assert "нужно schedule_today" in html                                    # ошибки классификатора — списком
+    await ai_bench.save(html, "report")
+    assert await ai_bench.load("report") == html and await ai_bench.load("vote") is None
+
+
+async def test_budget_follows_account_balance(group_data, monkeypatch):
+    _fake_openrouter(monkeypatch, [], [], left=0.0)
+    plan = await ai_bench.prepare("k")
+    assert plan["ids"] == ["google/gemini-3.1-flash-lite-preview", "qwen/qwen3.7-flash"]   # остались только PINNED
+    assert "Не влезли в бюджет $0.00" in plan["text"]
+
+
+async def test_vote_hides_models_until_reveal(group_data, monkeypatch):
+    calls = []
+    _fake_openrouter(monkeypatch, calls, [])
+    plan = await ai_bench.prepare("k", ["qwen/qwen3.7-flash", "cheap/a"], intents=False)
+    html, summary = await ai_bench.vote("k", plan)
+    assert len(calls) == 4 and "1 вопросов и 1 конспектов × 2 модели" in summary
+    visible = re.sub(r'atob\("[^"]+"\)|<div class="t">.*?</div>', "", html)
+    assert "qwen3.7-flash" not in visible and "Ответ 2" in html             # имён моделей не видно
+    secret = json.loads(base64.b64decode(re.search(r'atob\("([^"]+)"\)', html).group(1)))
+    assert set(secret["names"]) == {"qwen/qwen3.7-flash", "cheap/a"}          # ключ — для «Показать модели»
+
+
+async def test_page_links_are_signed_per_kind(db, monkeypatch):
     import webapp.server as server
     from webapp import deps
     from webapp.routes import aitest
     monkeypatch.setattr(deps, "BOT_TOKEN", "123:abc")
     monkeypatch.setattr(deps, "WEBAPP_URL", "https://www.uiboshki.ru")
-    path = aitest.link().split("uiboshki.ru")[1]
-    assert path.startswith("/aitest?exp=")
+    path = aitest.link("report").split("uiboshki.ru")[1]
+    assert path.startswith("/aitest?k=report&exp=")
     c = TestClient(server.app)
     assert c.get(path).status_code == 404                                     # страницы ещё нет
-    await ai_bench.save("<p>тест</p>")
+    await ai_bench.save("<p>отбор</p>", "report")
     r = c.get(path)
-    assert r.status_code == 200 and "тест" in r.text and r.headers["cache-control"] == "no-store"
+    assert r.status_code == 200 and "отбор" in r.text and r.headers["cache-control"] == "no-store"
     assert c.get(path.replace("sig=", "sig=0")).status_code == 404            # чужая подпись
+    assert c.get(path.replace("k=report", "k=vote")).status_code == 404       # подпись — на свою страницу
     assert c.get("/aitest").status_code == 404

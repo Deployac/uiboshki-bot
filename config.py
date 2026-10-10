@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 # ─── Токены ───────────────────────────────────────────────────────────────────
 BOT_TOKEN     = os.getenv("BOT_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
-# OpenRouter — слепое сравнение моделей (/aitest, ai_bench.py); без ключа команда объясняет, что задать
+# OpenRouter — выбор модели ИИ для других групп (/aitest, ai_bench.py); без ключа команда объясняет, что задать
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
 ICAL_URL      = os.getenv("ICAL_URL", "https://english.mirea.ru/schedule/api/ical/1/4928")
 

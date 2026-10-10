@@ -1059,7 +1059,7 @@ def test_server_pages_wrap_long_text():
     html = _page("Привязать VK ID?", "А" * 200).body.decode()
     assert "overflow-wrap:anywhere" in html and "name='color-scheme' content='light dark'" in html
     page = ai_bench.page([{"kind": "Вопрос", "title": "x" * 300, "subject": "", "answers": [
-        {"text": "```\n" + "1" * 300 + "\n```", "model": m, "cost": 0, "secs": 1} for m in ai_bench.MODELS]}])
+        {"text": "```\n" + "1" * 300 + "\n```", "model": m, "cost": 0, "secs": 1} for m in "ab"]}], {"a": "A", "b": "B"})
     assert "h2{font-size:16px;margin:4px 0 10px;overflow-wrap:anywhere}" in page and ".t pre{white-space:pre-wrap}" in page
 
 
