@@ -100,7 +100,10 @@ GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 # запрос уходит следующей. Лимиты бесплатного тира у каждой модели свои
 # (у основной 500 в день, у остальных по 20), так что это ещё десятки
 # ответов в день, когда основная кончилась. Пусто — без запасных.
-GEMINI_FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS", "gemini-2.5-flash").split(",")
+# gemini-flash-latest — псевдоним Google на текущую Flash (имена у Google
+# меняются: 10.10 gemini-2.5-flash отдавала 404); какой нет — пропускается.
+GEMINI_FALLBACK_MODELS = [m.strip() for m in os.getenv("GEMINI_FALLBACK_MODELS",
+                                                       "gemini-flash-latest,gemini-2.5-flash").split(",")
                           if m.strip()]
 # Вопросов к ИИ в сутки на человека (ИИ-чат, решалка, конспекты); 0 — без
 # дневного лимита. Бесплатный лимит Gemini — один на всю группу: если его

@@ -108,11 +108,14 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
         payload["systemInstruction"] = {"parts": [{"text": system_instruction}]}
     # основная модель упёрлась в лимит — тот же запрос запасной (лимиты у
     # моделей свои); запасной нет у Google (404) — дальше по списку
-    # основная, упёршаяся в лимит, 10 минут не дёргается — сразу запасная
-    # (иначе каждый вопрос — лишний запрос и ожидание)
+    # основная, упёршаяся в лимит, 10 минут идёт после запасных (иначе каждый
+    # вопрос — лишний запрос и ожидание), но не пропускается: 10.10 запасная
+    # gemini-2.5-flash у Google пропала (404), и после любого 429 весь ИИ
+    # бота 10 минут отвечал «модель не найдена». Пропавшая запасная
+    # запоминается и до перезапуска не дёргается.
     spare = _spare_models() if fallback else []
     resting = spare and time.monotonic() < _primary_rest_until
-    models = spare if resting else [GEMINI_MODEL] + spare
+    models = spare + [GEMINI_MODEL] if resting else [GEMINI_MODEL] + spare
     limited = None
     for i, model in enumerate(models):
         try:
@@ -120,8 +123,12 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
         except GeminiError as e:
             if model == GEMINI_MODEL and e.status == 429:
                 _rest_primary()
+            if model != GEMINI_MODEL and e.status == 404 and model not in _missing:
+                _missing.add(model)
+                logger.warning(f"Gemini: запасной модели {model} нет (404) — больше не пробую до перезапуска")
             if e.status == 429 or (model != GEMINI_MODEL and e.status == 404):
-                limited = limited or e
+                if limited is None or (e.status == 429 and limited.status != 429):
+                    limited = e                     # лимит важнее «запасной нет»
                 if i + 1 < len(models):
                     logger.info(f"Gemini {model}: HTTP {e.status} — пробую {models[i + 1]}")
                     continue
@@ -130,12 +137,13 @@ async def _generate(contents: list[dict], system_instruction: str | None = None,
     raise limited or GeminiError("Gemini не ответил")
 
 
-PRIMARY_REST = 600            # сек: основная после 429 — сразу к запасной
+PRIMARY_REST = 600            # сек: основная после 429 — сначала запасные
 _primary_rest_until = 0.0
+_missing: set[str] = set()    # запасные, которых у Google нет (404)
 
 
 def _spare_models() -> list[str]:
-    return [m for m in GEMINI_FALLBACK_MODELS if m != GEMINI_MODEL]
+    return [m for m in GEMINI_FALLBACK_MODELS if m != GEMINI_MODEL and m not in _missing]
 
 
 def rest_status() -> tuple[float, list[str]]:
