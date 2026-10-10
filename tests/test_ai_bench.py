@@ -116,6 +116,7 @@ def _fake_openrouter(monkeypatch, calls, judge_calls, left=5.0):
         text = "files" if system == intent_router.SYSTEM_PROMPT else f"ответ {model} по лекции"
         return {"text": text, "cost": 0.001, "secs": 0.5, "error": False}
 
+    monkeypatch.setattr(ai_bench, "SAMPLE_QUESTIONS", [])                   # только вопрос из истории
     monkeypatch.setattr(ai_bench, "_get", fake_get)
     monkeypatch.setattr(ai_bench, "balance", fake_balance)
     monkeypatch.setattr(ai_bench, "ask", fake_ask)
@@ -195,3 +196,19 @@ async def test_current_gemini_joins_by_own_key(group_data, monkeypatch):
     assert len(gemini_calls) == len(plan["tasks"]) and gemini_calls[-1]["temperature"] == 0  # намерения — без фантазии
     assert "наш ключ, бесплатно · сейчас у нас" in html and "обрыв" in html
     assert "ответ Gemini [1]" in html and "ответ обрезан" not in html
+
+
+async def test_questions_skip_photos_and_fill_with_samples(db, monkeypatch):
+    """Чат WebApp вопросы не хранит, а в истории решалки их мало — добираем
+    примерами; задачи с фото (в истории только подпись) не берём."""
+    from database._conn import connect
+    async with connect() as c:
+        await c.executemany("INSERT INTO solver_history (user_id, task_text, answer, subject) VALUES (1, ?, 'x', ?)",
+                            [("[фото] реши задачу с картинки", "Математика"),
+                             ("Как считать NPV инвестиционного проекта?", "Финансы")])
+        await c.commit()
+    monkeypatch.setattr(ai_bench, "QUESTIONS", 4)
+    got = await ai_bench._questions()
+    assert got[0] == ("Как считать NPV инвестиционного проекта?", "Финансы")
+    assert [q for q, _ in got[1:]] == ai_bench.SAMPLE_QUESTIONS[:3]
+    assert not any(q.startswith("[фото]") for q, _ in got)

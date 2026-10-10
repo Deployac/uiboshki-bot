@@ -278,13 +278,36 @@ def pick_judge(models: dict) -> str | None:
 
 # ── Задачи на данных группы ─────────────────────────────────────────────────
 
+# вопросы, как у студентов направления (бизнес-информатика): добирают, когда
+# в истории решалки мало своих — чат WebApp вопросы не хранит
+SAMPLE_QUESTIONS = [
+    "Что такое нормализация базы данных и чем 2НФ отличается от 3НФ?",
+    "Напиши SQL-запрос: студенты со средним баллом выше 4, по фамилии",
+    "Как посчитать NPV, если вложили 100 тыс., доход 40 тыс. в год три года, ставка 10%?",
+    "Объясни, что такое эластичность спроса по цене и как её считать",
+    "Найди производную функции y = x² · ln x",
+    "Почему в выборочной дисперсии делят на n − 1, а не на n?",
+    "Какие блоки в бизнес-модели Остервальдера?",
+    "Как проверить гипотезу о равенстве средних двух выборок?",
+    "Как на ER-диаграмме показать связь многие-ко-многим?",
+    "Сделай SWOT-анализ кофейни у университета",
+    "Напиши на Python функцию: среднее и медиана списка без библиотек",
+    "Что такое точка безубыточности и как её найти?",
+    "Чем корреляция отличается от причинно-следственной связи? Пример",
+    "Чем ООО отличается от ИП?",
+    "Переведи на английский: «Компания увеличила выручку на 15% за счёт новых клиентов»",
+    "Чем нотация BPMN отличается от IDEF0?",
+]
+
+
 def pick_questions(rows: list[tuple[str, str]], n: int = QUESTIONS) -> list[tuple[str, str]]:
-    """Разные вопросы, по кругу по предметам: без команд, коротышек и повторов."""
+    """Разные вопросы, по кругу по предметам: без команд, коротышек, повторов и
+    задач с фото (в истории — только подпись «[фото] …», самой картинки нет)."""
     seen, by_subject = set(), {}
     for text, subject in rows:
         t = (text or "").strip()
         key = " ".join(t.lower().split())
-        if len(t) < 15 or len(t) > 800 or t.startswith("/") or key in seen:
+        if len(t) < 15 or len(t) > 800 or t.startswith(("/", "[фото]")) or key in seen:
             continue
         seen.add(key)
         by_subject.setdefault(subject or "", []).append((t, subject or ""))
@@ -301,7 +324,9 @@ async def _questions() -> list[tuple[str, str]]:
     async with connect() as db:
         rows = await (await db.execute(
             "SELECT task_text, subject FROM solver_history ORDER BY id DESC LIMIT 500")).fetchall()
-    return pick_questions([(r[0], r[1]) for r in rows])
+    got = pick_questions([(r[0], r[1]) for r in rows])
+    have = {q for q, _ in got}
+    return got + [(q, "") for q in SAMPLE_QUESTIONS if q not in have][:max(0, QUESTIONS - len(got))]
 
 
 async def _lectures(n: int = LECTURES) -> list[dict]:
