@@ -463,6 +463,65 @@ async def test_foreign_token_link_is_ignored(db, monkeypatch):
         await bot.stop_webapp(server, task)
 
 
+# ── Баг (скрины для поста 23): строка пушей в PWA — над шапкой листа и
+#    пропадала после любого тумблера (лист перерисовывается целиком) ──
+PUSH_STUB = """
+const reg = { pushManager: { getSubscription: async () => null } };
+Object.defineProperty(navigator, 'serviceWorker', { value: { ready: Promise.resolve(reg), register: async () => reg } });
+window.PushManager = function () {};
+window.Notification = { permission: 'default' };
+"""
+
+
+def _push_row(url: str, token: str) -> list:
+    """Лист «Уведомления» в PWA: что идёт по порядку до и после тумблера (id или класс)."""
+    import json
+    order = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(executable_path=CHROMIUM)
+        page = browser.new_page(viewport={"width": 390, "height": 844})
+        page.route("https://telegram.org/**", lambda route: route.abort())
+        page.add_init_script(TG_STUB % json.dumps(""))
+        page.add_init_script(f"localStorage.setItem('uib_token', {json.dumps(token)})")
+        page.add_init_script(PUSH_STUB)        # без https service worker не ставится
+        page.goto(url)
+        page.wait_for_timeout(800)
+        kids = """() => [...document.getElementById('notify-body').children].slice(0, 3)
+                  .map(e => e.id || e.className)"""
+        page.evaluate("openNotify()")
+        page.wait_for_selector("#push-row")
+        order.append(page.evaluate(kids))
+        page.evaluate("toggleNotifyMaster()")
+        page.wait_for_timeout(600)
+        order.append(page.evaluate(kids))
+        order.append(page.evaluate("document.querySelectorAll('#push-row').length"))
+        browser.close()
+    return order
+
+
+@pytest.mark.asyncio
+async def test_pwa_push_row_under_header(db, monkeypatch):
+    import bot
+    import webapp.deps as deps
+    from database.sessions import create_session
+    monkeypatch.setattr(deps, "BOT_TOKEN", BOT_TOKEN)
+    await db.upsert_user(222, "", "Alice")
+    token = await create_session(222, "test")
+    port = _free_port()
+    server, task = bot.start_webapp(port)
+    try:
+        for _ in range(50):
+            if server.started:
+                break
+            await asyncio.sleep(0.1)
+        before, after, count = await asyncio.to_thread(_push_row, f"http://127.0.0.1:{port}/app", token)
+        assert before[:2] == ["sec-hero", "push-row"], before
+        assert after[:2] == ["sec-hero", "push-row"], after
+        assert count == 1
+    finally:
+        await bot.stop_webapp(server, task)
+
+
 def _vote_page(url: str) -> dict:
     """Слепой тест ИИ на телефоне: длинное свёрнуто, «Лучший» уходит на сервер
     и держится после перезагрузки без копии в браузере."""
