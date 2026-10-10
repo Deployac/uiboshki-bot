@@ -692,6 +692,24 @@ def report_page(rows: list[dict], tasks: list[dict], judge: str | None, cost: fl
 <section>{"".join(out)}</section>{intents}{"".join(blocks)}</body></html>"""
 
 
+def report_text(page_html: str, cut: int = 150) -> str:
+    """Отбор текстом (&view=text) — для Claude: полная страница с ответами
+    слишком длинная, чтение по ссылке обрывается на середине. Ответы — по
+    первым cut символов, баллы, цена и пометки — целиком."""
+    import html as html_lib
+
+    def short(m: re.Match) -> str:
+        text = re.sub(r"\s+", " ", html_lib.unescape(re.sub(r"<[^>]+>", " ", m.group(1)))).strip()
+        return f'<div class="t">{html_lib.escape(text[:cut] + ("…" if len(text) > cut else ""))}</div></div>'
+
+    body = page_html.split("<body>", 1)[-1]
+    body = re.sub(r'<div class="t">(.*?)</div></div>', short, body, flags=re.S)
+    body = re.sub(r"<br>|</div>|</section>|</summary>|</p>|</h1>", "\n", body)
+    body = re.sub(r'<span class="(n|sub)">', " | ", body)
+    text = html_lib.unescape(re.sub(r"<[^>]+>", "", body))
+    return re.sub(r"\n\s*\n+", "\n", text).strip() + "\n"
+
+
 def vote_key(items: list[dict], names: dict[str, str]) -> dict:
     """Ключ слепого теста: какой модели какой ответ в каждом блоке (порядок —
     как на странице), её цена и время; заголовки — для итога."""

@@ -2,7 +2,8 @@
 (k=report) и слепое голосование (k=vote) — по одной последней, по подписанной
 ссылке — без initData, чтобы открывались в обычном браузере телефона.
 Выбор в слепом тесте — на сервере (/aitest/pick с той же подписью), итог
-текстом — &view=result: его читает Claude, без копирования с телефона."""
+текстом — &view=result, отбор коротко — &view=text: их читает Claude, без
+копирования с телефона."""
 
 import hashlib
 import hmac
@@ -46,6 +47,8 @@ async def aitest_page(k: str = "vote", exp: int = 0, sig: str = "", view: str = 
         raise HTTPException(404)
     if k == "vote" and view == "result":
         return PlainTextResponse(await ai_bench.vote_result(), headers=HEADERS)
+    if k == "report" and view == "text":
+        return PlainTextResponse(ai_bench.report_text(html), headers=HEADERS)
     return HTMLResponse(html, headers=HEADERS)
 
 

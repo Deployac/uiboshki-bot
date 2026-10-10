@@ -136,6 +136,9 @@ async def test_screen_on_group_data(group_data, monkeypatch):
     assert "нужно schedule_today" in html                                    # ошибки классификатора — списком
     await ai_bench.save(html, "report")
     assert await ai_bench.load("report") == html and await ai_bench.load("vote") is None
+    text = ai_bench.report_text(html, cut=10)                                # коротко — для Claude по ссылке
+    assert "<" not in text and "★ qwen3.7-flash | 8.0" in text and "нужно schedule_today" in text
+    assert "ответ chea…" in text and "ответ cheap/a по лекции" not in text    # ответы — началом
 
 
 async def test_budget_follows_account_balance(group_data, monkeypatch):
@@ -187,6 +190,9 @@ async def test_vote_picks_live_on_server(db, monkeypatch):
     assert "выбрано 1 из 2" in r.text and "Игрек (b/y): побед 1 (вопрос 1, конспект 0)" in r.text
     assert "1. Вопрос · БД · задача Вопрос → Игрек" in r.text and "2. Конспект · БД · задача Конспект → не выбран" in r.text
     assert "Слепой тест ИИ" in c.get("/aitest" + q).text                     # без view — сама страница
+    await ai_bench.save("<body><h1>Отбор</h1><div class=\"t\">длинный ответ</div></div></body>", "report")
+    text = c.get("/aitest" + report_q + "&view=text")
+    assert text.headers["content-type"].startswith("text/plain") and text.text == "Отбор\nдлинный ответ\n"
     await ai_bench.save(ai_bench.page(items, key["names"]), "vote", key)
     assert c.get("/aitest/pick" + q).json() == {"picks": {}}                 # новый тест — выбор с нуля
 
