@@ -418,7 +418,7 @@ class CourseScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                ScreenTitle(eyebrow: 'Учёба · ${c.marks.length > 1 ? 'экзамен' : 'зачёт'}', title: c.title),
+                ScreenTitle(title: c.title, sub: c.marks.length > 1 ? 'экзамен' : 'зачёт'),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: Space.l),
                   child: Tile(

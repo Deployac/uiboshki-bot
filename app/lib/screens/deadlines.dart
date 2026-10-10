@@ -47,9 +47,9 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
       await call();
       return true;
     } on ApiError catch (e) {
-      if (mounted) snack(context, e.message);
-    } catch (_) {
-      if (mounted) snack(context, 'Нет связи с сервером.');
+      if (mounted) snack(context, e.message, kind: ToastKind.error);
+    } catch (e) {
+      if (mounted) snack(context, errorText(e), kind: ToastKind.error);
     }
     return false;
   }
@@ -82,7 +82,8 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
       case DlAction.edit:
         final saved = await showDeadlineEdit(context, api, d: d, x: x);
         if (saved == true) {
-          if (mounted) snack(context, x.editScope == 'me' && !x.personal ? 'Сохранено у тебя' : 'Сохранено');
+          final text = x.editScope == 'me' && !x.personal ? 'Сохранено у тебя' : 'Сохранено';
+          if (mounted) snack(context, text, kind: ToastKind.done);
           await reload();
         }
       case DlAction.delete:
@@ -90,7 +91,7 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
         if (await _run(() => api.delete('/deadlines/${d.id}'))) await reload();
       case DlAction.resetMine:
         if (await _run(() => api.delete('/deadlines/${d.id}/mine'))) {
-          if (mounted) snack(context, 'Снова как у всей группы');
+          if (mounted) snack(context, 'Снова как у всей группы', kind: ToastKind.done);
           await reload();
         }
     }
@@ -100,7 +101,7 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
     tick();
     final saved = await showDeadlineEdit(context, widget.api);
     if (saved == true) {
-      if (mounted) snack(context, 'Срок добавлен — видишь только ты');
+      if (mounted) snack(context, 'Срок добавлен — видишь только ты', kind: ToastKind.done);
       await reload();
     }
   }
@@ -384,8 +385,13 @@ class _Entry extends StatelessWidget {
         children: [
           Icon(icon, size: 20, color: s.p.accent),
           const SizedBox(width: Space.s),
+          // одной строкой: на узком экране с крупным шрифтом — мельче (2.17)
           Expanded(
-            child: Text(text, style: s.body(15, weight: FontWeight.w600)),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(text, style: s.body(15, weight: FontWeight.w600), maxLines: 1, softWrap: false),
+            ),
           ),
           Icon(Icons.chevron_right_rounded, size: 20, color: s.p.muted),
         ],
@@ -528,7 +534,7 @@ class _Hot extends StatelessWidget {
                     children: [
                       if (h > 0) ...[Text('$h', style: s.number(44, color: c)), unit('ч')],
                       Text(h > 0 ? m.toString().padLeft(2, '0') : '$m', style: s.number(44, color: c)),
-                      if (h == 0) unit('мин'),
+                      unit('мин'),
                     ],
                   ),
                 ),

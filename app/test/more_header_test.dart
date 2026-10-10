@@ -108,9 +108,14 @@ void main() {
       findsOneWidget,
     );
     // настройки плитками — все на месте
+    // список ленивый: докручиваем до каждой плитки, потом обратно наверх
+    final list = find.descendant(of: find.byType(MoreScreen), matching: find.byType(Scrollable)).first;
     for (final title in ['Уведомления', 'Тема и шрифт', 'Безопасность', 'Календарь', 'Группа', 'Позвать', 'Выйти']) {
+      await t.scrollUntilVisible(find.text(title), 200, scrollable: list);
       expect(find.text(title), findsOneWidget, reason: title);
     }
+    await t.drag(find.byType(MoreScreen), const Offset(0, 4000));
+    await settle(t);
 
     expect(find.byType(StudyScreen), findsNothing);
     await t.tap(find.byKey(const Key('more:points')));

@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -88,7 +89,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       setState(() {
         _busy = false;
-        _note = 'Не получилось: $e';
+        _note = e is PlatformException ? 'Не открылся Telegram — попробуй ещё раз.' : errorText(e);
       });
     }
   }
@@ -135,8 +136,6 @@ class _LoginScreenState extends State<LoginScreen> {
                       const Spacer(),
                       CapyImage(pose: CapyPose.splash, size: 120, color: p.accent),
                       const SizedBox(height: Space.xl),
-                      Text('учёба МИРЭА · расписание · сроки · баллы', style: s.eyebrow()),
-                      const SizedBox(height: 6),
                       FitWords('Капибара', style: s.title(54), width: box.maxWidth - 2 * Space.xl),
                       const SizedBox(height: 10),
                       Container(
@@ -146,7 +145,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       const SizedBox(height: Space.l),
                       Text(
-                        'Без паролей и кодов из SMS: через бота в Telegram, VK или Яндекс.',
+                        'Расписание, сроки и баллы МИРЭА. Без паролей и кодов из SMS: '
+                        'через бота в Telegram, VK или Яндекс.',
                         style: s.body(16, color: p.muted),
                       ),
                       const Spacer(),

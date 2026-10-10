@@ -11,13 +11,13 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api/api.dart';
-import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
 import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import '../widgets/tg_html.dart';
+import 'lesson.dart' show sameSubject;
 
 class FileItem {
   final int id;
@@ -204,7 +204,7 @@ class _FilesScreenState extends State<FilesScreen> {
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 children: [
                   const BackRow(),
-                  ScreenTitle(eyebrow: '${files.length} ${_files(files.length)} группы', title: 'Файлы'),
+                  const ScreenTitle(title: 'Файлы'),
                   if (files.isEmpty)
                     const Notice(title: 'Пока пусто', text: 'Файлы курсов появятся после выгрузки из СДО.')
                   else
@@ -234,8 +234,6 @@ class _FilesScreenState extends State<FilesScreen> {
     );
   }
 }
-
-String _files(int n) => plural(n, 'файл', 'файла', 'файлов');
 
 class _SearchField extends StatelessWidget {
   final TextEditingController controller;
@@ -431,6 +429,24 @@ const fileFilters = {
   'other': 'Другое',
 };
 
+/// Название раздела: у зачётного предмета «Экзамен» — «Вопросы к зачёту»
+/// (владелец, 2.15).
+String filterLabel(String k, {bool credit = false}) =>
+    k == 'exam' && credit ? 'Вопросы к зачёту' : fileFilters[k] ?? fileFilters['other']!;
+
+/// Предмет зачётный — по журналу СДО: kind «credit», а у старых ответов без
+/// kind — одна отметка («зачёт»). Нет предмета в журнале — null.
+bool? isCreditCourse(Map grades, String subject) {
+  for (final c in (grades['courses'] as List? ?? const [])) {
+    if (c is! Map || !sameSubject('${c['title']}', subject)) continue;
+    final kind = c['kind'];
+    if (kind is String && kind.isNotEmpty) return kind == 'credit';
+    final marks = c['marks'] as List? ?? const [];
+    return marks.length == 1;
+  }
+  return null;
+}
+
 String fileFilterOf(FileItem f) =>
     f.category == 'practice' && RegExp(r'лаб|lab', caseSensitive: false).hasMatch(f.title) ? 'lab' : f.category;
 
@@ -473,6 +489,22 @@ class SubjectFilesScreen extends StatefulWidget {
 
 class _SubjectFilesScreenState extends State<SubjectFilesScreen> {
   String? _filter; // null — все типы
+  bool _credit = false; // зачётный предмет — «Вопросы к зачёту»
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.files.any((f) => fileFilterOf(f) == 'exam')) _checkCredit();
+  }
+
+  /// Зачёт или экзамен — из журнала СДО; нет входа или сети — как было.
+  Future<void> _checkCredit() async {
+    try {
+      final g = await widget.api.get('/sdo/grades');
+      final credit = g is Map && isCreditCourse(g, widget.subject) == true;
+      if (credit && mounted) setState(() => _credit = true);
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -544,7 +576,7 @@ class _SubjectFilesScreenState extends State<SubjectFilesScreen> {
             padding: const EdgeInsets.only(bottom: Space.xxl),
             children: [
               const BackRow(),
-              ScreenTitle(eyebrow: '${files.length} ${_files(files.length)}', title: widget.subject),
+              ScreenTitle(title: widget.subject),
               if (kinds.length > 1)
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -552,7 +584,7 @@ class _SubjectFilesScreenState extends State<SubjectFilesScreen> {
                   child: Row(
                     children: [
                       chip(null, 'Все'),
-                      for (final k in kinds) chip(k, '${fileFilters[k]} · ${byKind[k]!.length}'),
+                      for (final k in kinds) chip(k, '${filterLabel(k, credit: _credit)} · ${byKind[k]!.length}'),
                     ],
                   ),
                 ),
@@ -560,7 +592,7 @@ class _SubjectFilesScreenState extends State<SubjectFilesScreen> {
                 const SizedBox(height: Space.s),
                 card(byKind[_filter]!),
               ] else
-                for (final k in kinds) ...[Section(fileFilters[k]!), card(byKind[k]!)],
+                for (final k in kinds) ...[Section(filterLabel(k, credit: _credit)), card(byKind[k]!)],
             ],
           ),
         ),
@@ -785,8 +817,8 @@ class _PageSheetState extends State<_PageSheet> {
       });
     } on ApiError catch (e) {
       if (mounted && my == _seq) setState(() => _error = e.message);
-    } catch (_) {
-      if (mounted && my == _seq) setState(() => _error = 'Нет связи с сервером.');
+    } catch (e) {
+      if (mounted && my == _seq) setState(() => _error = errorText(e));
     }
   }
 

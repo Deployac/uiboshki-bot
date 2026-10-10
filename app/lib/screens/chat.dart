@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api.dart';
+import '../api/models.dart' show plural;
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
@@ -129,6 +130,10 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _attNote; // «больше 10 МБ» и т. п.
   int _chat = 0; // номер разговора: ответ на вопрос из прошлого чата не попадёт в новый
 
+  /// Сколько вопросов осталось сегодня (сервер, ai_quota.left); null — без
+  /// лимита (староста) или сервер не сказал — число не показываем.
+  int? _left;
+
   @override
   void initState() {
     super.initState();
@@ -137,12 +142,14 @@ class _ChatScreenState extends State<ChatScreen> {
         .get('/subjects')
         .then((j) {
           if (!mounted) return;
-          setState(
-            () => _subjects = [
+          setState(() {
+            _subjects = [
               for (final s in j['subjects'] as List)
                 if (s['lectures'] == true) s['name'] as String,
-            ],
-          );
+            ];
+            final q = j['quota'];
+            _left = q is Map && q['left'] is num ? (q['left'] as num).toInt() : null;
+          });
         })
         .catchError((_) {});
   }
@@ -267,12 +274,13 @@ class _ChatScreenState extends State<ChatScreen> {
         choose: choose,
       );
       if (choose.isNotEmpty) _chooseAtt = att; // выберет предмет — вложение уйдёт ещё раз
+      if (_left != null && _left! > 0 && choose.isEmpty && answer.files.isEmpty) _left = _left! - 1;
     } on ApiError catch (e) {
       entry.failed = true;
       answer = ChatMsg('assistant', e.message, error: true);
-    } catch (_) {
+    } catch (e) {
       entry.failed = true;
-      answer = ChatMsg('assistant', 'Нет связи с сервером — попробуй ещё раз.', error: true);
+      answer = ChatMsg('assistant', errorText(e), error: true);
     }
     if (!mounted || chat != _chat) return; // пока ждали, начали новый чат
     setState(() {
@@ -368,6 +376,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   children: [
                     const ScreenTitle(title: 'Помощник'),
+                    if (_log.isEmpty) _Intro(left: _left),
                     if (_log.isEmpty)
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: Space.xl),
@@ -543,6 +552,20 @@ class _Bubble extends StatelessWidget {
       for (final src in m.sources)
         if (src['page'] == null) src,
     ];
+    // «[1]», «[2]» в ответе — кнопками к тому же месту, что чипы под ответом
+    final cites = {
+      for (final src in m.sources)
+        if (src['n'] is num) (src['n'] as num).toInt(): src,
+    };
+    InlineSpan? cite(int n) {
+      final src = cites[n];
+      if (src == null) return null;
+      return WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: _Cite(n: n, onTap: () => _openSource(context, src)),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(Space.xl, Space.s, Space.xl, Space.s),
       child: Column(
@@ -550,8 +573,10 @@ class _Bubble extends StatelessWidget {
         children: [
           SelectionArea(
             child: m.html.isNotEmpty
-                ? Text.rich(tgHtml(m.html, body, link: p.accent, codeBg: p.line))
-                : Text(m.content, style: body),
+                ? Text.rich(tgHtml(m.html, body, link: p.accent, codeBg: p.line, cite: cite))
+                : (cites.isEmpty
+                      ? Text(m.content, style: body)
+                      : Text.rich(TextSpan(children: citeSpans(m.content, body, cite)))),
           ),
           if (m.choose.isNotEmpty) ...[
             const SizedBox(height: Space.s),
@@ -593,7 +618,7 @@ class _Bubble extends StatelessWidget {
                     context,
                     icon: Icons.auto_stories_outlined,
                     label: '${src['label'] ?? src['title']}',
-                    onTap: () => showPageSheet(context, api, src['id'] as int, (src['page'] as num).toInt()),
+                    onTap: () => _openSource(context, src),
                   ),
                 for (final src in whole.take(4))
                   _chip(
@@ -614,6 +639,16 @@ class _Bubble extends StatelessWidget {
     );
   }
 
+  /// Источник ответа: страница лекции (есть номер страницы) или весь файл.
+  void _openSource(BuildContext context, Map<String, dynamic> src) {
+    tick();
+    if (src['page'] != null) {
+      showPageSheet(context, api, src['id'] as int, (src['page'] as num).toInt());
+    } else {
+      showFileSheet(context, api, FileItem.fromJson({'id': src['id'], 'title': src['title'], 'has_text': true}));
+    }
+  }
+
   Widget _chip(BuildContext context, {required IconData icon, required String label, required VoidCallback onTap}) {
     final s = AppStyle.of(context);
     final p = s.p;
@@ -631,6 +666,88 @@ class _Bubble extends StatelessWidget {
         tick();
         onTap();
       },
+    );
+  }
+}
+
+/// «[1]» в ответе — маленькая кнопка с номером источника.
+class _Cite extends StatelessWidget {
+  final int n;
+  final VoidCallback onTap;
+  const _Cite({required this.n, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Semantics(
+      button: true,
+      label: 'Источник $n',
+      excludeSemantics: true,
+      child: GestureDetector(
+        key: Key('cite:$n'),
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        // поле нажатия шире самой метки — по пальцу, а не по пикселю
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: Container(
+            constraints: const BoxConstraints(minWidth: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+            decoration: BoxDecoration(
+              color: p.accent.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(Radii.pill),
+            ),
+            child: Text(
+              '$n',
+              textAlign: TextAlign.center,
+              style: s.body(12, weight: FontWeight.w700, color: p.accent).copyWith(height: 1.2),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Пустой экран помощника: что он умеет и сколько вопросов осталось сегодня.
+class _Intro extends StatelessWidget {
+  final int? left;
+  const _Intro({required this.left});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final n = left;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.l),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Отвечает по лекциям твоей группы: объяснит тему, решит задачу, скажет, где в лекции.',
+            style: s.body(15, color: p.muted),
+          ),
+          if (n != null) ...[
+            const SizedBox(height: Space.s),
+            Row(
+              children: [
+                Icon(Icons.chat_bubble_outline_rounded, size: 16, color: n > 0 ? p.accent : p.warn),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    n > 0
+                        ? 'Сегодня можно ещё $n ${plural(n, 'вопрос', 'вопроса', 'вопросов')}'
+                        : 'На сегодня вопросы кончились — завтра можно снова',
+                    style: s.body(14, weight: FontWeight.w600, color: n > 0 ? p.text : p.warn),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

@@ -1,0 +1,56 @@
+name: Робот-проверка приложения
+
+# Веб-сборка приложения (app/) в Chromium на ответах записи стенда сайта
+# (webapp/static/site/demo.json): робот проходит все вкладки и сценарии,
+# проверяет тексты и снимает пять вкладок на шести размерах экрана, в
+# светлой и тёмной теме. Без ИИ и без сети наружу. Скрины и results.txt —
+# Actions → запуск → Artifacts. Есть FAIL — проверка красная.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths: ["app/**", "webapp/static/site/demo.json", ".github/workflows/app-robot.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  robot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.6
+          channel: stable
+          cache: true
+
+      - name: Веб-сборка (время — четверг 08.10.2026 10:07)
+        working-directory: app
+        run: |
+          flutter pub get
+          flutter build web --dart-define=API= --dart-define=NOW=2026-10-08T10:07:00+03:00
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Playwright и Chromium
+        working-directory: app/robot
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Робот
+        working-directory: app/robot
+        run: node robot.js
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: robot-${{ github.run_number }}
+          path: app/robot/out/
+          retention-days: 14

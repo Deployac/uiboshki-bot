@@ -36,13 +36,25 @@ class LessonExtras {
   LessonExtras(this.course, this.lectures);
 }
 
-class LessonScreen extends StatelessWidget {
+class LessonScreen extends StatefulWidget {
   final Api api;
   final Lesson lesson;
   const LessonScreen({super.key, required this.api, required this.lesson});
 
+  @override
+  State<LessonScreen> createState() => _LessonScreenState();
+}
+
+class _LessonScreenState extends State<LessonScreen> {
+  Api get api => widget.api;
+  Lesson get lesson => widget.lesson;
+
+  /// Один запрос на экран (2.18): FutureBuilder в build спрашивал баллы и
+  /// файлы при каждой перерисовке — по три раза за открытие.
+  late final Future<LessonExtras> _extras = _loadExtras();
+
   /// Баллы и лекции по предмету — что найдётся; нет СДО — просто без них.
-  Future<LessonExtras> _extras() async {
+  Future<LessonExtras> _loadExtras() async {
     Course? course;
     var lectures = <FileItem>[];
     try {
@@ -85,25 +97,39 @@ class LessonScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          [
-                            if (lesson.kind.isNotEmpty) lesson.kind[0].toUpperCase() + lesson.kind.substring(1),
-                            if (live) 'идёт',
-                          ].join(' · '),
-                          style: s.eyebrow(color: c),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: Space.s),
-                    FitWords(lesson.title, style: s.title(30)),
+                    // длинное название — мельче, до трёх строк (2.3); вид пары —
+                    // строкой под ним обычным шрифтом, не курсивом сверху (2.4)
+                    FitWords(lesson.title, style: s.title(titleSize(lesson.title, 30)), maxLines: 3),
+                    if (lesson.kind.isNotEmpty || live) ...[
+                      const SizedBox(height: Space.xs),
+                      Row(
+                        children: [
+                          Container(
+                            width: 8,
+                            height: 8,
+                            decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text.rich(
+                              TextSpan(
+                                children: [
+                                  if (lesson.kind.isNotEmpty)
+                                    TextSpan(text: lesson.kind[0].toUpperCase() + lesson.kind.substring(1)),
+                                  if (lesson.kind.isNotEmpty && live) const TextSpan(text: ' · '),
+                                  if (live)
+                                    TextSpan(
+                                      text: 'идёт',
+                                      style: TextStyle(color: c, fontWeight: FontWeight.w700),
+                                    ),
+                                ],
+                              ),
+                              style: s.body(15, color: p.muted),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: Space.l),
                     Row(
                       children: [
@@ -165,7 +191,7 @@ class LessonScreen extends StatelessWidget {
                 ),
               ),
               FutureBuilder<LessonExtras>(
-                future: _extras(),
+                future: _extras,
                 builder: (context, snap) {
                   final x = snap.data;
                   if (x == null || (x.course == null && x.lectures.isEmpty)) return const SizedBox.shrink();
@@ -307,16 +333,16 @@ class _CourseStrip extends StatelessWidget {
 /// (тип 2 — преподаватель, 3 — аудитория) и открыть (search.dart).
 Future<void> openTarget(BuildContext context, Api api, String query, int type) async {
   final s = AppStyle.of(context);
-  final messenger = ScaffoldMessenger.of(context);
+  final toast = Overlay.of(context, rootOverlay: true);
   List items;
   try {
     items = (await api.get('/search?q=${Uri.encodeQueryComponent(query)}&type=$type'))['items'] as List;
   } catch (_) {
-    messenger.showSnackBar(const SnackBar(content: Text('Расписание МИРЭА сейчас не отвечает')));
+    toastOn(toast, 'Расписание МИРЭА сейчас не отвечает', kind: ToastKind.error);
     return;
   }
   if (items.isEmpty) {
-    messenger.showSnackBar(SnackBar(content: Text('«$query» в расписании МИРЭА не нашёл')));
+    toastOn(toast, '«$query» в расписании МИРЭА не нашёл');
     return;
   }
   Map pick = items.first;

@@ -127,18 +127,19 @@ void main() {
     await settle(t);
     expect(asked, contains('GET /api/sdo/task/105'));
     final task = demoFixtures()['GET /api/sdo/task/105'] as Map;
-    expect(find.text(task['title'] as String), findsOneWidget);
-    expect(find.text('четверг, 15 октября 2026, 23:59'), findsOneWidget);
+    // в заголовке после дефиса — невидимый «не переносить» (U+2060)
+    expect(find.text((task['title'] as String).replaceAll('-', '-\u2060')), findsOneWidget);
+    expect(find.text('четверг, 8 октября 2026, 23:59'), findsOneWidget);
     expect(find.text('ждёт оценки'), findsOneWidget);
-    expect(find.text('Ещё не сдано'), findsOneWidget);
+    expect(find.text('Сдано, ждёт оценки'), findsOneWidget);
     expect(find.text('Не оценено'), findsOneWidget);
     expect(find.text('до 8 баллов · зачёт от 5'), findsOneWidget);
-    expect(find.textContaining('5 ключевых метрик'), findsOneWidget);
+    expect(find.textContaining('BPMN-модель основного'), findsOneWidget);
 
-    await tapVisible(t, find.text('Шаблон отчёта.docx'));
+    await tapVisible(t, find.text('Нотация BPMN — памятка.pdf'));
     expect(opened, [sdoLink('#')]);
 
-    await tapVisible(t, find.text('Сдать работу · до 3 файлов'));
+    await tapVisible(t, find.text('Сдать ещё / заменить · до 3 файлов'));
     expect(asked, contains('GET /api/sdo/submit-rules?cmid=105&deadline_id=0'));
     expect(find.text('Сдать файлом'), findsOneWidget);
   });
@@ -157,7 +158,7 @@ void main() {
     await settle(t);
     expect(asked, contains('GET /api/sdo/task/105'));
     expect(find.byType(TaskScreen), findsOneWidget);
-    await t.scrollUntilVisible(find.text('Шаблон отчёта.docx'), 200, scrollable: find.byType(Scrollable).first);
-    await t.scrollUntilVisible(find.textContaining('Сдать работу'), 200, scrollable: find.byType(Scrollable).first);
+    await t.scrollUntilVisible(find.text('Нотация BPMN — памятка.pdf'), 200, scrollable: find.byType(Scrollable).first);
+    await t.scrollUntilVisible(find.textContaining('Сдать ещё'), 200, scrollable: find.byType(Scrollable).first);
   });
 }

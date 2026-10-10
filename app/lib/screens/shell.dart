@@ -1,5 +1,5 @@
-// Оболочка: пять вкладок и меню-капсула; при первом запуске — короткое
-// знакомство «что где».
+// Оболочка: пять вкладок и меню-капсула; при первом запуске — короткий тур
+// по приложению (tour.dart).
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +15,7 @@ import 'group_pick.dart';
 import 'more.dart';
 import 'study.dart';
 import 'today.dart';
+import 'tour.dart';
 import 'week.dart';
 
 const tabs = [
@@ -34,23 +35,17 @@ int tabByName(String? name) => switch (name) {
   _ => 0,
 };
 
-const _tour = [
-  'пары сегодня: что идёт, сколько осталось, куда дальше',
-  'вся неделя лентой, сверху — дни: нажми, и лента приедет',
-  'что сдать и до какого срока, отметка «сдал»',
-  'баллы, цель по предмету, посещения',
-  'баллы в среднем, настройки, шрифт, группа и выход',
-];
-
 class Shell extends StatefulWidget {
   final Api api;
   final ValueChanged<FontChoice> onFont;
+  final ValueChanged<ThemeChoice>? onTheme;
   final VoidCallback onLogout, onUnauthorized;
   final int initialTab;
   const Shell({
     super.key,
     required this.api,
     required this.onFont,
+    this.onTheme,
     required this.onLogout,
     required this.onUnauthorized,
     this.initialTab = 0,
@@ -68,6 +63,31 @@ class _ShellState extends State<Shell> {
 
   // СДО подключили из «Ещё» — «Учёба» строится заново
   int _sdo = 0;
+
+  /// Сменили шрифт или тему, пока вкладка была скрыта: на iPhone такая
+  /// вкладка оставалась со старым шрифтом (Onest не уходил обратно, владелец
+  /// 09.10, 3.7). Скрытые вкладки строятся заново, когда их открывают.
+  final _gen = List<int>.filled(tabs.length, 0);
+  final _stale = <int>{};
+  (FontChoice, bool)? _style;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final s = AppStyle.of(context);
+    final cur = (s.font, s.p.dark);
+    if (_style != null && _style != cur) {
+      for (var i = 0; i < tabs.length; i++) {
+        if (i != _index) _stale.add(i);
+      }
+    }
+    _style = cur;
+  }
+
+  void _open(int i) => setState(() {
+    if (_stale.remove(i)) _gen[i]++;
+    _index = i;
+  });
 
   @override
   void initState() {
@@ -103,82 +123,47 @@ class _ShellState extends State<Shell> {
     final prefs = await SharedPreferences.getInstance();
     if (prefs.getBool('uib_toured') == true || !mounted) return;
     await prefs.setBool('uib_toured', true);
-    if (!mounted) return;
-    final s = AppStyle.of(context);
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: s.p.cardSolid,
-      showDragHandle: true,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Что где', style: s.title(28)),
-              const SizedBox(height: Space.l),
-              for (var i = 0; i < tabs.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: Space.m),
-                  child: Row(
-                    children: [
-                      Icon(tabs[i].icon, color: s.p.accent),
-                      const SizedBox(width: Space.m),
-                      Expanded(
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: '${tabs[i].label} — ',
-                                style: s.body(15, weight: FontWeight.w600),
-                              ),
-                              TextSpan(
-                                text: _tour[i],
-                                style: s.body(15, color: s.p.muted),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: Space.s),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(backgroundColor: s.p.accent, foregroundColor: s.p.onAccent),
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Понятно'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    if (mounted) await tour();
+  }
+
+  final _bar = GlobalKey();
+
+  /// Где меню-капсула: верх её коробки, по бокам — отступ Space.l, высота 64
+  /// (capsule_tabbar.dart); снизу у коробки ещё отступ до края экрана.
+  Rect? _barRect() {
+    final box = _bar.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    final at = box.localToGlobal(Offset.zero);
+    return Rect.fromLTWH(at.dx + Space.l, at.dy, box.size.width - 2 * Space.l, 64);
+  }
+
+  /// Короткий тур по приложению — при первом запуске и из «Ещё».
+  Future<void> tour() {
+    _open(tourSteps.first.tab);
+    return showTour(context, onStep: _open, barRect: _barRect);
   }
 
   @override
   Widget build(BuildContext context) {
     final api = widget.api;
     final un = widget.onUnauthorized;
+    final g = _gen;
     final pages = [
-      TodayScreen(key: ValueKey('today$_epoch'), api: api, onUnauthorized: un),
-      WeekScreen(key: ValueKey('week$_epoch'), api: api, onUnauthorized: un),
-      DeadlinesScreen(key: ValueKey('dl$_epoch'), api: api, onUnauthorized: un),
-      StudyScreen(key: ValueKey('study$_epoch.$_sdo'), api: api, onUnauthorized: un),
+      TodayScreen(key: ValueKey('today$_epoch.${g[0]}'), api: api, onUnauthorized: un),
+      WeekScreen(key: ValueKey('week$_epoch.${g[1]}'), api: api, onUnauthorized: un),
+      DeadlinesScreen(key: ValueKey('dl$_epoch.${g[2]}'), api: api, onUnauthorized: un),
+      StudyScreen(key: ValueKey('study$_epoch.$_sdo.${g[3]}'), api: api, onUnauthorized: un),
       MoreScreen(
-        key: ValueKey('more$_epoch'),
+        key: ValueKey('more$_epoch.${g[4]}'),
         api: api,
         onFont: widget.onFont,
+        onTheme: widget.onTheme,
         onLogout: widget.onLogout,
         onUnauthorized: un,
         onGroup: () => pickGroup(),
-        onStudy: () => setState(() => _index = tabByName('study')),
+        onStudy: () => _open(tabByName('study')),
         onSdo: () => setState(() => _sdo++),
+        onTour: tour,
       ),
     ];
     return Scaffold(
@@ -196,7 +181,7 @@ class _ShellState extends State<Shell> {
           ),
         ),
       ),
-      bottomNavigationBar: CapsuleTabBar(items: tabs, index: _index, onTap: (i) => setState(() => _index = i)),
+      bottomNavigationBar: CapsuleTabBar(key: _bar, items: tabs, index: _index, onTap: _open),
     );
   }
 }
