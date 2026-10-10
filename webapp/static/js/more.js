@@ -503,7 +503,6 @@ async function openNotify() {
     return;
   }
   renderNotify();
-  renderPushRow();
 }
 
 // Пуши на это устройство — только в установленном приложении вне Telegram (PWA)
@@ -519,11 +518,17 @@ async function renderPushRow() {
     const reg = await navigator.serviceWorker.ready;
     on = !!(await reg.pushManager.getSubscription()) && Notification.permission === "granted";
   } catch (e) {}
+  // под шапкой листа, а не над ней; renderNotify перерисовывает лист при каждом
+  // тумблере — старую строку убрать, иначе их станет две (или ни одной)
+  const old = document.getElementById("push-row");
+  if (old) old.remove();
   const row = document.createElement("div");
+  row.id = "push-row";
   row.className = "share-row";
   row.innerHTML = '<div><b>Уведомления на этом устройстве</b><span>Утро, пары, дедлайны и новые задания — ' +
     'пушем, как у обычного приложения.</span></div>' + ntSwitch(on, "togglePush(" + on + ")");
-  box.prepend(row);
+  const hero = box.querySelector(".sec-hero");
+  if (hero) hero.after(row); else box.prepend(row);
 }
 
 async function togglePush(on) {
@@ -641,6 +646,7 @@ function renderNotify() {
         ntSwitch(p.new_tasks, "toggleNotify('new_tasks')") + '</div></div>';
   }
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';
+  renderPushRow();
 }
 
 // Быстрые нажатия (Пн, Вт, Ср подряд) терялись: каждый запрос нёс список
