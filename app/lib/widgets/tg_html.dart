@@ -15,8 +15,28 @@ String unescape(String s) {
   return out;
 }
 
+/// Ссылки ИИ на источники «[1]», «[2]» в тексте ответа.
+final citeRe = RegExp(r'\[(\d{1,2})\]');
+
+/// Текст кусками: «[n]» — через [cite] (кнопка к источнику), остальное —
+/// обычным текстом. cite вернул null — «[n]» остаётся как есть.
+List<InlineSpan> citeSpans(String text, TextStyle style, InlineSpan? Function(int n) cite) {
+  final out = <InlineSpan>[];
+  var pos = 0;
+  for (final m in citeRe.allMatches(text)) {
+    final span = cite(int.parse(m.group(1)!));
+    if (span == null) continue;
+    if (m.start > pos) out.add(TextSpan(text: text.substring(pos, m.start), style: style));
+    out.add(span);
+    pos = m.end;
+  }
+  if (pos < text.length) out.add(TextSpan(text: text.substring(pos), style: style));
+  return out;
+}
+
 /// HTML Telegram → один TextSpan. Незнакомые теги пропускаются, текст остаётся.
-TextSpan tgHtml(String html, TextStyle base, {Color? link, Color? codeBg}) {
+/// cite — «[1]» в тексте нажимается (помощник: страница лекции-источника).
+TextSpan tgHtml(String html, TextStyle base, {Color? link, Color? codeBg, InlineSpan? Function(int n)? cite}) {
   final spans = <InlineSpan>[];
   final stack = <String>[];
   final hrefs = <String>[];
@@ -52,6 +72,10 @@ TextSpan tgHtml(String html, TextStyle base, {Color? link, Color? codeBg}) {
     if (raw.isEmpty) return;
     final st = styleNow();
     final href = stack.contains('a') && hrefs.isNotEmpty ? hrefs.last : null;
+    if (cite != null && href == null && !stack.contains('code') && !stack.contains('pre')) {
+      spans.addAll(citeSpans(unescape(raw), st, cite));
+      return;
+    }
     spans.add(
       TextSpan(
         text: unescape(raw),

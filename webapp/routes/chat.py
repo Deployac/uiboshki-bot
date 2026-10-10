@@ -69,13 +69,16 @@ FILE_MEMORY_LIMIT = 10_000
 @router.get("/api/subjects")
 async def api_subjects(user: dict = CurrentUser):
     """Предметы для чата: с загруженными лекциями (чат будет опираться на
-    них) — сверху, дальше остальные предметы группы из расписания."""
+    них) — сверху, дальше остальные предметы группы из расписания. quota —
+    сколько вопросов осталось сегодня (null — без лимита, например староста)."""
+    import ai_quota
     from database import get_subjects_with_lecture_text
     from schedule_parser import get_group_subjects
     with_lectures = await get_subjects_with_lecture_text()
     rest = [s for s in await get_group_subjects() if s not in with_lectures]
     return {"subjects": [{"name": s, "lectures": True} for s in with_lectures]
-                        + [{"name": s, "lectures": False} for s in rest]}
+                        + [{"name": s, "lectures": False} for s in rest],
+            "quota": await ai_quota.left(user["id"])}
 
 
 async def _lecture_sources(lectures: str, subject: str) -> list[dict]:

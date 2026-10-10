@@ -1,11 +1,14 @@
 // Тема приложения из дизайн-токенов (design/tokens.json → tokens.dart):
-// тёмная «Глубина» и светлая «Тетрадь» — по теме телефона; шрифт —
-// настройка («Книжный»: засечки в заголовках и цифрах, «Строгий»: Onest).
+// тёмная «Глубина» и светлая «Тетрадь» — как в телефоне или своя (настройка);
+// шрифт — настройка («Книжный»: засечки в заголовках и цифрах, «Строгий»: Onest).
 import 'package:flutter/material.dart';
 
 import 'tokens.dart';
 
 enum FontChoice { book, strict }
+
+/// Тема: как в телефоне (по умолчанию), всегда светлая или всегда тёмная.
+enum ThemeChoice { system, light, dark }
 
 class Palette {
   final bool dark;
@@ -71,7 +74,16 @@ class AppStyle extends InheritedWidget {
   final Palette p;
   final FontChoice font;
 
-  const AppStyle({super.key, required this.p, required this.font, required super.child});
+  /// Что выбрано в «Тема и шрифт» (палитра [p] — уже по нему).
+  final ThemeChoice theme;
+
+  const AppStyle({
+    super.key,
+    required this.p,
+    required this.font,
+    this.theme = ThemeChoice.system,
+    required super.child,
+  });
 
   static AppStyle of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<AppStyle>()!;
 
@@ -122,7 +134,7 @@ class AppStyle extends InheritedWidget {
         );
 
   @override
-  bool updateShouldNotify(AppStyle old) => old.p != p || old.font != font;
+  bool updateShouldNotify(AppStyle old) => old.p != p || old.font != font || old.theme != theme;
 }
 
 /// Цвет предмета: у каждого свой во всём приложении (по названию).

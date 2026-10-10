@@ -123,6 +123,39 @@ async def test_ai_limits_by_plan(db, index, monkeypatch):
     assert await ai_quota.gate(21) is None
 
 
+@pytest.mark.asyncio
+async def test_ai_left_for_chat_screen(db, index, monkeypatch):
+    """Сколько вопросов осталось сегодня — строка на пустом экране помощника
+    в приложении (2.12); старосте лимит не действует — null."""
+    import ai_quota
+    import groups
+    import webapp.server as server
+    from tests.test_webapp_auth import BOT_TOKEN, _make_init_data
+    monkeypatch.setattr(ratelimit, "allow", lambda action, uid: True)
+    monkeypatch.setattr(config, "AI_DAILY_LIMIT", 10)
+    await db.upsert_user(30, "u", "U")
+    await db.set_user_group(30, HOME)
+    await db.upsert_user(31, "u", "U")
+    await groups.choose(31, OTHER)
+    assert await ai_quota.left(30) == {"left": 10, "limit": 10}
+    await ai_quota.gate(30)
+    assert await ai_quota.left(30) == {"left": 9, "limit": 10}
+    assert await ai_quota.left(31) == {"left": config.AI_TRIAL_DAILY, "limit": config.AI_TRIAL_DAILY}
+    assert await ai_quota.left(STAROSTA_ID) is None
+    monkeypatch.setattr(config, "AI_DAILY_LIMIT", 0)
+    assert await ai_quota.left(30) is None
+    monkeypatch.setattr(config, "AI_DAILY_LIMIT", 10)
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    monkeypatch.setattr("database.get_subjects_with_lecture_text", _no_subjects, raising=False)
+    h = {"X-Telegram-Init-Data": _make_init_data(user={"id": 30, "first_name": "U"})}
+    r = TestClient(server.app).get("/api/subjects", headers=h).json()
+    assert r["quota"] == {"left": 9, "limit": 10}
+
+
+async def _no_subjects():
+    return []
+
+
 # ── бот: /start новому человеку и /group ─────────────────────────────────────
 
 USER = User(id=4242, is_bot=False, first_name="Новенький")

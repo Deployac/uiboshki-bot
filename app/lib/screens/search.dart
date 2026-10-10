@@ -89,6 +89,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   List<Target>? _items; // null — ещё не искали (короткий запрос)
   bool _ready = true, _busy = false, _failed = false;
+  String _failedText = '';
   List<Target> _pins = [], _recents = [];
 
   @override
@@ -147,11 +148,12 @@ class _SearchScreenState extends State<SearchScreen> {
         _ready = r['ready'] != false;
         _busy = false;
       });
-    } catch (_) {
+    } catch (e) {
       if (my != _seq || !mounted) return;
       setState(() {
         _busy = false;
         _failed = true;
+        _failedText = errorText(e);
       });
     }
   }
@@ -179,6 +181,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: Space.l),
                 child: TextField(
                   controller: _q,
+                  autofocus: true, // сразу с курсором в поле (2.6)
                   onChanged: _changed,
                   onSubmitted: (_) => _search(),
                   textInputAction: TextInputAction.search,
@@ -246,14 +249,7 @@ class _SearchScreenState extends State<SearchScreen> {
   List<Widget> _results(BuildContext context) {
     final items = _items;
     if (_failed) {
-      return [
-        Notice(
-          title: 'Не получилось',
-          text: 'Нет связи с сервером — проверь интернет.',
-          onRetry: _search,
-          pose: CapyPose.sad,
-        ),
-      ];
+      return [Notice(title: 'Не получилось', text: _failedText, onRetry: _search, pose: CapyPose.sad)];
     }
     if (_busy || items == null) {
       return [
@@ -442,7 +438,7 @@ class _TargetScreenState extends State<TargetScreen> {
 
   Future<void> _togglePin() async {
     final on = _pinned;
-    final messenger = ScaffoldMessenger.of(context);
+    final toast = Overlay.of(context, rootOverlay: true); // плашка — и после ухода с экрана
     setState(() => _pinBusy = true);
     try {
       final path = '/pins/${widget.type}/${widget.id}';
@@ -453,11 +449,11 @@ class _TargetScreenState extends State<TargetScreen> {
       }
       tick();
       if (mounted) setState(() => _pinned = !on);
-      messenger.showSnackBar(SnackBar(content: Text(on ? 'Откреплено' : 'Закреплено — будет сверху в поиске')));
+      toastOn(toast, on ? 'Откреплено' : 'Закреплено — будет сверху в поиске', kind: ToastKind.done);
     } on ApiError catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('Не получилось: ${e.message}')));
-    } catch (_) {
-      messenger.showSnackBar(const SnackBar(content: Text('Нет связи с сервером')));
+      toastOn(toast, 'Не получилось: ${e.message}', kind: ToastKind.error);
+    } catch (e) {
+      toastOn(toast, errorText(e), kind: ToastKind.error);
     } finally {
       if (mounted) setState(() => _pinBusy = false);
     }
@@ -521,7 +517,6 @@ class _TargetScreenState extends State<TargetScreen> {
     }
     final d = _data;
     if (d == null) return const CapyLoading();
-    final (kind, _) = _kinds[widget.type] ?? ('Расписание', Icons.calendar_today_outlined);
     final week = _weeks.isEmpty ? null : _weeks[_week] as Map;
     final days = week == null ? const [] : week['days'] as List;
     final t = now();
@@ -530,7 +525,7 @@ class _TargetScreenState extends State<TargetScreen> {
       child: ListView(
         padding: const EdgeInsets.only(bottom: Space.xxl),
         children: [
-          ScreenTitle(eyebrow: kind.toLowerCase(), title: _title),
+          ScreenTitle(title: _title),
           if (d['stale'] != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.s),
@@ -553,13 +548,16 @@ class _TargetScreenState extends State<TargetScreen> {
               onPrev: _week > 0 ? () => _shift(-1) : null,
               onNext: _week < _weeks.length - 1 ? () => _shift(1) : null,
             ),
-            for (var i = 0; i < days.length; i++)
-              // воскресенье — только если в этот день есть пары
-              if (i < 6 || (days[i]['lessons'] as List).isNotEmpty)
+            for (final run in emptyRuns(days, _today))
+              if (run.empty)
+                _EmptyDays(from: run.from, to: run.to)
+              else
                 _TargetDay(
-                  date: DateTime.parse('${days[i]['date']}'),
-                  today: days[i]['date'] == _today,
-                  lessons: [for (final l in days[i]['lessons'] as List) Lesson.fromJson(Map<String, dynamic>.from(l))],
+                  date: run.from,
+                  today: iso(run.from) == _today,
+                  lessons: [
+                    for (final l in days[run.index]['lessons'] as List) Lesson.fromJson(Map<String, dynamic>.from(l)),
+                  ],
                   at: t,
                   showGroups: widget.type != 1,
                   onLesson: (l) => openLesson(context, widget.api, l),
@@ -622,6 +620,49 @@ class _WeekSwitch extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Дни недели подряд: день с парами — сам по себе, пустые подряд — одной
+/// строкой «Пн–Ср — пар нет» (владелец, 2.5). Сегодня — всегда отдельно,
+/// воскресенье — только если в него есть пары.
+List<({bool empty, int index, DateTime from, DateTime to})> emptyRuns(List days, String today) {
+  final out = <({bool empty, int index, DateTime from, DateTime to})>[];
+  for (var i = 0; i < days.length; i++) {
+    final date = DateTime.parse('${days[i]['date']}');
+    final none = (days[i]['lessons'] as List).isEmpty;
+    if (i >= 6 && none) continue;
+    final alone = !none || days[i]['date'] == today;
+    final last = out.isEmpty ? null : out.last;
+    if (!alone && last != null && last.empty && last.to.add(const Duration(days: 1)) == date) {
+      out[out.length - 1] = (empty: true, index: last.index, from: last.from, to: date);
+    } else {
+      out.add((empty: !alone, index: i, from: date, to: date));
+    }
+  }
+  return out;
+}
+
+/// «Вт — пар нет», «Пн–Ср — пар нет».
+String emptyDaysText(DateTime from, DateTime to) {
+  final a = weekdaysShort[from.weekday - 1], b = weekdaysShort[to.weekday - 1];
+  return '${from == to ? a : '$a–$b'} — пар нет';
+}
+
+class _EmptyDays extends StatelessWidget {
+  final DateTime from, to;
+  const _EmptyDays({required this.from, required this.to});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.l, Space.l, Space.l, 0),
+      child: Tile(
+        padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+        child: Text(emptyDaysText(from, to), style: s.body(15, color: s.p.muted)),
       ),
     );
   }

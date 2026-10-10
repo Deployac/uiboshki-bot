@@ -207,14 +207,43 @@ void main() {
     await t.pumpWidget(host(HomeworkScreen(api: api)));
     await settle(t);
     expect(find.text('ДЗ группы'), findsOneWidget);
-    expect(find.text('3 задания от старосты'), findsOneWidget);
+    expect(find.text('3 задания от старосты'), findsNothing); // без курсивной подписи (2.4)
     expect(find.text('Задачи 4–9 из методички, стр. 41'), findsOneWidget);
-    expect(find.text('к паре · пн, 5 октября'), findsOneWidget);
+    expect(find.text('к паре · пн, 5 окт'), findsOneWidget); // один формат дат (2.14)
     expect(find.text('Прислать файл'), findsOneWidget); // файл только у одного
     await t.tap(find.text('Прислать файл'));
     await settle(t);
     expect(log.map((r) => r.$1), contains('POST /api/homework/2/send'));
     expect(find.text('Аккаунт без Telegram — файл прислать некуда'), findsOneWidget);
+  });
+
+  testWidgets('ДЗ группы: прошедшие — ниже, под «Прошло», и бледнее', (t) async {
+    phone(t);
+    final day = now();
+    Map<String, Object?> hw(int id, String subject, int shift) => {
+      'id': id,
+      'subject': subject,
+      'content': '',
+      'lesson_date': shift == 99 ? '' : iso(day.add(Duration(days: shift))),
+      'has_file': false,
+    };
+    final api = recApi([], {
+      'GET /api/homework': {
+        'items': [hw(1, 'Было вчера', -1), hw(2, 'Сегодня', 0), hw(3, 'Без даты', 99), hw(4, 'Завтра', 1)],
+      },
+    });
+    await t.pumpWidget(host(HomeworkScreen(api: api)));
+    await settle(t);
+    double y(String text) => t.getTopLeft(find.text(text)).dy;
+    expect(find.text('Прошло'), findsOneWidget);
+    for (final x in ['Сегодня', 'Без даты', 'Завтра']) {
+      expect(y(x), lessThan(y('Прошло')));
+    }
+    expect(y('Было вчера'), greaterThan(y('Прошло')));
+    final faded = t.widget<Opacity>(find.ancestor(of: find.text('Было вчера'), matching: find.byType(Opacity)).first);
+    expect(faded.opacity, lessThan(1));
+    expect(find.text('к паре · ${shortDay(iso(day))}'), findsOneWidget);
+    expect(shortDay('2026-10-09'), 'пт, 9 окт');
   });
 
   testWidgets('заметки: сегодня и завтра', (t) async {

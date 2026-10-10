@@ -107,6 +107,28 @@ async def take(user_id: int, kind: str = "ask") -> str | None:
     return None
 
 
+async def left(user_id: int) -> dict | None:
+    """Сколько вопросов к ИИ осталось сегодня: {"left", "limit"}; None —
+    дневного лимита нет (староста, AI_DAILY_LIMIT=0). Для строки на пустом
+    экране помощника в приложении — та же логика, что в take()."""
+    import config
+    import plans
+    plan = await plans.plan_of(user_id)
+    n = (await today()).get(user_id, 0)
+    if plan == plans.OWN:
+        limit = 0 if config.is_starosta(user_id) else config.AI_DAILY_LIMIT
+    elif plan == plans.SUB:
+        limit = config.AI_SUB_DAILY
+    else:
+        limit = config.AI_TRIAL_DAILY
+        total = int((await _load(_trial_key())).get("total", 0))
+        if config.AI_TRIAL_DAY_TOTAL > 0 and total >= config.AI_TRIAL_DAY_TOTAL:
+            return {"left": 0, "limit": limit}
+    if limit <= 0:
+        return None
+    return {"left": max(0, limit - n), "limit": limit}
+
+
 async def gate(user_id: int, day: bool = True, kind: str = "ask") -> str | None:
     """Можно ли спросить ИИ: None — можно (и вопрос записан, если day);
     иначе "minute" или причина из take()."""

@@ -138,6 +138,49 @@ async def test_webapp_grades(db, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_list_and_course_count_passed_the_same(db, monkeypatch):
+    """Б4: «зачтено X из Y» в списке «Учёба» и на экране предмета — одним
+    правилом: оценка 6 при проходном 7 со страницы задания не зачтена и там,
+    и там (страница — из кэша, когда экран предмета уже открывали)."""
+    from fastapi.testclient import TestClient
+    import sdo_accounts
+    import webapp.server as server
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    sdo_grades._cache.clear()
+    sdo_grades._pages.clear()
+
+    async def courses(client):
+        return [{"id": 18672, "name": "Основы предпринимательской деятельности_Зачет (часть 1/1) [I.26-27]",
+                 "title": "Основы предпринимательской деятельности"}]
+
+    def moodle(request):
+        url = str(request.url)
+        if "grade/report/user" in url:
+            return httpx.Response(200, text=REPORT)
+        if "id=101" in url:
+            return httpx.Response(200, text="<table><tr><th>Проходной балл</th><td>7,0</td></tr></table>")
+        return httpx.Response(200, text="<p></p>")
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: real(*a, transport=httpx.MockTransport(moodle), **kw))
+    monkeypatch.setattr(sdo_grades, "this_semester_courses", courses)
+    c, h = TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+    await db.save_sdo_session(222, sdo_accounts.encrypt("abcdef0123456789abcdef0123"))
+
+    def listed():
+        (course,) = c.get("/api/sdo/grades", headers=h).json()["courses"]
+        return course["works_passed"]
+
+    assert listed() == 1                      # страниц ещё нет — по журналу, как экран без страницы
+    d = c.get("/api/sdo/grades/18672", headers=h).json()
+    assert d["works_passed"] == 0 and d["works_need"] == 3
+    assert listed() == 0                      # тот же кэш списка — уже с порогом
+    sdo_grades._cache.clear()                 # прошло 10 минут: журнал заново, порог — из страниц
+    assert listed() == 0
+
+
+@pytest.mark.asyncio
 async def test_pulse_check(monkeypatch):
     import pulse_check
     real = httpx.AsyncClient

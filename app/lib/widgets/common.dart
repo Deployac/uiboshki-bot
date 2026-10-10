@@ -1,4 +1,7 @@
-// Общие кирпичики экранов: фон с подсветкой, карточка, заголовок экрана.
+// Общие кирпичики экранов: фон с подсветкой, карточка, заголовок экрана,
+// плашка-сообщение и листы-вопросы.
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -122,56 +125,76 @@ class Tile extends StatelessWidget {
 }
 
 /// Заголовок экрана: крупное название с короткой прямой чертой под ним (без
-/// дуги — решение владельца). Строка над ним — только с данными (дата,
-/// неделя, сколько файлов); фразы-пояснения убраны (владелец, 09.10, 14А).
+/// дуги — решение владельца). Мелких курсивных подписей над ним нет
+/// (владелец, 2.4): нужное по смыслу («экзамен», предмет задания) — строкой
+/// [sub] под названием обычным шрифтом. Длинное название — мельче, до трёх
+/// строк (2.3).
 class ScreenTitle extends StatelessWidget {
-  final String? eyebrow;
   final String title;
   final Widget? trailing;
 
-  /// Строка над заголовком вместо [eyebrow], если в ней не только текст.
+  /// Строка под названием: «экзамен», «Анализ данных · тест».
+  final String? sub;
+
+  /// Строка над заголовком, если в ней не только текст (даты недели со стрелками).
   final Widget? lead;
-  const ScreenTitle({super.key, this.eyebrow, required this.title, this.trailing, this.lead});
+  const ScreenTitle({super.key, required this.title, this.trailing, this.lead, this.sub});
 
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
+    final row = Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              FitWords(title, style: s.title(titleSize(title, 34)), maxLines: 3),
+              if (sub != null && sub!.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(sub!, style: s.body(15, color: s.p.muted)),
+              ],
+              const SizedBox(height: 10),
+              Container(
+                width: 34,
+                height: 3,
+                decoration: BoxDecoration(color: s.p.accent, borderRadius: BorderRadius.circular(2)),
+              ),
+            ],
+          ),
+        ),
+        ?trailing,
+      ],
+    );
     return Padding(
       padding: const EdgeInsets.fromLTRB(Space.xl, Space.l, Space.xl, Space.m),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Expanded(
-            child: Column(
+      // строка над заголовком — во всю ширину, кнопки справа её не теснят (Б5)
+      child: lead == null
+          ? row
+          : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (lead != null) ...[
-                  lead!,
-                  const SizedBox(height: 6),
-                ] else if (eyebrow != null) ...[
-                  Text(eyebrow!, style: s.eyebrow()),
-                  const SizedBox(height: 6),
-                ],
-                FitWords(title, style: s.title(34)),
-                const SizedBox(height: 10),
-                Container(
-                  width: 34,
-                  height: 3,
-                  decoration: BoxDecoration(color: s.p.accent, borderRadius: BorderRadius.circular(2)),
-                ),
-              ],
+              children: [lead!, const SizedBox(height: 6), row],
             ),
-          ),
-          ?trailing,
-        ],
-      ),
     );
   }
 }
 
+/// Кегль заголовка по длине: длинные названия предметов («Анализ и
+/// диагностика финансово-хозяйственной…») — мельче (владелец, 2.3).
+double titleSize(String text, double base) {
+  final n = text.length;
+  if (n > 60) return base * 0.62;
+  if (n > 40) return base * 0.72;
+  if (n > 26) return base * 0.86;
+  return base;
+}
+
 /// Крупный заголовок без разрыва слов посередине («Безопасн/ость»,
-/// «хозяйственн/ой»): если самое длинное слово не влезает в строку (узкий
-/// экран, крупный системный шрифт), шрифт уменьшается ровно до влезания.
+/// «хозяйственн/ой») и после дефиса («финансово-/хозяйственной»): если самое
+/// длинное слово не влезает в строку (узкий экран, крупный системный шрифт),
+/// шрифт уменьшается ровно до влезания; с [maxLines] — ещё и пока текст
+/// не уляжется в столько строк.
 class FitWords extends StatelessWidget {
   final String text;
   final TextStyle style;
@@ -179,24 +202,52 @@ class FitWords extends StatelessWidget {
   /// Ширина строки, если известна заранее (внутри IntrinsicHeight
   /// LayoutBuilder нельзя); без неё — по месту.
   final double? width;
-  const FitWords(this.text, {super.key, required this.style, this.width});
+  final int? maxLines;
+  const FitWords(this.text, {super.key, required this.style, this.width, this.maxLines});
 
-  static final _gaps = RegExp(r'[\s\-‐–—/]+');
+  static final _gaps = RegExp(r'[\s/]+');
+
+  /// Слово через дефис не рвётся: после дефиса — «соединитель слов» (U+2060).
+  static String glue(String text) => text.replaceAllMapped(RegExp(r'(\S)-(?=\S)'), (m) => '${m[1]}-\u2060');
 
   Widget _fit(BuildContext context, double max) {
     final scaler = MediaQuery.textScalerOf(context);
-    var widest = 0.0;
-    for (final w in text.split(_gaps)) {
-      final tp = TextPainter(
-        text: TextSpan(text: w, style: style),
-        textScaler: scaler,
-        textDirection: Directionality.of(context),
-      )..layout();
-      if (tp.width > widest) widest = tp.width;
-      tp.dispose();
+    final dir = Directionality.of(context);
+    final shown = glue(text);
+    var size = style.fontSize ?? 14;
+    if (max.isFinite) {
+      var widest = 0.0;
+      for (final w in shown.split(_gaps)) {
+        final tp = TextPainter(
+          text: TextSpan(text: w, style: style),
+          textScaler: scaler,
+          textDirection: dir,
+        )..layout();
+        if (tp.width > widest) widest = tp.width;
+        tp.dispose();
+      }
+      if (widest > max) size = size * max / widest * 0.98;
+      // в [maxLines] строк — мельче, но не меньше 60 % от начального
+      final floor = (style.fontSize ?? 14) * 0.6;
+      while (maxLines != null && size > floor) {
+        final tp = TextPainter(
+          text: TextSpan(text: shown, style: style.copyWith(fontSize: size)),
+          textScaler: scaler,
+          textDirection: dir,
+          maxLines: maxLines,
+        )..layout(maxWidth: max);
+        final over = tp.didExceedMaxLines;
+        tp.dispose();
+        if (!over) break;
+        size *= 0.93;
+      }
     }
-    if (!max.isFinite || widest <= max) return Text(text, style: style);
-    return Text(text, style: style.copyWith(fontSize: (style.fontSize ?? 14) * max / widest * 0.98));
+    return Text(
+      shown,
+      style: size == style.fontSize ? style : style.copyWith(fontSize: size),
+      maxLines: maxLines,
+      overflow: maxLines == null ? null : TextOverflow.ellipsis,
+    );
   }
 
   @override
@@ -338,15 +389,335 @@ class _LoaderState<T> extends State<Loader<T>> {
       return ListView(
         children: [
           const SizedBox(height: 120),
-          Notice(
-            title: 'Не загрузилось',
-            text: 'Нет связи с сервером — проверь интернет.',
-            onRetry: _reload,
-            pose: CapyPose.sad,
-          ),
+          Notice(title: 'Не загрузилось', text: errorText(_error!), onRetry: _reload, pose: CapyPose.sad),
         ],
       );
     }
     return const CapyLoading();
+  }
+}
+
+// ── Плашка и листы-вопросы ──────────────────────────────────────────────
+
+/// Значок плашки по смыслу: готово, не вышло, просто сообщение.
+enum ToastKind { done, error, info }
+
+OverlayEntry? _toast;
+
+void _hideToast() {
+  final e = _toast;
+  _toast = null;
+  e?.remove();
+}
+
+/// Плашка над меню-капсулой вместо белой системной (владелец, 09.10, 3.10):
+/// карточка цвета темы со значком, выезжает снизу и сама уходит.
+void showToast(BuildContext context, String text, {ToastKind kind = ToastKind.info}) {
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay != null) toastOn(overlay, text, kind: kind);
+}
+
+/// То же, когда экран мог уже закрыться: оверлей берут до запроса
+/// (`final toast = Overlay.of(context, rootOverlay: true)`).
+void toastOn(OverlayState overlay, String text, {ToastKind kind = ToastKind.info}) {
+  if (!overlay.mounted) return;
+  _hideToast();
+  late final OverlayEntry entry;
+  entry = OverlayEntry(
+    builder: (_) => AppToast(
+      text: text,
+      kind: kind,
+      onGone: () {
+        if (identical(_toast, entry)) _hideToast();
+      },
+    ),
+  );
+  _toast = entry;
+  overlay.insert(entry);
+}
+
+class AppToast extends StatefulWidget {
+  final String text;
+  final ToastKind kind;
+  final VoidCallback onGone;
+  const AppToast({super.key, required this.text, required this.kind, required this.onGone});
+
+  @override
+  State<AppToast> createState() => _AppToastState();
+}
+
+class _AppToastState extends State<AppToast> with SingleTickerProviderStateMixin {
+  // вся жизнь плашки одним счётчиком: выезд, пауза на чтение, уход
+  late final _life = AnimationController(
+    vsync: this,
+    duration: Duration(milliseconds: 2600 + 35 * widget.text.length.clamp(0, 80)),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _life.forward().whenComplete(() {
+      if (mounted) widget.onGone();
+    });
+  }
+
+  @override
+  void dispose() {
+    _life.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final mq = MediaQuery.of(context);
+    // над капсулой (64 + отступ снизу), а при клавиатуре — над ней
+    final bottom = math.max(math.max(mq.viewPadding.bottom, Space.m) + 64 + Space.s, mq.viewInsets.bottom + Space.s);
+    final (icon, color) = switch (widget.kind) {
+      ToastKind.done => (Icons.check_circle_rounded, p.ok),
+      ToastKind.error => (Icons.error_outline_rounded, p.danger),
+      ToastKind.info => (Icons.info_outline_rounded, p.accent),
+    };
+    final still = mq.disableAnimations;
+    return Positioned(
+      left: Space.l,
+      right: Space.l,
+      bottom: bottom,
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: _life,
+          builder: (context, child) {
+            final v = _life.value;
+            final outV = Curves.easeIn.transform(((v - 0.93) / 0.07).clamp(0.0, 1.0));
+            if (still) return Opacity(opacity: 1 - outV, child: child);
+            final inV = Curves.easeOutBack.transform((v / 0.07).clamp(0.0, 1.0));
+            return Opacity(
+              opacity: ((v / 0.05).clamp(0.0, 1.0) * (1 - outV)).clamp(0.0, 1.0),
+              child: Transform.translate(offset: Offset(0, 24 * (1 - inV) + 12 * outV), child: child),
+            );
+          },
+          child: Semantics(
+            liveRegion: true,
+            child: Material(
+              type: MaterialType.transparency,
+              child: Container(
+                key: const ValueKey('toast'),
+                padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+                decoration: BoxDecoration(
+                  color: p.cardSolid,
+                  borderRadius: BorderRadius.circular(Radii.tile),
+                  border: Border.all(color: p.line),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: p.dark ? 0.4 : 0.14),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Icon(icon, color: color, size: 22),
+                    const SizedBox(width: Space.m),
+                    Expanded(
+                      child: Text(widget.text, style: s.body(15, weight: FontWeight.w600)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Лист снизу в дизайне приложения (как «Тема и шрифт»).
+Future<T?> appSheet<T>(BuildContext context, WidgetBuilder builder) => showModalBottomSheet<T>(
+  context: context,
+  backgroundColor: AppStyle.of(context).p.cardSolid,
+  showDragHandle: true,
+  isScrollControlled: true,
+  builder: builder,
+);
+
+/// «Точно?» листом снизу вместо системного окна: заголовок, пояснение,
+/// главная кнопка с действием и «Отмена». true — согласился.
+Future<bool> confirmSheet(
+  BuildContext context, {
+  required String title,
+  String? text,
+  required String action,
+  String cancel = 'Отмена',
+  bool danger = false,
+}) async =>
+    await appSheet<bool>(
+      context,
+      (ctx) => SheetFrame(
+        title: title,
+        text: text,
+        action: action,
+        cancel: cancel,
+        danger: danger,
+        onAction: () => Navigator.pop(ctx, true),
+      ),
+    ) ??
+    false;
+
+/// Число или строка листом снизу (своё время напоминания и т. п.):
+/// null — отменил.
+Future<String?> inputSheet(
+  BuildContext context, {
+  required String title,
+  String? text,
+  String hint = '',
+  String initial = '',
+  String action = 'Сохранить',
+  TextInputType keyboard = TextInputType.text,
+}) => appSheet<String>(
+  context,
+  (ctx) => _InputSheet(title: title, text: text, hint: hint, initial: initial, action: action, keyboard: keyboard),
+);
+
+class _InputSheet extends StatefulWidget {
+  final String title, hint, initial, action;
+  final String? text;
+  final TextInputType keyboard;
+  const _InputSheet({
+    required this.title,
+    this.text,
+    required this.hint,
+    required this.initial,
+    required this.action,
+    required this.keyboard,
+  });
+
+  @override
+  State<_InputSheet> createState() => _InputSheetState();
+}
+
+class _InputSheetState extends State<_InputSheet> {
+  late final _ctrl = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    return SheetFrame(
+      title: widget.title,
+      text: widget.text,
+      action: widget.action,
+      onAction: () => Navigator.pop(context, _ctrl.text.trim()),
+      child: TextField(
+        controller: _ctrl,
+        autofocus: true,
+        keyboardType: widget.keyboard,
+        style: s.body(17),
+        cursorColor: s.p.accent,
+        onSubmitted: (v) => Navigator.pop(context, v.trim()),
+        decoration: fieldDecoration(s, widget.hint),
+      ),
+    );
+  }
+}
+
+/// Поле ввода в листах: подложка цвета карточки, рамка акцентом при вводе.
+InputDecoration fieldDecoration(AppStyle s, String hint) {
+  final p = s.p;
+  OutlineInputBorder line(Color c) => OutlineInputBorder(
+    borderRadius: BorderRadius.circular(Radii.chip),
+    borderSide: BorderSide(color: c),
+  );
+  return InputDecoration(
+    hintText: hint,
+    hintStyle: s.body(17, color: p.muted),
+    filled: true,
+    fillColor: p.card,
+    contentPadding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+    border: line(p.line),
+    enabledBorder: line(p.line),
+    focusedBorder: line(p.accent),
+  );
+}
+
+/// Каркас листа-вопроса: заголовок, пояснение, своё поле (если есть) и две
+/// кнопки одна под другой — на узком экране с крупным шрифтом не тесно.
+class SheetFrame extends StatelessWidget {
+  final String title, action, cancel;
+  final String? text;
+  final bool danger;
+  final Widget? child;
+  final VoidCallback onAction;
+
+  /// Вторая кнопка вместо «Отмена» (например «Скопировать ссылку»); без неё
+  /// вторая кнопка просто закрывает лист.
+  final VoidCallback? onCancel;
+  const SheetFrame({
+    super.key,
+    required this.title,
+    this.text,
+    required this.action,
+    this.cancel = 'Отмена',
+    this.danger = false,
+    this.child,
+    required this.onAction,
+    this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final fg = danger ? Colors.white : p.onAccent;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.l),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: s.title(24)),
+              if (text != null) ...[const SizedBox(height: Space.s), Text(text!, style: s.body(15, color: p.muted))],
+              if (child != null) ...[const SizedBox(height: Space.l), child!],
+              const SizedBox(height: Space.xl),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: danger ? p.danger : p.accent,
+                  foregroundColor: fg,
+                  minimumSize: const Size.fromHeight(50),
+                  shape: const StadiumBorder(),
+                ),
+                onPressed: () {
+                  tick();
+                  onAction();
+                },
+                child: Text(
+                  action,
+                  style: s.body(16, weight: FontWeight.w600, color: fg),
+                ),
+              ),
+              const SizedBox(height: Space.s),
+              TextButton(
+                style: TextButton.styleFrom(minimumSize: const Size.fromHeight(46)),
+                onPressed: onCancel ?? () => Navigator.pop(context),
+                child: Text(
+                  cancel,
+                  style: s.body(16, weight: FontWeight.w600, color: p.muted),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

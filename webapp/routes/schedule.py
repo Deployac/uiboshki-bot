@@ -367,4 +367,59 @@ async def api_notes(date: str = "", user: dict = CurrentUser):
     from database.groups import viewer_group
     date_str = date or today_msk().isoformat()
     items = await get_lesson_notes(date_str, await viewer_group(user["id"]))
+    for n in items:   # своё (или староста) — можно убрать из приложения
+        n["mine"] = n.get("created_by") == user["id"]
     return {"date": date_str, "items": items}
+
+
+class NoteBody(BaseModel):
+    date: str
+    text: str
+    subject: str = ""
+
+
+@router.post("/api/notes")
+async def api_note_add(body: NoteBody, user: dict = CurrentUser):
+    """Заметка к паре или дню из приложения — как /note в боте: видна всей
+    группе под расписанием того дня."""
+    from datetime import date as _date, timedelta
+    import ratelimit
+    from database import add_lesson_note
+    from database.groups import home, viewer_group
+    from handlers.schedule import NOTE_MAX
+    from utils import today_msk
+    try:
+        day = _date.fromisoformat(body.date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="дата в формате ГГГГ-ММ-ДД")
+    today = today_msk()
+    if not (today - timedelta(days=1) <= day <= today + timedelta(days=180)):
+        raise HTTPException(status_code=400, detail="заметку можно на сегодня и вперёд, до полугода")
+    text, subject = body.text.strip(), body.subject.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="напиши текст заметки")
+    if len(text) > NOTE_MAX:
+        raise HTTPException(status_code=400, detail=f"длинновато — до {NOTE_MAX} символов")
+    if len(subject) > 80:
+        raise HTTPException(status_code=400, detail="название пары слишком длинное")
+    gid = await viewer_group(user["id"])
+    if not gid and home():   # не в чате своей группы — её заметок не видит и не пишет
+        raise HTTPException(status_code=403, detail="заметки — для своей группы")
+    if not ratelimit.allow("note", user["id"]):
+        raise HTTPException(429, "Много заметок подряд — подожди пару минут")
+    nid = await add_lesson_note(day.isoformat(), subject, text, user["id"], gid)
+    return {"ok": True, "id": nid}
+
+
+@router.delete("/api/notes/{note_id}")
+async def api_note_delete(note_id: int, user: dict = CurrentUser):
+    """Убрать заметку: свою — автор, любую своей группы — её староста."""
+    from database import delete_lesson_note, get_lesson_note, is_editor
+    from database.groups import row_group, viewer_group
+    note = await get_lesson_note(note_id)
+    if not note or row_group(note.get("group_id")) != await viewer_group(user["id"]):
+        raise HTTPException(status_code=404, detail="заметка не найдена")
+    if note["created_by"] != user["id"] and not await is_editor(user["id"], row_group(note.get("group_id"))):
+        raise HTTPException(status_code=403, detail="убрать можно только свою заметку")
+    await delete_lesson_note(note_id)
+    return {"ok": True}

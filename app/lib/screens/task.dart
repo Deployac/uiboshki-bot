@@ -1,6 +1,7 @@
 // Экран задания СДО (как в WebApp, js/sdo.js → renderTask): срок, сколько
 // осталось, статус и оценка, описание, файлы преподавателя и мой ответ,
-// «Сдать работу». У теста — попытки и лучший результат; пройти — на сайте.
+// «Сдать работу»; ответ уже есть и не оценён — «Редактировать ответ» и
+// «Удалить ответ», как в СДО. У теста — попытки и лучший результат; пройти — на сайте.
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -96,8 +97,8 @@ class _TaskScreenState extends State<TaskScreen> {
       });
     } on ApiError catch (e) {
       if (mounted) setState(() => _error = e.message);
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Нет связи с сервером — проверь интернет.');
+    } catch (e) {
+      if (mounted) setState(() => _error = errorText(e));
     }
   }
 
@@ -112,7 +113,7 @@ class _TaskScreenState extends State<TaskScreen> {
     await widget.open(sdoLink('${list[i]['dl']}'));
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool replace = false}) async {
     tick();
     final t = _t!;
     final ok = await showSubmitSheet(
@@ -121,8 +122,33 @@ class _TaskScreenState extends State<TaskScreen> {
       title: '${t['title'] ?? w['name']}',
       cmid: w['cmid'] as int,
       pick: widget.pick,
+      replace: replace,
     );
     if (ok == true) await _load(); // мой ответ и статус — заново
+  }
+
+  /// «Удалить ответ» — как в СДО: после «точно?» файлы ответа убираются.
+  Future<void> _remove() async {
+    final ok = await confirmSheet(
+      context,
+      title: 'Удалить ответ?',
+      text: 'Файлы ответа уберутся из СДО. Сдать заново можно, пока не прошёл срок.',
+      action: 'Удалить ответ',
+      danger: true,
+    );
+    if (!ok || !mounted) return;
+    final toast = Overlay.of(context, rootOverlay: true);
+    try {
+      await widget.api.post('/sdo/submission/remove', {'cmid': w['cmid']});
+      toastOn(toast, 'Ответ удалён', kind: ToastKind.done);
+    } on ApiError catch (e) {
+      toastOn(toast, e.message, kind: ToastKind.error);
+      return;
+    } catch (e) {
+      toastOn(toast, errorText(e), kind: ToastKind.error);
+      return;
+    }
+    if (mounted) await _load();
   }
 
   @override
@@ -140,7 +166,7 @@ class _TaskScreenState extends State<TaskScreen> {
               children: [
                 const BackRow(),
                 ScreenTitle(
-                  eyebrow: [if (widget.course.isNotEmpty) widget.course, _quiz ? 'тест' : 'задание'].join(' · '),
+                  sub: [if (widget.course.isNotEmpty) widget.course, if (_quiz) 'тест'].join(' · '),
                   title: '${t?['title'] ?? w['name']}',
                 ),
                 if (t != null)
@@ -284,7 +310,42 @@ class _TaskScreenState extends State<TaskScreen> {
         ),
       ],
       const SizedBox(height: Space.xl),
-      if (t['can_submit'] == true)
+      if (t['can_edit'] == true || t['can_remove'] == true) ...[
+        if (t['can_edit'] == true)
+          Padding(
+            padding: pad,
+            child: SizedBox(
+              height: 50,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: p.accent,
+                  foregroundColor: p.onAccent,
+                  shape: const StadiumBorder(),
+                ),
+                onPressed: () => _submit(replace: true),
+                icon: const Icon(Icons.edit_outlined),
+                label: const Text('Редактировать ответ'),
+              ),
+            ),
+          ),
+        if (t['can_remove'] == true)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Space.l, Space.s, Space.l, 0),
+            child: SizedBox(
+              height: 50,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: p.danger,
+                  side: BorderSide(color: p.danger.withValues(alpha: 0.5)),
+                  shape: const StadiumBorder(),
+                ),
+                onPressed: _remove,
+                icon: const Icon(Icons.delete_outline_rounded),
+                label: const Text('Удалить ответ'),
+              ),
+            ),
+          ),
+      ] else if (t['can_submit'] == true)
         Padding(
           padding: pad,
           child: SizedBox(

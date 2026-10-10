@@ -1,0 +1,7 @@
+{
+  "name": "kapibara-robot",
+  "private": true,
+  "description": "Робот-проверка приложения: веб-сборка + Chromium, все вкладки на шести размерах",
+  "scripts": { "robot": "node robot.js" },
+  "devDependencies": { "playwright": "1.56.1" }
+}

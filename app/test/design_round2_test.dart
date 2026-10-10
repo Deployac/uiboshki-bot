@@ -36,16 +36,18 @@ const _lesson = Lesson(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  test('кабинет: корпус из скобок — через точку', () {
-    expect(roomText('А-332 (МП-1)'), 'А-332 · МП-1');
-    expect(roomText('А-332 (МП-1), Б-304 (МП-1)'), 'А-332 · МП-1, Б-304 · МП-1');
+  test('кабинет: корпус — в скобках (2.2), общий корпус один раз', () {
+    expect(roomText('А-332 (МП-1)'), 'А-332 (МП-1)');
+    expect(roomText('А-332(МП-1)'), 'А-332 (МП-1)');
+    expect(roomText('А-332 (МП-1), Б-304 (МП-1)'), 'А-332, Б-304 (МП-1)');
+    expect(roomText('А-332 (МП-1), Г-212 (В-78)'), 'А-332 (МП-1), Г-212 (В-78)');
     expect(roomText('СДО'), 'СДО');
   });
 
   testWidgets('пара: кабинет плашкой, тип серым рядом, название без засечек', (t) async {
     phone(t);
     await t.pumpWidget(_wrap(LessonList(lessons: const [_lesson], at: DateTime(2026, 10, 9, 12))));
-    expect(find.text('А-332 · МП-1'), findsOneWidget);
+    expect(find.text('А-332 (МП-1)'), findsOneWidget);
     expect(find.text('практика'), findsOneWidget);
     expect(find.byType(RoomPill), findsOneWidget);
     final title = t.widget<Text>(find.text(_lesson.title));

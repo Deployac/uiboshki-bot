@@ -14,6 +14,13 @@
     БРС не будет, и баллы почти ничего не решают;
   • итог: «есть», «дойдёшь», «впритык» или «не хватит, даже если сдать всё».
 
+Автомат и экзамен (владелец 09.10, окончательно): итог — баллы за семестр
+плюс баллы за экзамен, пороги — отметки курса (40/60/80). Без экзамена —
+автомат, но только «3» и «4» («5» автоматом не бывает) и только при 75 %
+зачтённых работ ТК. Минимума на экзамене нет: 59 + 1 балл на экзамене — «4».
+Максимум за экзамен — max категории «Семестровый контроль» журнала. У зачёта
+экзамена нет.
+
 Работы ниже порога («low») и с давно прошедшим сроком («miss», больше
 15 дней без оценки) считаем потерянными: пересдачу открывает преподаватель, на неё не рассчитываем.
 Своя цель хранится в settings («goals:<id>» → {курс: оценка}); без неё —
@@ -30,17 +37,38 @@ TIGHT_MARGIN = 5.0                            # запас меньше — «в
 EXAM_POINTS = 40.0                            # «Семестровый контроль 0–40», если в журнале его нет
 
 
-def exam_left(course: dict) -> float:
-    """Сколько ещё можно получить на экзамене: категория «Семестровый
+def exam_info(course: dict) -> tuple[float, float]:
+    """(максимум за экзамен, уже получено на нём): категория «Семестровый
     контроль» (или «экзамен») журнала; у экзамена без такой категории — 40.
-    У зачёта экзамена нет — 0."""
+    У зачёта экзамена нет — (0, 0)."""
     if len(course.get("marks") or []) < 2:
-        return 0.0
+        return 0.0, 0.0
     cats = [c for c in course.get("categories") or []
             if "семестр" in (c.get("name") or "").lower() or "экзам" in (c.get("name") or "").lower()]
     if not cats:
-        return EXAM_POINTS
-    return sum(max(0.0, float(c.get("max") or 0) - float(c.get("score") or 0)) for c in cats)
+        return EXAM_POINTS, 0.0
+    return (sum(float(c.get("max") or 0) for c in cats),
+            sum(min(float(c.get("max") or 0), float(c.get("score") or 0)) for c in cats))
+
+
+def exam_left(course: dict) -> float:
+    """Сколько ещё можно получить на экзамене (у зачёта — 0)."""
+    top, got = exam_info(course)
+    return max(0.0, top - got)
+
+
+def final_mark(marks: list[dict], semester: float, exam: float | None = None, tk_ok: bool = True) -> str | None:
+    """Отметка по правилам БРС. exam — баллы за сданный экзамен: тогда по
+    сумме, минимума нет (59 + 1 → «4»). exam None — автомат: только при 75 %
+    зачтённых работ и не выше предпоследней отметки («5» автоматом нет).
+    None — отметки нет."""
+    if exam is None:
+        if not tk_ok:
+            return None
+        marks = marks[:-1] if len(marks) > 1 else marks
+    total = semester + (exam or 0)
+    got = [m for m in marks if total >= float(m["at"])]
+    return got[-1]["label"] if got else None
 
 
 async def get_goals(user_id: int) -> dict[str, str]:
@@ -65,8 +93,10 @@ async def set_goal(user_id: int, course_id: int, label: str | None) -> dict[str,
     return goals
 
 
-def _status(score: float, at: float, best: float, tk: dict) -> str:
-    if score >= at and tk["ok"]:
+def _status(score: float, at: float, best: float, tk: dict, auto: bool = True) -> str:
+    """auto — цель можно получить без экзамена (зачёт, «3», «4», экзамен уже
+    сдан); «5» до экзамена «есть» не бывает."""
+    if score >= at and tk["ok"] and auto:
         return "done"
     if best < at or not tk["reachable"]:
         return "no"
@@ -87,8 +117,10 @@ def plan(course: dict, attendance: dict | None = None, label: str | None = None)
     open_points = sum(float(w.get("max") or 0) for w in open_)
     att_ok = bool(attendance and attendance.get("ok"))
     att_left = float(attendance.get("can_get") or 0) if att_ok else 0.0
-    exam = exam_left(course)
-    best = score + open_points + att_left + exam
+    exam_max, exam_got = exam_info(course)
+    exam = max(0.0, exam_max - exam_got)
+    semester_best = score + open_points + att_left
+    best = semester_best + exam
 
     total = len(works)
     passed = sum(1 for w in works if w.get("status") == "ok")
@@ -97,6 +129,10 @@ def plan(course: dict, attendance: dict | None = None, label: str | None = None)
     tk = {"total": total, "passed": passed, "need": need, "left": left, "open": len(open_),
           "ok": passed >= need, "reachable": len(open_) >= left}
 
+    # экзамен ещё впереди — считаем автомат отдельно от экзамена
+    pending = len(marks) >= 2 and exam > 0 and not exam_got
+    auto_ok = not pending or mark is not marks[-1]
+
     out = {
         "label": mark["label"], "at": at, "own": bool(label) and mark["label"] == label,
         "marks": [m["label"] for m in marks],
@@ -104,12 +140,22 @@ def plan(course: dict, attendance: dict | None = None, label: str | None = None)
         "open_points": round(open_points, 2), "open_count": len(open_),
         "attendance_left": round(att_left, 2), "exam_left": round(exam, 2), "best": round(best, 2),
         "lost_count": len(lost), "lost_points": round(sum(float(w.get("max") or 0) for w in lost), 2),
-        "tk": tk, "status": _status(score, at, best, tk),
+        "tk": tk, "status": _status(score, at, best, tk, auto_ok),
+        "exam_pending": pending, "exam_max": round(exam_max, 2),
+        # какая отметка автоматом: уже есть / можно добрать работами и лекциями
+        "auto": final_mark(marks, score, None, tk["ok"]) if pending else None,
+        "auto_best": final_mark(marks, semester_best, None, tk["reachable"]) if pending else None,
+        "auto_ok": auto_ok,
+        # сколько нужно на экзамене для цели при нынешних баллах (минимума
+        # нет, больше максимума экзамена не бывает); exam_short — сколько не
+        # хватит даже с полным экзаменом: добирать работами и лекциями
+        "need_exam": round(min(exam, max(0.0, at - score)), 2) if pending else 0,
+        "exam_short": round(max(0.0, at - score - exam), 2) if pending else 0,
     }
     # «что если пропущу лекцию»: минус одна лекция из того, что дают посещения
     future = [x for x in (attendance or {}).get("lectures") or [] if x.get("status") == "future"]
     if att_ok and future and attendance.get("unit"):
         unit = min(float(attendance["unit"]), att_left)
         out["skip"] = {"value": round(unit, 2), "date": future[0]["date"],
-                       "status": _status(score, at, best - unit, tk)}
+                       "status": _status(score, at, best - unit, tk, auto_ok)}
     return out

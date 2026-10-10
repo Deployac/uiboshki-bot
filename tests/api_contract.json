@@ -4,6 +4,7 @@
  "DELETE /api/deadlines/{deadline_id}",
  "DELETE /api/deadlines/{deadline_id}/mine",
  "DELETE /api/deadlines/{deadline_id}/remind",
+ "DELETE /api/notes/{note_id}",
  "DELETE /api/pins/{target_type}/{target_id}",
  "GET /api/auth/identities",
  "GET /api/auth/providers",
@@ -58,6 +59,7 @@
  "POST /api/homework/{hw_id}/send",
  "POST /api/me/group",
  "POST /api/me/group/admin",
+ "POST /api/notes",
  "POST /api/notify",
  "POST /api/optional",
  "POST /api/pulsecheck",
@@ -68,6 +70,7 @@
  "POST /api/sdo/disconnect",
  "POST /api/sdo/goal/{course_id}",
  "POST /api/sdo/share",
+ "POST /api/sdo/submission/remove",
  "POST /api/sdo/submit",
  "POST /api/summary/{file_id}",
  "PUT /api/pins/{target_type}/{target_id}"

@@ -223,6 +223,7 @@ void main() {
 
     await show('Б-304 (МП-1)');
     expect(find.text('Идёт первая пара'), findsOneWidget);
+    expect(t.widget<Text>(find.text('Идёт первая пара')).maxLines, 1); // на узком экране — мельче, не в две строки (2.17)
     expect(find.text('до конца'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsWidgets);
     expect(find.text('дальше в ${next['start']}'), findsOneWidget);
@@ -235,6 +236,11 @@ void main() {
 
     await show('Б-304 (В-78)');
     expect(find.text('другой корпус, В-78'), findsOneWidget);
+
+    // следующая — в том же кабинете (2.2)
+    await show('А-332 (МП-1)');
+    expect(find.text('тот же кабинет, никуда не идти'), findsOneWidget);
+    expect(find.text('тот же корпус'), findsNothing);
   });
 
   testWidgets('пары — отдельными карточками с номером пары справа', (t) async {
@@ -252,7 +258,7 @@ void main() {
     expect(find.byType(LessonCard), findsNWidgets(2));
     expect(find.descendant(of: find.byType(LessonCard), matching: find.text('4')), findsOneWidget);
     expect(find.descendant(of: find.byType(LessonCard), matching: find.text('5–6')), findsOneWidget);
-    expect(find.descendant(of: find.byType(LessonCard), matching: find.text('ИВЦ-126 · В-78')), findsOneWidget);
+    expect(find.descendant(of: find.byType(LessonCard), matching: find.text('ИВЦ-126 (В-78)')), findsOneWidget);
     await t.tap(find.byType(LessonCard).first); // нажал карточку — экран пары
     await settle(t);
     expect(find.byType(LessonScreen), findsOneWidget);
@@ -301,7 +307,7 @@ void main() {
     expect(t.getRect(find.byTooltip('По дням')), where); // переключатель не сдвинулся
     expect((await SharedPreferences.getInstance()).getString(WeekScreen.viewKey), 'days');
     // открыт сегодняшний день, у пары — номер
-    expect(find.text('сегодня · 1 пара'), findsOneWidget);
+    expect(find.text('${dayHead(now(), today: true)} · 1 пара'), findsOneWidget); // как в ленте (2.13)
     final today = find.text('Предмет: эта ${weekdays[ti]}');
     expect(today, findsOneWidget);
     expect(find.descendant(of: find.byType(LessonCard), matching: find.text('${ti + 1}')), findsOneWidget);

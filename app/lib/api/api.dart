@@ -10,9 +10,35 @@ class Unauthorized implements Exception {}
 
 class ApiError implements Exception {
   final String message;
-  ApiError(this.message);
+
+  /// Код ответа; ≥500 или нечитаемый ответ — сбой сервера, а не сети.
+  final int? status;
+  ApiError(this.message, {this.status});
+
+  /// Сервер упал или ответил не тем (500, 502 от Railway, HTML вместо JSON).
+  ApiError.server(int code)
+    : this(
+        code >= 400
+            ? 'Сервер сейчас не отвечает (ошибка $code) — попробуй позже.'
+            : 'Сервер ответил непонятно — попробуй позже.',
+        status: code >= 400 ? code : 500,
+      );
+
+  bool get server => (status ?? 0) >= 500;
   @override
   String toString() => message;
+}
+
+/// Нет сети: связь оборвалась, адрес не нашёлся, ответа не дождались.
+bool isOffline(Object e) =>
+    e is http.ClientException || e is TimeoutException || '${e.runtimeType}'.contains('SocketException');
+
+/// Человеческий текст ошибки для экрана: нет сети ≠ сервер ответил ошибкой.
+String errorText(Object e) {
+  if (e is ApiError) return e.message;
+  if (isOffline(e)) return 'Нет интернета — проверь связь.';
+  if (e is FormatException) return ApiError.server(200).message;
+  return 'Что-то пошло не так — попробуй ещё раз.';
 }
 
 class Api {
@@ -60,10 +86,19 @@ class Api {
 
   dynamic _decode(http.Response r) {
     if (r.statusCode == 401) throw Unauthorized();
-    final body = r.body.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
+    final dynamic body;
+    try {
+      body = r.bodyBytes.isEmpty ? null : jsonDecode(utf8.decode(r.bodyBytes));
+    } on FormatException {
+      // «Internal Server Error», страница 502 от Railway — сбой сервера, не сети
+      throw ApiError.server(r.statusCode);
+    }
     if (r.statusCode >= 400) {
       final detail = body is Map ? body['detail'] : null;
-      throw ApiError(detail is String ? detail : 'ошибка сервера (${r.statusCode})');
+      if (detail is String) throw ApiError(detail, status: r.statusCode);
+      throw r.statusCode >= 500
+          ? ApiError.server(r.statusCode)
+          : ApiError('Не получилось (ошибка ${r.statusCode}) — попробуй ещё раз.', status: r.statusCode);
     }
     return body;
   }
@@ -76,6 +111,9 @@ class Api {
 
   /// Внутри [fromCache] get берёт только запомненное и в сеть не ходит.
   static const _cacheOnly = #uibCacheOnly;
+
+  /// Идёт загрузка «из запаса» ([fromCache]): экран может отказаться от старого ответа.
+  static bool get cacheOnly => Zone.current[_cacheOnly] == true;
 
   /// Загрузка экрана из запаса телефона, без сети: экран показывает прошлые
   /// данные сразу, свежие догружаются следом (владелец, 09.10: «долго грузит»).

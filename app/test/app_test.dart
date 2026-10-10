@@ -5,8 +5,10 @@ import 'package:uiboshki/api/models.dart';
 import 'package:uiboshki/main.dart';
 import 'package:uiboshki/screens/login.dart';
 import 'package:uiboshki/screens/shell.dart';
+import 'package:uiboshki/screens/tour.dart';
 import 'package:uiboshki/screens/week.dart';
 import 'package:uiboshki/theme/app_theme.dart';
+import 'package:uiboshki/widgets/capsule_tabbar.dart';
 import 'package:uiboshki/widgets/capy.dart';
 
 import 'fake_api.dart';
@@ -85,16 +87,54 @@ void main() {
     expect(prefs.getString('uib_font'), 'strict');
   });
 
-  testWidgets('первый запуск — знакомство «Что где», один раз', (t) async {
+  testWidgets('первый запуск — тур по шагам, один раз; повтор — из «Ещё»', (t) async {
     SharedPreferences.setMockInitialValues({});
     phone(t);
     await t.pumpWidget(UiboApp(api: fakeApi()));
     await settle(t);
     expect(find.text('Что где'), findsOneWidget);
+    for (final title in ['Листай недели', 'Сдал — смахни вправо', 'Нажми на пару', 'Цель по предмету']) {
+      await t.tap(find.text('Дальше'));
+      await settle(t);
+      expect(find.text(title), findsOneWidget);
+    }
+    expect(find.text('Пропустить'), findsNothing); // последний шаг
     await t.tap(find.text('Понятно'));
     await settle(t);
-    expect(find.text('Что где'), findsNothing);
+    expect(find.byType(TourOverlay), findsNothing);
     expect((await SharedPreferences.getInstance()).getBool('uib_toured'), isTrue);
+
+    // второй запуск — без тура
+    await t.pumpWidget(const SizedBox());
+    await t.pumpWidget(UiboApp(api: fakeApi()));
+    await settle(t);
+    expect(find.byType(TourOverlay), findsNothing);
+
+    // «Ещё → Как пользоваться» — тур снова, «Пропустить» закрывает
+    await t.tap(find.bySemanticsLabel('Ещё'));
+    await settle(t);
+    await t.ensureVisible(find.text('Как пользоваться'));
+    await t.tap(find.text('Как пользоваться'));
+    await settle(t);
+    expect(find.text('Что где'), findsOneWidget);
+    await t.tap(find.text('Пропустить'));
+    await settle(t);
+    expect(find.byType(TourOverlay), findsNothing);
+  });
+
+  testWidgets('тур открывает вкладку своего шага', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    phone(t);
+    await t.pumpWidget(UiboApp(api: fakeApi()));
+    await settle(t);
+    int tab() => t.widget<CapsuleTabBar>(find.byType(CapsuleTabBar)).index;
+    expect(tab(), 0);
+    await t.tap(find.text('Дальше'));
+    await settle(t);
+    expect(tab(), 1); // свайп недели — на «Неделе»
+    await t.tap(find.text('Дальше'));
+    await settle(t);
+    expect(tab(), 2);
   });
 
   test('вкладка из ссылки пуша', () {

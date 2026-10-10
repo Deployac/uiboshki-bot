@@ -92,6 +92,9 @@ const monthsGen = [
   'декабря',
 ];
 
+/// Месяц коротко: «9 окт» (в листах, где дат много).
+const monthsShort = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+
 String dayTitle(DateTime d) => '${weekdays[d.weekday - 1]}, ${d.day} ${monthsGen[d.month - 1]}';
 
 String iso(DateTime d) =>

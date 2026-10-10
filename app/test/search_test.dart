@@ -55,6 +55,36 @@ String searchKey(String q, int type) => 'GET /api/search?q=${Uri.encodeQueryComp
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({'uib_toured': true}));
 
+  test('пустые дни подряд — одной строкой «Пн–Ср — пар нет», сегодня отдельно', () {
+    Map<String, Object> day(int d, [bool busy = false]) => {
+      'date': iso(DateTime(2026, 10, 5 + d)),
+      'lessons': busy ? [{}] : [],
+    };
+    String show(List days, String today) => [
+      for (final r in emptyRuns(days, today))
+        r.empty ? emptyDaysText(r.from, r.to) : weekdaysShort[r.from.weekday - 1],
+    ].join(' | ');
+    // Пн–Ср пусто, Чт пары, Пт пусто, Сб пары, Вс пусто — воскресенья нет
+    final week = [day(0), day(1), day(2), day(3, true), day(4), day(5, true), day(6)];
+    expect(show(week, '2026-09-01'), 'Пн–Ср — пар нет | Чт | Пт — пар нет | Сб');
+    // сегодня (вторник) пусто — своим днём, с «сегодня» в подписи
+    expect(show(week, '2026-10-06'), 'Пн — пар нет | Вт | Ср — пар нет | Чт | Пт — пар нет | Сб');
+  });
+
+  testWidgets('поиск открывается с курсором в поле', (t) async {
+    phone(t);
+    await t.pumpWidget(
+      AppStyle(
+        p: Palette.notebook,
+        font: FontChoice.book,
+        child: MaterialApp(home: SearchScreen(api: fakeApi())),
+      ),
+    );
+    await settle(t);
+    expect(t.widget<TextField>(find.byType(TextField)).autofocus, isTrue);
+    expect(FocusManager.instance.primaryFocus?.context?.findAncestorWidgetOfExactType<TextField>(), isNotNull);
+  });
+
   testWidgets('неделя → поиск: закреплённые, однофамильцы, фильтр, расписание на недели', (t) async {
     phone(t);
     final asked = <String>[];
@@ -101,7 +131,7 @@ void main() {
     await t.tap(find.text('Преподаватель · Теория вероятностей'));
     await settle(t);
     expect(asked, contains('GET /api/target/2/77'));
-    expect(find.text('преподаватель'), findsOneWidget);
+    expect(find.text('преподаватель'), findsNothing); // без курсивной подписи над именем (2.4)
     expect(find.text('Следующая неделя'), findsOneWidget); // ближайший день с парами
     expect(find.text('7 неделя'), findsOneWidget);
     expect(find.text('Теория вероятностей'), findsOneWidget);
@@ -110,7 +140,7 @@ void main() {
     await t.tap(find.byTooltip('Неделя раньше'));
     await settle(t);
     expect(find.text('Эта неделя'), findsOneWidget);
-    expect(find.text('Пар нет'), findsWidgets); // пустые дни тоже видны
+    expect(find.textContaining('— пар нет'), findsWidgets); // пустые дни — сжаты в строку (2.5)
     expect(find.text('Теория вероятностей'), findsNothing);
 
     await t.tap(find.byTooltip('Закрепить'));

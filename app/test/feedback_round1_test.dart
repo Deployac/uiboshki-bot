@@ -49,14 +49,14 @@ void main() {
     await settle(t);
     await t.tap(find.bySemanticsLabel('Цель 4'));
     await settle(t);
-    expect(find.text('ещё 12 баллов'), findsOneWidget);
+    expect(find.text('Не хватает 12 баллов'), findsOneWidget);
     final list = find.byType(Scrollable).first;
     await t.drag(list, const Offset(0, -6000));
     await settle(t);
-    expect(find.text('ещё 12 баллов'), findsNothing); // карточка ушла за экран
+    expect(find.text('Не хватает 12 баллов'), findsNothing); // карточка ушла за экран
     await t.drag(list, const Offset(0, 6000));
     await settle(t);
-    expect(find.text('ещё 12 баллов'), findsOneWidget);
+    expect(find.text('Не хватает 12 баллов'), findsOneWidget);
   });
 
   testWidgets('неделя: свайп влево — следующая неделя; сроков сдачи в днях нет', (t) async {
