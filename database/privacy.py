@@ -32,10 +32,27 @@ async def has_consent(user_id: int, kind: str, version: str) -> bool:
 
 
 async def is_legacy(user_id: int) -> bool:
-    """Пользовался ботом до согласий (переходный срок, privacy.GRACE_UNTIL)."""
+    """Пользовался ботом до согласий — пользуется и без него (Никита, 11.10)."""
     async with connect() as db:
         row = await (await db.execute("SELECT legacy FROM users WHERE user_id=?", (user_id,))).fetchone()
         return bool(row and row[0])
+
+
+async def asked_version(user_id: int) -> str:
+    async with connect() as db:
+        row = await (await db.execute("SELECT consent_asked FROM users WHERE user_id=?", (user_id,))).fetchone()
+        return (row and row[0]) or ""
+
+
+async def mark_asked(user_id: int, version: str) -> bool:
+    """Отметить «спросили о согласии этой версии». True — отметили сейчас
+    (раньше не спрашивали), False — уже спрашивали или человека нет."""
+    async with connect() as db:
+        cur = await db.execute(
+            "UPDATE users SET consent_asked=? WHERE user_id=? AND COALESCE(consent_asked, '')<>?",
+            (version, user_id, version))
+        await db.commit()
+        return cur.rowcount == 1
 
 
 async def get_consents(user_id: int) -> list[dict]:

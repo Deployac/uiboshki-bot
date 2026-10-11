@@ -12,10 +12,8 @@
 
 import logging
 import os
-from datetime import date
 
 from config import STAROSTA_IDS
-from utils import today_msk
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +44,6 @@ def operator_missing() -> list[str]:
     """Каких данных оператора нет в текстах — предупреждение старосте в /status."""
     return [k for k, v in (("PD_FIO", FIO), ("PD_INN", INN), ("PD_EMAIL", EMAIL), ("PD_CITY", CITY)) if not v]
 
-# Кто пользовался ботом до согласий (users.legacy), пользуется без согласия
-# до этого дня; новые — только после «Даю согласие» (ревьюер 152-ФЗ, 11.10).
-GRACE_UNTIL = date(2026, 11, 1)
-
 _seen: dict[int, str] = {}     # id → день последней отметки (пишем раз в день)
 _given: set[tuple[int, str, str]] = set()   # (id, вид, версия) — уже дал, в базу не ходим
 
@@ -66,14 +60,31 @@ async def needs(user_id: int, kind: str = "pd") -> bool:
 
 async def blocked(user_id: int) -> bool:
     """Нельзя обрабатывать (кроме самого согласия, /privacy и /deleteme):
-    согласия нет, человек новый или переходный срок кончился. Без событий
-    статистики, без имени и ника в базе, без рассылок. Старосты — операторы."""
+    согласия нет и человек новый. Без событий статистики, без имени и ника в
+    базе, без рассылок. Кто был до согласий (users.legacy — пара своих),
+    пользуется и без него (Никита, 11.10). Старосты — операторы."""
     if user_id in STAROSTA_IDS or not await needs(user_id):
         return False
-    if today_msk() >= GRACE_UNTIL:
-        return True
     from database.privacy import is_legacy
     return not await is_legacy(user_id)
+
+
+async def should_ask(user_id: int) -> bool:
+    """Кто был до согласий и ещё не видел просьбу этой версии (без отметки)."""
+    if user_id in STAROSTA_IDS or not await needs(user_id):
+        return False
+    from database.privacy import asked_version
+    return await asked_version(user_id) != VERSION
+
+
+async def ask_once(user_id: int) -> bool:
+    """Кто был до согласий: спросить один раз на версию текста — ботом или
+    листом в приложении, что раньше. True — спросить сейчас (отметка уже в
+    базе, после деплоя не повторится)."""
+    if user_id in STAROSTA_IDS or not await needs(user_id):
+        return False
+    from database.privacy import mark_asked
+    return await mark_asked(user_id, VERSION)
 
 
 async def give(user_id: int, kind: str, via: str):

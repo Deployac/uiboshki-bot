@@ -132,6 +132,15 @@ async def api_give_consent(body: ConsentBody, user: dict = CurrentUser,
     return await api_consent(user)
 
 
+@router.post("/api/consent/asked")
+async def api_consent_asked(user: dict = CurrentUser):
+    """Лист согласия показан тому, кто был до согласий, — больше не показывать
+    (как и бот, один раз на версию текста — privacy.ask_once)."""
+    import privacy
+    await privacy.ask_once(user["id"])
+    return {"ok": True}
+
+
 class DeleteBody(BaseModel):
     confirm: bool = False
 

@@ -37,10 +37,11 @@ async function openLegal(ev, name) {
     '<button class="primary" onclick="closeSheet(\'legal-sheet\')">Понятно</button>';
 }
 
-// Первый вход (и новая версия текста): /api/me → consent_needed. Лист не
-// закрывается мимо — только согласием или отказом с удалением данных.
-// Новый человек (consent_blocked) до согласия видит только этот лист: API
-// закрыт (403), после «Продолжить» — заново, с данными.
+// Первый вход (и новая версия текста): /api/me → consent_needed. Новый
+// человек (consent_blocked) до согласия видит только этот лист: API закрыт
+// (403), лист не закрывается мимо — согласие или отказ с удалением данных;
+// после «Продолжить» — заново, с данными. Кто был до согласий — один раз
+// (/api/consent/asked), можно «Не сейчас» (Никита, 11.10).
 let CONSENT_BLOCKED = false;
 
 function maybeConsent(me) {
@@ -54,8 +55,10 @@ function maybeConsent(me) {
       '«Ещё → Безопасность».</p>' +
     consentRow("pd-agree", "syncConsentBtn()") +
     '<button class="primary" id="pd-go" disabled onclick="giveConsent()">Продолжить</button>' +
-    '<button class="ghost" onclick="refuseConsent()">Не даю согласие</button>';
+    (CONSENT_BLOCKED ? '<button class="ghost" onclick="refuseConsent()">Не даю согласие</button>'
+                     : '<button class="ghost" onclick="closeSheet(\'consent-sheet\')">Не сейчас</button>');
   document.getElementById("consent-sheet").classList.add("open");
+  if (!CONSENT_BLOCKED) api("/api/consent/asked", { method: "POST", body: "{}" }).catch(() => {});
 }
 
 function syncConsentBtn() {

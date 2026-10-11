@@ -194,11 +194,14 @@ class _ConsentCheckState extends State<ConsentCheck> {
   }
 }
 
-/// Первый вход (и новая версия текста): без согласия дальше нельзя —
-/// «Продолжить» с галочкой или отказ с удалением данных. true — согласился.
+/// Первый вход (и новая версия текста). Новый человек ([required]) без
+/// согласия дальше не идёт — «Продолжить» с галочкой или отказ с удалением
+/// данных. Кто был до согласий — один раз, можно «Не сейчас» (Никита, 11.10).
+/// true — согласился, false — отказался (данные удалены), null — «Не сейчас».
 class ConsentScreen extends StatefulWidget {
   final Api api;
-  const ConsentScreen({super.key, required this.api});
+  final bool required;
+  const ConsentScreen({super.key, required this.api, this.required = true});
 
   @override
   State<ConsentScreen> createState() => _ConsentScreenState();
@@ -206,6 +209,13 @@ class ConsentScreen extends StatefulWidget {
 
 class _ConsentScreenState extends State<ConsentScreen> {
   bool _agree = false, _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // показали тому, кто был до согласий, — больше не показывать (и бот не спросит)
+    if (!widget.required) widget.api.post('/consent/asked', {}).catchError((_) => null);
+  }
 
   Future<void> _go() async {
     setState(() => _busy = true);
@@ -240,7 +250,7 @@ class _ConsentScreenState extends State<ConsentScreen> {
     final s = AppStyle.of(context);
     final p = s.p;
     return PopScope(
-      canPop: false,
+      canPop: !widget.required,
       child: Scaffold(
         body: Backdrop(
           child: SafeArea(
@@ -274,8 +284,11 @@ class _ConsentScreenState extends State<ConsentScreen> {
                 ),
                 const SizedBox(height: Space.s),
                 TextButton(
-                  onPressed: _busy ? null : _refuse,
-                  child: Text('Не даю согласие', style: s.body(15, weight: FontWeight.w600, color: p.muted)),
+                  onPressed: _busy ? null : (widget.required ? _refuse : () => Navigator.pop(context)),
+                  child: Text(
+                    widget.required ? 'Не даю согласие' : 'Не сейчас',
+                    style: s.body(15, weight: FontWeight.w600, color: p.muted),
+                  ),
                 ),
               ],
             ),

@@ -114,20 +114,18 @@ class StatsMiddleware(BaseMiddleware):
 
 class ConsentMiddleware(BaseMiddleware):
     """152-ФЗ: без согласия на обработку персональных данных (privacy.blocked —
-    новый человек или кончился переходный срок) бот делает только одно:
+    новый человек) бот делает только одно:
     присылает сообщение с кнопкой «Даю согласие» (handlers/privacy.py). Можно
     /privacy, /deleteme, вход в приложение (/start login_…, кнопки login:), сами
     кнопки согласия и удаления; остальное не обрабатывается. В группах — молча.
 
-    Кто пользовался ботом до согласий, до privacy.GRACE_UNTIL работает как
-    раньше и раз в день после ответа бота получает то же сообщение.
+    Кто пользовался ботом до согласий, работает как раньше и один раз (на
+    версию текста, отметка в базе — privacy.ask_once) после ответа бота
+    получает то же сообщение.
     Стоит на message, callback_query и inline_query (bot.py)."""
 
     FREE_COMMANDS = ("deleteme", "privacy")
     FREE_CALLBACKS = ("consent:", "erase:", "login:")
-
-    def __init__(self):
-        self.asked: dict[int, str] = {}
 
     async def __call__(self, handler, event, data):
         user = data.get("event_from_user")
@@ -169,20 +167,15 @@ class ConsentMiddleware(BaseMiddleware):
         return None
 
     async def _remind(self, event, data, user_id: int):
-        """Переходный срок: напомнить раз в день, после ответа бота."""
+        """Кто был до согласий: спросить один раз, после ответа бота."""
         chat = getattr(event, "chat", None)
         text = getattr(event, "text", None) or ""
         if not chat or chat.type != "private" or _command_name(text) in self.FREE_COMMANDS \
                 or is_anonymous(text, data.get("raw_state")):
             return
-        from datetime import date
-        today = date.today().isoformat()
-        if self.asked.get(user_id) == today:
-            return
         try:
             import privacy
-            if await privacy.needs(user_id):
-                self.asked[user_id] = today
+            if await privacy.ask_once(user_id):
                 from handlers.privacy import ask_consent
                 await ask_consent(data["bot"], chat.id)
         except Exception as e:

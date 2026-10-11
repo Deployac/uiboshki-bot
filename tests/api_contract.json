@@ -53,6 +53,7 @@
  "POST /api/auth/{provider}/start",
  "POST /api/chat",
  "POST /api/consent",
+ "POST /api/consent/asked",
  "POST /api/deadlines",
  "POST /api/deadlines/{deadline_id}/remind",
  "POST /api/deadlines/{deadline_id}/toggle",

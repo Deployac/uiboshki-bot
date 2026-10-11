@@ -4,8 +4,8 @@
 
 Согласие спрашивает ConsentMiddleware (middleware.py): новый человек до
 «Даю согласие» получает только это сообщение (и /privacy, /deleteme); после
-кнопки — обычное приветствие /start. Кто был до согласий — раз в день, до
-конца переходного срока (privacy.GRACE_UNTIL)."""
+кнопки — обычное приветствие /start. Кто был до согласий — один раз
+(privacy.ask_once)."""
 
 from aiogram import F, Router
 from aiogram.filters import Command

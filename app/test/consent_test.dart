@@ -69,6 +69,35 @@ void main() {
     expect(bodies['POST /api/consent'], {'kind': 'pd'});
   });
 
+  testWidgets('кто был до согласий: один раз, «Не сейчас» закрывает', (t) async {
+    phone(t);
+    final asked = <String>[];
+    final api = fakeApi(requests: asked, overrides: {'POST /api/consent/asked': {'ok': true}});
+    Object? result = 'не закрыт';
+    await t.pumpWidget(
+      _wrap(
+        Builder(
+          builder: (c) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(c)
+                  .push<bool>(MaterialPageRoute(builder: (_) => ConsentScreen(api: api, required: false)))
+                  .then((v) => result = v),
+              child: const Text('открыть'),
+            ),
+          ),
+        ),
+      ),
+    );
+    await t.tap(find.text('открыть'));
+    await settle(t);
+    expect(asked, contains('POST /api/consent/asked')); // больше не покажем
+    expect(find.text('Не даю согласие'), findsNothing);
+    await t.tap(find.text('Не сейчас'));
+    await settle(t);
+    expect(result, isNull);
+    expect(find.byType(ConsentScreen), findsNothing);
+  });
+
   testWidgets('удалить все мои данные: с подтверждением, потом выход', (t) async {
     phone(t);
     final asked = <String>[];

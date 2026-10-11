@@ -110,12 +110,14 @@ class _ShellState extends State<Shell> {
     if (me == null || !mounted) return;
     // 152-ФЗ: согласие на обработку персональных данных — до всего (legal.dart)
     if (me['consent_needed'] == true) {
+      final blocked = me['consent_blocked'] == true;
       final ok = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => ConsentScreen(api: widget.api)),
+        MaterialPageRoute(builder: (_) => ConsentScreen(api: widget.api, required: blocked)),
       );
-      if (ok != true) return widget.onLogout(); // отказался — данные удалены, ко входу
+      // отказался — данные удалены, ко входу; кто был до согласий может «Не сейчас»
+      if (ok == false || (blocked && ok != true)) return widget.onLogout();
       if (!mounted) return;
-      setState(() => _epoch++); // до согласия API закрыт — экраны загрузить заново
+      if (blocked) setState(() => _epoch++); // до согласия API закрыт — экраны загрузить заново
     }
     if (me['group'] != null) return;
     await pickGroup(required: true);

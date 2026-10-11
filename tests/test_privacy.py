@@ -182,26 +182,26 @@ async def test_bot_deleteme(db, dp, bot):  # noqa: F811
 
 @pytest.mark.asyncio
 async def test_bot_consent_prompt(db, bot):  # noqa: F811
-    """Переходный срок (кто был до согласий): бот работает, раз в день — просьба."""
-    from aiogram import Dispatcher
-    from aiogram.fsm.storage.memory import MemoryStorage
-    from handlers import register_handlers
-    from middleware import ConsentMiddleware
+    """Кто был до согласий: бот работает и спрашивает один раз — и после деплоя
+    (новый процесс) не спрашивает снова (Никита, 11.10: «зачем каждый день»)."""
     import privacy
-    d = Dispatcher(storage=MemoryStorage())
-    d.message.outer_middleware(ConsentMiddleware())
-    register_handlers(d)
+    await db.upsert_user(ME, "", "x")
+    d = _gated_dp()
     try:
         await send(d, bot, "/help")
         await send(d, bot, "/help")
-        prompts = [t for t in bot.session.texts() if "Даю согласие" in t or "согласие на обработку" in t]
-        assert len(prompts) == 1                            # не чаще раза в день
+    finally:
+        _release(d)
+    d = _gated_dp()                                         # «после деплоя»
+    try:
+        await send(d, bot, "/help")
+        prompts = [t for t in bot.session.texts() if "Даю согласие" in t]
+        assert len(prompts) == 1 and len(bot.session.texts()) == 4
         await press(d, bot, "consent:pd")
         assert not await privacy.needs(ME)
         assert (await get_consents(ME))[0]["via"] == "bot"
     finally:
-        for r in list(d.sub_routers):
-            r._parent_router = None
+        _release(d)
 
 
 def test_webapp_consent_wiring():
@@ -294,22 +294,39 @@ async def test_new_user_can_delete_and_log_in(db, bot):  # noqa: F811
         _release(d)
 
 
+async def _legacy(db, uid):
+    await db.upsert_user(uid, "me", "Я")
+    async with aiosqlite.connect(db.DATABASE_PATH) as conn:
+        await conn.execute("UPDATE users SET legacy=1 WHERE user_id=?", (uid,))
+        await conn.commit()
+
+
 @pytest.mark.consent_real
 @pytest.mark.asyncio
-async def test_grace_period_for_old_users(db, monkeypatch):
+async def test_old_users_never_blocked(db, monkeypatch):
+    """Никита 11.10: кто уже пользуется — пусть пользуется, без срока."""
     import privacy
-    from datetime import date
-    await db.upsert_user(ME, "me", "Я")
-    async with aiosqlite.connect(db.DATABASE_PATH) as conn:
-        await conn.execute("UPDATE users SET legacy=1 WHERE user_id=?", (ME,))
-        await conn.commit()
-    assert not await privacy.blocked(ME)                  # был до согласий — до 01.11 можно
+    await _legacy(db, ME)
+    assert not await privacy.blocked(ME)                  # был до согласий — можно
     assert await privacy.blocked(OTHER)                   # новый — нельзя
     assert not await privacy.blocked(STAROSTA_ID)         # староста — оператор
-    monkeypatch.setattr(privacy, "today_msk", lambda: date(2026, 11, 1))
-    assert await privacy.blocked(ME)                      # срок кончился
-    await privacy.give(ME, "pd", "bot")
-    assert not await privacy.blocked(ME)
+    assert not hasattr(privacy, "GRACE_UNTIL")
+    assert await privacy.ask_once(ME) and not await privacy.ask_once(ME)   # спросить — один раз
+    monkeypatch.setattr(privacy, "VERSION", "2")
+    assert await privacy.ask_once(ME)                     # новый текст — ещё раз
+
+
+@pytest.mark.consent_real
+@pytest.mark.asyncio
+async def test_old_user_sheet_once(db, monkeypatch):
+    c, h = _client(monkeypatch)
+    await _legacy(db, ME)
+    me = c.get("/api/me", headers=h).json()
+    assert me["consent_needed"] is True and me["consent_blocked"] is False
+    assert c.get("/api/me", headers=h).json()["consent_needed"] is True    # /api/me не отмечает
+    assert c.get("/api/notify", headers=h).status_code == 200               # и пользоваться можно
+    assert c.post("/api/consent/asked", headers=h).json() == {"ok": True}
+    assert c.get("/api/me", headers=h).json()["consent_needed"] is False    # лист показан — всё
 
 
 @pytest.mark.consent_real
