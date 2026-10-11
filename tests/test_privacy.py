@@ -347,3 +347,17 @@ def test_legal_texts_after_review(monkeypatch):
         assert "текст или фото" in text and "не дольше" not in text
     text = json.dumps(c.get("/api/legal/privacy").json(), ensure_ascii=False)
     assert '"Цели"' in text and "ст. 6 ч. 1 п. 1" in text and "п. 5" in text and "рабочих дней" in text
+
+
+@pytest.mark.asyncio
+async def test_status_warns_without_operator(db, monkeypatch):
+    """Ревьюер 11.10: без ФИО и почты оператора тексты выкатывать нельзя — /status напоминает."""
+    import health
+    import privacy
+    monkeypatch.setattr(privacy, "FIO", "")
+    monkeypatch.setattr(privacy, "EMAIL", "")
+    assert {"PD_FIO", "PD_EMAIL"} <= set(privacy.operator_missing())
+    assert "PD_FIO" in await health.report()
+    for k in ("FIO", "INN", "EMAIL", "CITY"):
+        monkeypatch.setattr(privacy, k, "x")
+    assert privacy.operator_missing() == [] and "данных оператора" not in await health.report()

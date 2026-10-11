@@ -198,6 +198,14 @@ async def main():
         except Exception as e:
             logger.info(f"превью поста канала: {e}")
     asyncio.create_task(offer_post())
+
+    import privacy                  # 152-ФЗ: тексты без данных оператора — сказать старосте после деплоя
+    if (missing := privacy.operator_missing()) and STAROSTA_ID:
+        try:
+            await bot.send_message(STAROSTA_ID, "⚠️ В согласии и политике (/consent, /privacy) нет данных "
+                                   f"оператора. Задай на хостинге: {', '.join(missing)}.")
+        except Exception as e:
+            logger.info(f"данные оператора: {e}")
     webapp_server, webapp_task = start_webapp(WEBAPP_PORT) if WEBAPP_PORT else (None, None)
     # Справочник для /teacher, /group, /room и поиска в WebApp — в фоне:
     # первый обход ~полчаса, дальше продолжается с места остановки.

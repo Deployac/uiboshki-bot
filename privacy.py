@@ -41,6 +41,11 @@ OPERATOR = ", ".join(x for x in (
 CONTACT = "Telegram @Partykq" + (f" или почта {EMAIL}" if EMAIL else "")
 CONTACT_URL = "https://t.me/Partykq"
 
+
+def operator_missing() -> list[str]:
+    """Каких данных оператора нет в текстах — предупреждение старосте в /status."""
+    return [k for k, v in (("PD_FIO", FIO), ("PD_INN", INN), ("PD_EMAIL", EMAIL), ("PD_CITY", CITY)) if not v]
+
 # Кто пользовался ботом до согласий (users.legacy), пользуется без согласия
 # до этого дня; новые — только после «Даю согласие» (ревьюер 152-ФЗ, 11.10).
 GRACE_UNTIL = date(2026, 11, 1)
