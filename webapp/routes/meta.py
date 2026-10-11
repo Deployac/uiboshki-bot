@@ -6,7 +6,6 @@
 import os
 import re
 from functools import lru_cache
-from pathlib import Path
 
 from fastapi import APIRouter
 
@@ -17,9 +16,10 @@ API_VERSION = 1
 
 @lru_cache(maxsize=1)
 def server_version() -> str:
-    """Последняя версия из CHANGELOG.md (v5.31.0) — та, что задеплоена."""
+    """Последняя версия из CHANGELOG.md и changelog.d/ (v5.31.0) — та, что задеплоена."""
+    from tools.changelog import full_text
     try:
-        text = (Path(__file__).resolve().parents[2] / "CHANGELOG.md").read_text(encoding="utf-8")
+        text = full_text()
     except OSError:
         return ""
     found = re.findall(r"^### v(\d+\.\d+\.\d+)", text, re.M)
