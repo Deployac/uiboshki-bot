@@ -48,8 +48,8 @@ if (!tg || !tg.initData) {
     const light = !!(mq && mq.matches), root = document.documentElement.style;
     document.documentElement.dataset.theme = light ? "light" : "dark";
     const pal = light ? { "--bg": "#f5f6f8", "--bg-card": "#ffffff", "--text": "#15171c", "--hint": "#6b7280",
-      "--border": "#e4e6ea", "--bg-raised": "#eceef1", "--shadow": "0 2px 10px rgba(0,0,0,0.06)" } : {};
-    ["--bg", "--bg-card", "--text", "--hint", "--border", "--bg-raised", "--shadow"].forEach(k =>
+      "--border": "#e4e6ea", "--bg-raised": "#eceef1", "--shadow": "0 2px 10px rgba(0,0,0,0.06)", "--link": "#2f6fd6" } : {};
+    ["--bg", "--bg-card", "--text", "--hint", "--border", "--bg-raised", "--shadow", "--link"].forEach(k =>
       pal[k] ? root.setProperty(k, pal[k]) : root.removeProperty(k));
   };
   sys();
@@ -99,6 +99,7 @@ function applyTheme() {
   set("--text", tp.text_color);
   set("--hint", tp.hint_color);
   set("--accent", tp.button_color);
+  set("--link", tp.link_color);          // ссылки в тексте (согласие, политика) — как в Telegram
   // Светлая тема Telegram: тёмные рамки и тяжёлая тень из тёмной палитры
   // смотрелись грубо (замечено в живом тесте) — делаем их светлыми.
   set("--border", light ? (tp.section_separator_color || "#e4e6ea") : tp.section_separator_color);
@@ -164,7 +165,10 @@ function initData() {
   return tg ? tg.initData : "";
 }
 
+let ERASED = false;          // «Удалить все мои данные» (privacy.js): больше никаких запросов
+
 async function api(path, opts) {
+  if (ERASED) throw new Error("данные удалены");
   opts = opts || {};
   opts.headers = Object.assign({
     "X-Telegram-Init-Data": initData(),

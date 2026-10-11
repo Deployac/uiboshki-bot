@@ -520,4 +520,31 @@ async def init_db():
                 await db.execute(f"ALTER TABLE {table} ADD COLUMN group_id INTEGER")
             except Exception:
                 pass  # уже есть
+
+        # 152-ФЗ (privacy.py): согласия по версиям текста и последний заход —
+        # от него срок хранения (год без заходов — данные удаляются).
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS consents (
+                user_id  INTEGER,
+                kind     TEXT,
+                version  TEXT,
+                via      TEXT,
+                at       TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (user_id, kind, version)
+            )
+        """)
+        try:
+            await db.execute("ALTER TABLE users ADD COLUMN last_seen TEXT")
+        except Exception:
+            pass  # уже есть
+        await db.execute("UPDATE users SET last_seen = datetime('now') WHERE last_seen IS NULL")
+        try:        # кто был до согласий — пользуется и без него (privacy.blocked)
+            await db.execute("ALTER TABLE users ADD COLUMN legacy INTEGER")
+            await db.execute("UPDATE users SET legacy = 1")
+        except Exception:
+            pass  # уже есть
+        try:        # версия текста, о которой уже спросили (privacy.ask_once) — один раз
+            await db.execute("ALTER TABLE users ADD COLUMN consent_asked TEXT")
+        except Exception:
+            pass  # уже есть
         await db.commit()

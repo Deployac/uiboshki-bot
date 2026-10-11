@@ -60,6 +60,12 @@ def _browse(url: str, init_data: str):
         page.wait_for_function("document.getElementById('hero').textContent.includes('Повторить')")
         hero = page.inner_text("#hero")
         page.evaluate("document.getElementById('onboard').classList.remove('open')")   # знакомство не мешает
+        # первый вход — лист согласия (152-ФЗ): без галочки «Продолжить» неактивна
+        page.wait_for_selector("#consent-sheet.open")
+        assert page.is_disabled("#pd-go")
+        page.click("#consent-sheet .consent-box")
+        page.click("#pd-go")
+        page.wait_for_selector("#consent-sheet.open", state="hidden")
         for tab in ("search", "chat", "sdo", "today"):
             page.click(f"nav.tabs button[data-tab='{tab}']")
         page.wait_for_timeout(300)

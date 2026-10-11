@@ -11,7 +11,8 @@ from database import init_db
 import health
 from handlers import register_handlers
 from scheduler import start_scheduler
-from middleware import GroupContextMiddleware, MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
+from middleware import (ConsentMiddleware, GroupContextMiddleware, MenuInterruptMiddleware,
+                        OptionalSubjectsMiddleware, StatsMiddleware)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 health.install()   # ошибки из логов за сутки — в /status у старосты
@@ -65,6 +66,7 @@ BOT_COMMANDS = [
     BotCommand(command="deadlines", description="📋 Дедлайны"),
     BotCommand(command="settings", description="⚙️ Уведомления"),
     BotCommand(command="help", description="📖 Что умеет бот"),
+    BotCommand(command="privacy", description="🔒 Мои данные: согласие и удаление"),
 ]
 STAROSTA_COMMANDS = BOT_COMMANDS + [
     BotCommand(command="announce", description="📣 Рассылка группе"),
@@ -175,6 +177,10 @@ async def main():
     dp.update.outer_middleware(OptionalSubjectsMiddleware())
     dp.update.outer_middleware(GroupContextMiddleware())
     dp.message.outer_middleware(StatsMiddleware())
+    consent = ConsentMiddleware()      # 152-ФЗ: без «Даю согласие» — ничего (handlers/privacy.py)
+    dp.message.outer_middleware(consent)
+    dp.callback_query.outer_middleware(consent)
+    dp.inline_query.outer_middleware(consent)
     dp.error.register(notify_starosta_on_error)
 
     await init_db()
@@ -192,6 +198,14 @@ async def main():
         except Exception as e:
             logger.info(f"превью поста канала: {e}")
     asyncio.create_task(offer_post())
+
+    import privacy                  # 152-ФЗ: тексты без данных оператора — сказать старосте после деплоя
+    if (missing := privacy.operator_missing()) and STAROSTA_ID:
+        try:
+            await bot.send_message(STAROSTA_ID, "⚠️ В согласии и политике (/consent, /privacy) нет данных "
+                                   f"оператора. Задай на хостинге: {', '.join(missing)}.")
+        except Exception as e:
+            logger.info(f"данные оператора: {e}")
     webapp_server, webapp_task = start_webapp(WEBAPP_PORT) if WEBAPP_PORT else (None, None)
     # Справочник для /teacher, /group, /room и поиска в WebApp — в фоне:
     # первый обход ~полчаса, дальше продолжается с места остановки.

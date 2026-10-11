@@ -150,8 +150,12 @@ async def test_webapp_connect_and_submit(db, moodle, monkeypatch):
     body = {"deadline_id": did, "name": "work.pdf", "data": base64.b64encode(b"%PDF-work").decode()}
     assert c.post("/api/sdo/submit", json=body, headers=h).status_code == 403     # не подключён
 
-    assert c.post("/api/sdo/connect", json={"cookie": "x"}, headers=h).status_code == 400
-    assert c.post("/api/sdo/connect", json={"cookie": "MoodleSession=" + COOKIE}, headers=h).json()["state"] == "ok"
+    assert c.post("/api/sdo/connect", json={"cookie": "x", "agree": True}, headers=h).status_code == 400
+    # без галочки согласия (152-ФЗ) куку не берём
+    res = c.post("/api/sdo/connect", json={"cookie": "MoodleSession=" + COOKIE}, headers=h)
+    assert res.status_code == 400 and "согласия" in res.json()["detail"]
+    res = c.post("/api/sdo/connect", json={"cookie": "MoodleSession=" + COOKIE, "agree": True}, headers=h)
+    assert res.json()["state"] == "ok"
     row = await db.get_sdo_session(222)
     assert COOKIE not in json.dumps(row)                                          # в базе только шифр
 

@@ -44,8 +44,9 @@ async def send_announce(message: Message, state: FSMContext, bot: Bot):
     wait = await message.answer(f"⏳ Рассылаю {len(users)} пользователям...")
 
     from database.identities import is_local
+    import privacy
     for uid in users:
-        if uid == message.from_user.id:
+        if uid == message.from_user.id or await privacy.blocked(uid):   # без согласия — не шлём (152-ФЗ)
             continue
         if is_local(uid):                 # без Telegram — текст пушем, вложения не дойдут
             if message.text:

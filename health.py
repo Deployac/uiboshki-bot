@@ -174,6 +174,9 @@ async def report() -> str:
     up = (now - STARTED).total_seconds()
     lines = [f"🩺 <b>Состояние бота</b> · {version()}",
              f"Работает {_ago(up)} (запущен {_when(STARTED.isoformat(), now)})", ""]
+    import privacy
+    if missing := privacy.operator_missing():      # тексты /consent и /privacy без оператора (152-ФЗ)
+        lines += [f"⚠️ В согласии и политике нет данных оператора: задай {', '.join(missing)}", ""]
 
     lines.append("<b>СДО</b>")
     if not SDO_SESSION_COOKIE:

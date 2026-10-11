@@ -1,5 +1,6 @@
 // «Безопасность» — устройства со входом, вход без Telegram (VK, Яндекс) и
 // коротко, как защищены данные (/api/security, как openSecurity в WebApp).
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -9,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import 'files.dart' show BackRow;
+import 'legal.dart';
 
 typedef _Data = ({List sessions, Map? identities, Map security});
 
@@ -98,6 +100,10 @@ class _SecurityScreenState extends State<SecurityScreen> {
       return;
     }
     _leave();
+  }
+
+  Future<void> _erase() async {
+    if (await deleteMyData(context, api) && mounted) _leave();
   }
 
   Future<void> _link(String provider) async {
@@ -252,6 +258,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
                       ),
                     ),
                   ),
+                const Section('Твои данные'),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: Space.l),
+                  child: _MyData(api: api, onErase: _erase),
+                ),
               ],
             );
           },
@@ -406,6 +417,68 @@ class _ActionRow extends StatelessWidget {
               action,
               style: s.body(14, weight: FontWeight.w600, color: danger ? p.danger : p.accent),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Политика, согласие (синими ссылками) и «Удалить все мои данные» (152-ФЗ).
+class _MyData extends StatefulWidget {
+  final Api api;
+  final VoidCallback onErase;
+  const _MyData({required this.api, required this.onErase});
+
+  @override
+  State<_MyData> createState() => _MyDataState();
+}
+
+class _MyDataState extends State<_MyData> {
+  late final _policy = TapGestureRecognizer()..onTap = () => openLegal(context, widget.api, 'privacy');
+  late final _consent = TapGestureRecognizer()..onTap = () => openLegal(context, widget.api, 'consent');
+
+  @override
+  void dispose() {
+    _policy.dispose();
+    _consent.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Tile(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text.rich(
+            TextSpan(
+              style: s.body(14, color: p.muted),
+              children: [
+                const TextSpan(text: 'Что храним, сколько и кому передаём — в '),
+                TextSpan(
+                  text: 'Политике обработки персональных данных',
+                  style: TextStyle(color: p.link),
+                  recognizer: _policy,
+                ),
+                const TextSpan(text: '. Твоё '),
+                TextSpan(
+                  text: 'согласие на обработку персональных данных',
+                  style: TextStyle(color: p.link),
+                  recognizer: _consent,
+                ),
+                const TextSpan(text: ' можно отозвать — удалив всё.'),
+              ],
+            ),
+          ),
+          const SizedBox(height: Space.s),
+          TextButton.icon(
+            style: TextButton.styleFrom(padding: EdgeInsets.zero),
+            onPressed: widget.onErase,
+            icon: Icon(Icons.delete_outline_rounded, color: p.danger, size: 20),
+            label: Text('Удалить все мои данные', style: s.body(15, weight: FontWeight.w600, color: p.danger)),
           ),
         ],
       ),

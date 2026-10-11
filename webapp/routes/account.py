@@ -16,7 +16,17 @@ async def api_me(user: dict = CurrentUser):
     import groups
     import plans
     return {"id": user["id"], "first_name": user.get("first_name", ""), "username": user.get("username", ""),
-            "group": await groups.of_user(user["id"]), "plan": await plans.plan_of(user["id"])}
+            "group": await groups.of_user(user["id"]), "plan": await plans.plan_of(user["id"]),
+            **await consent_state(user["id"])}
+
+
+async def consent_state(uid: int) -> dict:
+    """Лист согласия (152-ФЗ): новому — пока не согласится (API закрыт), кто
+    был до согласий — один раз, закрывается: показал — POST /api/consent/asked.
+    /api/me ничего не отмечает — его зовут несколько экранов сразу."""
+    import privacy
+    blocked = await privacy.blocked(uid)
+    return {"consent_needed": blocked or await privacy.should_ask(uid), "consent_blocked": blocked}
 
 
 @router.get("/api/groups/search")

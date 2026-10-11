@@ -12,6 +12,7 @@ import '../widgets/capsule_tabbar.dart';
 import '../widgets/common.dart';
 import 'deadlines.dart';
 import 'group_pick.dart';
+import 'legal.dart';
 import 'more.dart';
 import 'study.dart';
 import 'today.dart';
@@ -106,7 +107,19 @@ class _ShellState extends State<Shell> {
     } catch (_) {
       return; // нет сети или вход устарел — экраны сами скажут
     }
-    if (me == null || me['group'] != null || !mounted) return;
+    if (me == null || !mounted) return;
+    // 152-ФЗ: согласие на обработку персональных данных — до всего (legal.dart)
+    if (me['consent_needed'] == true) {
+      final blocked = me['consent_blocked'] == true;
+      final ok = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => ConsentScreen(api: widget.api, required: blocked)),
+      );
+      // отказался — данные удалены, ко входу; кто был до согласий может «Не сейчас»
+      if (ok == false || (blocked && ok != true)) return widget.onLogout();
+      if (!mounted) return;
+      if (blocked) setState(() => _epoch++); // до согласия API закрыт — экраны загрузить заново
+    }
+    if (me['group'] != null) return;
     await pickGroup(required: true);
   }
 

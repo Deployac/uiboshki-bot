@@ -86,6 +86,10 @@ async def track(user_id: int, kind: str | None):
     статистики никогда не ломают сам запрос."""
     if not kind or not user_id:
         return
+    import privacy
+    if await privacy.blocked(user_id):
+        return                      # до согласия на обработку данных — без событий (152-ФЗ)
+    await privacy.seen(user_id)     # последний заход — для срока хранения (152-ФЗ)
     if kind in VIEWS:
         key, now = (user_id, kind), time.monotonic()
         if now - _last.get(key, -1e9) < VIEW_COOLDOWN:

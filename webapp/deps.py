@@ -30,6 +30,13 @@ async def _session_user(request: Request) -> dict | None:
             "via": "session"}
 
 
+# Что можно до согласия на обработку данных (privacy.blocked): лист согласия
+# в WebApp/PWA и приложении спрашивает /api/me, даёт /api/consent, отказ —
+# /api/me/delete. Тексты /api/legal/* — без входа вообще.
+CONSENT_FREE = {"/api/me", "/api/consent", "/api/me/delete"}
+CONSENT_NEEDED = "сначала дай согласие на обработку персональных данных"
+
+
 async def get_current_user(request: Request, x_telegram_init_data: str = Header(default="")) -> dict:
     """FastAPI dependency: валидирует initData, апсертит пользователя в общую
     с ботом таблицу users (тем же способом, что и /start в самом боте — тогда
@@ -50,6 +57,12 @@ async def get_current_user(request: Request, x_telegram_init_data: str = Header(
         # заход в WebApp перетирал в users фамилию, записанную ботом.
         full_name = " ".join(p for p in (user.get("first_name", ""), user.get("last_name", "")) if p)
         await upsert_user(user["id"], user.get("username", ""), full_name)
+    import privacy                # 152-ФЗ: без согласия — только согласие, тексты и удаление
+    if await privacy.blocked(user["id"]):
+        path = request.url.path.replace("/api/v1/", "/api/", 1)
+        if path not in CONSENT_FREE:
+            raise HTTPException(status_code=403, detail=CONSENT_NEEDED)
+        return user
     from optional_subjects import apply_for
     await apply_for(user["id"])   # пары предметов по выбору, на которые не ходит — скрыть
     import members                # своя группа — по чату группы в Telegram (members.py)

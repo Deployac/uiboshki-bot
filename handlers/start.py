@@ -150,7 +150,11 @@ async def login_decision(callback: CallbackQuery):
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext | None = None):
-    user = message.from_user
+    await welcome(message, message.from_user, state)
+
+
+async def welcome(message: Message, user, state: FSMContext | None = None):
+    """Приветствие /start; после «Даю согласие» (handlers/privacy.py) — то же."""
     await upsert_user(user.id, user.username or "", user.full_name or "")
     # Одно короткое сообщение с одной кнопкой. Сначала оно уходит с
     # ReplyKeyboardRemove (убрать старую большую клавиатуру у тех, у кого она
@@ -337,7 +341,9 @@ HELP_TEXT = (
     "В приложении: ☰ Ещё → Уведомления — дни, погода, корпус, напоминания.\n"
     "/settings — коротко в чате · /optional — предметы по выбору\n\n"
     "💬 <b>Группа</b>\n"
-    "/anon — анонимный вопрос старосте · /feed — «Подслушано» · /vote — голосование"
+    "/anon — анонимный вопрос старосте · /feed — «Подслушано» · /vote — голосование\n\n"
+    "🔒 <b>Твои данные</b>\n"
+    "/privacy — согласие и политика обработки персональных данных · /deleteme — удалить всё о себе"
 )
 
 STAROSTA_HELP = (

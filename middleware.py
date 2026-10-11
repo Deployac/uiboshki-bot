@@ -110,3 +110,73 @@ class StatsMiddleware(BaseMiddleware):
             import stats
             await stats.track(user.id, "bot")
         return await handler(event, data)
+
+
+class ConsentMiddleware(BaseMiddleware):
+    """152-ФЗ: без согласия на обработку персональных данных (privacy.blocked —
+    новый человек) бот делает только одно:
+    присылает сообщение с кнопкой «Даю согласие» (handlers/privacy.py). Можно
+    /privacy, /deleteme, вход в приложение (/start login_…, кнопки login:), сами
+    кнопки согласия и удаления; остальное не обрабатывается. В группах — молча.
+
+    Кто пользовался ботом до согласий, работает как раньше и один раз (на
+    версию текста, отметка в базе — privacy.ask_once) после ответа бота
+    получает то же сообщение.
+    Стоит на message, callback_query и inline_query (bot.py)."""
+
+    FREE_COMMANDS = ("deleteme", "privacy")
+    FREE_CALLBACKS = ("consent:", "erase:", "login:")
+
+    async def __call__(self, handler, event, data):
+        user = data.get("event_from_user")
+        if not user or user.is_bot:
+            return await handler(event, data)
+        import privacy
+        try:
+            blocked = await privacy.blocked(user.id)
+        except Exception as e:
+            logger.warning(f"согласие: {e}")
+            return await handler(event, data)
+        if blocked:
+            return await self._blocked(handler, event, data)
+        result = await handler(event, data)
+        await self._remind(event, data, user.id)
+        return result
+
+    async def _blocked(self, handler, event, data):
+        from aiogram.types import CallbackQuery, InlineQuery, InlineQueryResultsButton
+        if isinstance(event, CallbackQuery):
+            if (event.data or "").startswith(self.FREE_CALLBACKS):
+                return await handler(event, data)
+            await event.answer("Сначала дай согласие на обработку данных — кнопка в чате с ботом",
+                               show_alert=True)
+            return None
+        if isinstance(event, InlineQuery):
+            await event.answer([], cache_time=0, is_personal=True, button=InlineQueryResultsButton(
+                text="Сначала дай согласие на обработку данных", start_parameter="consent"))
+            return None
+        chat = getattr(event, "chat", None)
+        if not chat or chat.type != "private":
+            return None                                 # в группах — молча
+        text = getattr(event, "text", None) or ""
+        name = _command_name(text)
+        if name in self.FREE_COMMANDS or (name == "start" and " login_" in text):
+            return await handler(event, data)
+        from handlers.privacy import ask_consent
+        await ask_consent(data["bot"], chat.id, new=name == "start", first_name=event.from_user.first_name)
+        return None
+
+    async def _remind(self, event, data, user_id: int):
+        """Кто был до согласий: спросить один раз, после ответа бота."""
+        chat = getattr(event, "chat", None)
+        text = getattr(event, "text", None) or ""
+        if not chat or chat.type != "private" or _command_name(text) in self.FREE_COMMANDS \
+                or is_anonymous(text, data.get("raw_state")):
+            return
+        try:
+            import privacy
+            if await privacy.ask_once(user_id):
+                from handlers.privacy import ask_consent
+                await ask_consent(data["bot"], chat.id)
+        except Exception as e:
+            logger.warning(f"согласие: {e}")
