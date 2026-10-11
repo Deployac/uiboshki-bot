@@ -5,9 +5,15 @@
   python tools/changelog.py free              — свободные имена из песен владельца
   python tools/changelog.py add 4.45.0 Имя <<'EOF'
   - что сделано (текст версии)
-  EOF                                         — добавить версию в CHANGELOG
+  EOF                                         — запись версии в changelog.d/
   … add 5.18.0 Слово --temp                   — временное слово (владелец заменит)
   python tools/changelog.py figures           — свободные деятели и под что они
+  python tools/changelog.py collect           — собрать changelog.d/ в CHANGELOG.md
+
+Запись версии — отдельный файл changelog.d/<версия>.md (владелец 11.10:
+параллельные PR правили одно место CHANGELOG.md и конфликтовали). После мержа
+в main их собирает в CHANGELOG.md GitHub Action (.github/workflows/changelog.yml);
+все проверки и версия сервера читают CHANGELOG.md вместе с changelog.d/.
 
 Имя — из песен владельца (SONG_WORDS) или деятель Российской империи и СССР
 (FIGURES, владелец 07.10: ассистент выбирает сам, по смыслу сделанного;
@@ -20,6 +26,7 @@ import sys
 from pathlib import Path
 
 CHANGELOG = Path(__file__).resolve().parent.parent / "CHANGELOG.md"
+FRAGMENTS = CHANGELOG.parent / "changelog.d"     # запись версии — свой файл, без конфликтов
 ANCHOR = "\n## Как будет дальше"
 TEMP_MARK = "(временное имя)"       # имена из песен кончились — владелец заменит
 # придержаны владельцем под особые версии (CLAUDE.md)
@@ -109,6 +116,7 @@ FIGURES = {
     "Якоби": "Борис Якоби, пишущий телеграф: сообщение само доходит куда надо, без переписывания",
     "Барклай": "Барклай-де-Толли: отступить на запасную позицию и не потерять армию — запасной путь, когда основной закрыт",
     "Сеченов": "физиолог, «Рефлексы головного мозга»: разобрать по косточкам, как думает одна голова",
+    "Шахматов": "Алексей Шахматов, восстановил летописные своды из отдельных летописей: записи по одной, а история собирается сама",
     "Шапошников": "начальник Генштаба, держал резервы наготове: запасной вариант, который вступает, когда основной исчерпан",
     "Вернадский": "знания, ИИ",
     "Келдыш": "расчёты, математика",
@@ -172,6 +180,33 @@ def versions(text: str) -> list[tuple[str, str]]:
     return re.findall(r"^### v([\d.]+)\s+«([^»]+)»", text, re.M)
 
 
+def _key(ver: str) -> tuple[int, ...]:
+    return tuple(int(x) for x in ver.split("."))
+
+
+def _fragments() -> list[Path]:
+    files = FRAGMENTS.glob("*.md") if FRAGMENTS.is_dir() else []
+    return sorted(files, key=lambda f: _key(f.stem))
+
+
+def full_text() -> str:
+    """CHANGELOG.md вместе с ещё не собранными записями из changelog.d/ —
+    по порядку версий, перед «Как будет дальше»."""
+    text = CHANGELOG.read_text(encoding="utf-8")
+    new = "".join("\n" + f.read_text(encoding="utf-8").strip() + "\n" for f in _fragments())
+    return text.replace(ANCHOR, new + ANCHOR, 1) if new else text
+
+
+def collect() -> int:
+    """Перенести записи из changelog.d/ в CHANGELOG.md; сколько перенесено."""
+    files = _fragments()
+    if files:
+        CHANGELOG.write_text(full_text(), encoding="utf-8")
+        for f in files:
+            f.unlink()
+    return len(files)
+
+
 def free(text: str) -> list[str]:
     used = {_norm(n) for _, n in versions(text)}
     return sorted({w for w in SONG_WORDS if _norm(w) not in used and w not in RESERVED})
@@ -189,7 +224,7 @@ def check(text: str, name: str, temp: bool = False) -> str | None:
 
 
 def main(argv: list[str]) -> int:
-    text = CHANGELOG.read_text(encoding="utf-8")
+    text = full_text()
     temp = "--temp" in argv
     argv = [a for a in argv if a != "--temp"]
     cmd = argv[1] if len(argv) > 1 else ""
@@ -200,6 +235,8 @@ def main(argv: list[str]) -> int:
         for n, why in FIGURES.items():
             if _norm(n) not in used:
                 print(f"{n} — {why}")
+    elif cmd == "collect":
+        print("собрано записей:", collect())
     elif cmd == "check":
         for n in argv[2:]:
             print(n, "—", check(text, n) or "свободно")
@@ -213,8 +250,10 @@ def main(argv: list[str]) -> int:
         if not body or ANCHOR not in text:
             sys.exit("нет текста версии или раздела «Как будет дальше»")
         mark = f" {TEMP_MARK}" if temp else ""
-        CHANGELOG.write_text(text.replace(ANCHOR, f"\n### v{ver} «{name}»{mark}\n{body}\n" + ANCHOR, 1), encoding="utf-8")
-        print("ok", ver, name)
+        FRAGMENTS.mkdir(exist_ok=True)
+        f = FRAGMENTS / f"{ver}.md"
+        f.write_text(f"### v{ver} «{name}»{mark}\n{body}\n", encoding="utf-8")
+        print("ok", ver, name, "→", f.relative_to(CHANGELOG.parent))
     else:
         print(__doc__)
         return 1

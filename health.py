@@ -15,7 +15,6 @@ import math
 import time
 from collections import deque
 from datetime import datetime
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from config import TIMEZONE
@@ -155,10 +154,12 @@ def _line(n: dict | None, title: str, now: datetime, never: str) -> str:
 
 
 def version() -> str:
-    """Последняя версия из CHANGELOG.md («v5.2.0 «Имя»»)."""
+    """Последняя версия из CHANGELOG.md и changelog.d/ («v5.2.0 «Имя»»)."""
     import re
+
+    from tools.changelog import full_text
     try:
-        text = (Path(__file__).parent / "CHANGELOG.md").read_text(encoding="utf-8")
+        text = full_text()
         found = re.findall(r"^### (v\d+\.\d+\.\d+ «[^»]+»)", text, re.M)
         return found[-1] if found else ""
     except OSError:
