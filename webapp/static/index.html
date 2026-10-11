@@ -317,6 +317,21 @@
   </div>
 </div>
 
+<!-- 152-ФЗ (js/privacy.js): текст согласия или политики — поверх любого листа -->
+<div class="sheet-backdrop legal-backdrop" id="legal-sheet" onclick="if (event.target === this) closeSheet('legal-sheet')">
+  <div class="sheet">
+    <div class="sheet-grip"></div>
+    <div id="legal-body"></div>
+  </div>
+</div>
+
+<!-- согласие при первом входе: мимо не закрывается -->
+<div class="sheet-backdrop consent-backdrop" id="consent-sheet">
+  <div class="sheet">
+    <div id="consent-body"></div>
+  </div>
+</div>
+
 <script src="js/core.js"></script>
 <script src="js/icons.js"></script>
 <script src="js/home.js"></script>
@@ -325,6 +340,7 @@
 <script src="js/search.js"></script>
 <script src="js/chat.js"></script>
 <script src="js/more.js"></script>
+<script src="js/privacy.js"></script>
 <script src="js/sdo.js"></script>
 <script src="js/main.js"></script>
 

@@ -15,8 +15,10 @@ router = APIRouter()
 async def api_me(user: dict = CurrentUser):
     import groups
     import plans
+    import privacy
     return {"id": user["id"], "first_name": user.get("first_name", ""), "username": user.get("username", ""),
-            "group": await groups.of_user(user["id"]), "plan": await plans.plan_of(user["id"])}
+            "group": await groups.of_user(user["id"]), "plan": await plans.plan_of(user["id"]),
+            "consent_needed": await privacy.needs(user["id"])}     # лист согласия (152-ФЗ)
 
 
 @router.get("/api/groups/search")

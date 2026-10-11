@@ -1,0 +1,99 @@
+// ── 152-ФЗ: согласие, тексты и «удалить все мои данные» (privacy.py) ────────
+// Галочка по умолчанию не стоит, кнопка рядом неактивна, пока её нет. Тексты
+// согласия и политики — /api/legal/<имя> (legal_texts.py): рисуем их сами, в
+// дизайне приложения, листом поверх открытого — введённое в поле не теряется.
+
+function consentRow(id, onchange, extra) {
+  return '<label class="consent-row"><input type="checkbox" id="' + id + '" onchange="' + onchange + '">' +
+    '<span class="consent-box">' + icon("check") + '</span>' +
+    '<span>Даю <a class="legal-link" onclick="openLegal(event, \'consent\')">согласие на обработку персональных данных</a>' +
+    (extra || "") + '</span></label>' +
+    '<p class="consent-more">Подробнее — в <a class="legal-link" onclick="openLegal(event, \'privacy\')">' +
+    'Политике обработки персональных данных</a></p>';
+}
+
+function consentChecked(id) {
+  const box = document.getElementById(id);
+  return !!(box && box.checked);
+}
+
+async function openLegal(ev, name) {
+  if (ev) { ev.preventDefault(); ev.stopPropagation(); }   // ссылка в подписи галочки — не ставить её
+  haptic();
+  const box = document.getElementById("legal-body");
+  document.getElementById("legal-sheet").classList.add("open");
+  box.innerHTML = '<div class="skel" style="height:320px"></div>';
+  let d;
+  try { d = await api("/api/legal/" + name); } catch (e) {
+    box.innerHTML = '<p class="hint">Не удалось загрузить текст: ' + escapeHtml(e.message) + '</p>';
+    return;
+  }
+  box.innerHTML = '<h3>' + escapeHtml(d.title) + '</h3>' +
+    '<p class="sheet-hint">Версия ' + escapeHtml(d.version) + ' от ' + escapeHtml(d.date) + '</p>' +
+    '<div class="legal-text"><p class="legal-lead">' + escapeHtml(d.lead) + '</p>' +
+    d.sections.map(s => '<h4>' + escapeHtml(s.title) + '</h4>' + s.blocks.map(b => b.ul
+      ? '<ul>' + b.ul.map(i => '<li>' + escapeHtml(i) + '</li>').join("") + '</ul>'
+      : '<p>' + escapeHtml(b.p) + '</p>').join("")).join("") + '</div>' +
+    '<button class="primary" onclick="closeSheet(\'legal-sheet\')">Понятно</button>';
+}
+
+// Первый вход (и новая версия текста): /api/me → consent_needed. Лист не
+// закрывается мимо — только согласием или отказом с удалением данных.
+function maybeConsent(me) {
+  if (!me || !me.consent_needed) return;
+  document.getElementById("consent-body").innerHTML =
+    '<div class="sec-hero"><span class="sec-shield">' + icon("shield") + '</span><div><h3>Твои данные</h3>' +
+      '<p>Один раз — и пользуйся</p></div></div>' +
+    '<p class="sheet-hint">Чтобы показывать расписание, дедлайны и баллы, приложению нужно хранить твой id, ' +
+      'группу и настройки. Что именно и сколько — в политике, удалить всё можно в любой момент: ' +
+      '«Ещё → Безопасность».</p>' +
+    consentRow("pd-agree", "syncConsentBtn()") +
+    '<button class="primary" id="pd-go" disabled onclick="giveConsent()">Продолжить</button>' +
+    '<button class="ghost" onclick="refuseConsent()">Не даю согласие</button>';
+  document.getElementById("consent-sheet").classList.add("open");
+}
+
+function syncConsentBtn() {
+  document.getElementById("pd-go").disabled = !consentChecked("pd-agree");
+}
+
+async function giveConsent() {
+  if (!consentChecked("pd-agree")) return;
+  const btn = document.getElementById("pd-go");
+  btn.disabled = true;
+  try { await api("/api/consent", { method: "POST", body: JSON.stringify({ kind: "pd" }) }); } catch (e) {
+    btn.disabled = false;
+    showToast("⚠️ " + e.message);
+    return;
+  }
+  haptic("success");
+  closeSheet("consent-sheet");
+}
+
+async function refuseConsent() {
+  if (!(await confirmDialog("Без согласия приложение не может хранить твои данные. Удалить то, что уже есть, и выйти?"))) return;
+  await deleteMyData(true);
+}
+
+// «Удалить все мои данные» (ст. 21): сразу и насовсем — профиль, группа, вход
+// в СДО, история баллов, личные дедлайны, устройства, входы VK и Яндекс.
+async function deleteMyData(confirmed) {
+  if (!confirmed && !(await confirmDialog("Удалить все твои данные? Профиль, группу, вход в СДО, историю " +
+      "баллов и посещений, личные дедлайны, устройства. Отменить нельзя."))) return;
+  try { await api("/api/me/delete", { method: "POST", body: JSON.stringify({ confirm: true }) }); } catch (e) {
+    showToast("⚠️ " + e.message);
+    return;
+  }
+  ERASED = true;
+  haptic("success");
+  document.querySelectorAll(".sheet-backdrop.open").forEach(s => s.classList.remove("open"));
+  document.getElementById("consent-body").innerHTML =
+    '<div class="sec-hero"><span class="sec-shield">' + icon("check") + '</span><div><h3>Данные удалены</h3>' +
+      '<p>Всё о тебе стёрто</p></div></div>' +
+    '<p class="sheet-hint">Из ночных копий базы оно уйдёт само, когда копии сменятся. Если вернёшься — начнём с нуля.</p>';
+  document.getElementById("consent-sheet").classList.add("open");
+  if (IN_TG) { setTimeout(() => { try { tg.close(); } catch (e) {} }, 2500); return; }
+  saveToken("");
+  try { navigator.serviceWorker.controller.postMessage("logout"); } catch (e) {}
+  setTimeout(() => location.replace("/app"), 2500);
+}

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:uiboshki/api/api.dart';
+import 'package:uiboshki/screens/legal.dart';
 import 'package:uiboshki/screens/sdo_connect.dart';
 import 'package:uiboshki/screens/study.dart';
 import 'package:uiboshki/screens/task.dart';
@@ -63,7 +64,10 @@ void main() {
     await t.scrollUntilVisible(find.byType(TextField), 200, scrollable: find.byType(Scrollable).first);
     await t.enterText(find.byType(TextField), '  abc123  ');
     await tapVisible(t, find.text('Проверить и сохранить'));
-    expect(bodies['POST /api/sdo/connect'], {'cookie': 'abc123'});
+    expect(asked, isNot(contains('POST /api/sdo/connect'))); // без галочки согласия — не отправляем
+    await tapVisible(t, find.descendant(of: find.byType(ConsentCheck), matching: find.byType(AnimatedContainer)));
+    await tapVisible(t, find.text('Проверить и сохранить'));
+    expect(bodies['POST /api/sdo/connect'], {'cookie': 'abc123', 'agree': true});
     expect(find.text('Подключено, работает'), findsOneWidget);
     expect(find.textContaining('для всей УИБО-01-24'), findsOneWidget);
 

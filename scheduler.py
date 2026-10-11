@@ -434,6 +434,8 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(keepalive_due,           "interval", minutes=1, args=[bot])
     from database import purge_events          # статистика старше 180 дней не нужна
     scheduler.add_job(purge_events,            "cron", hour=4, minute=20)
+    import privacy                             # 152-ФЗ: год без заходов — данные стираются
+    scheduler.add_job(privacy.purge,           "cron", hour=4, minute=25)
     import health
     scheduler.add_job(health.alert_errors,     "interval", minutes=15, args=[bot])   # всплеск ошибок — старосте
     import stats

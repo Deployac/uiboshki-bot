@@ -12,11 +12,12 @@ from database._conn import connect
 async def upsert_user(user_id: int, username: str, full_name: str):
     async with connect() as db:
         await db.execute("""
-            INSERT INTO users (user_id, username, full_name)
-            VALUES (?, ?, ?)
+            INSERT INTO users (user_id, username, full_name, last_seen)
+            VALUES (?, ?, ?, datetime('now'))
             ON CONFLICT(user_id) DO UPDATE SET
                 username  = excluded.username,
-                full_name = excluded.full_name
+                full_name = excluded.full_name,
+                last_seen = excluded.last_seen
         """, (user_id, username, full_name))
         await db.commit()
 

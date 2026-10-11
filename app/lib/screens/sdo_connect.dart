@@ -12,6 +12,7 @@ import '../widgets/capy_refresh.dart';
 import '../widgets/common.dart';
 import 'files.dart';
 import '../api/links.dart';
+import 'legal.dart';
 
 /// Что даёт свой вход — без него экран объясняет, зачем подключаться.
 const sdoPerks = [
@@ -48,6 +49,9 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
   Map<String, dynamic>? _st;
   String? _error, _loadError;
   bool _busy = false;
+
+  /// Галочка согласия (152-ФЗ): без неё сервер куку не возьмёт.
+  bool _agree = false;
   final _cookie = TextEditingController();
 
   @override
@@ -93,10 +97,10 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
 
   Future<void> _connect() async {
     final v = _cookie.text.trim();
-    if (v.isEmpty) return;
+    if (v.isEmpty || !_agree) return;
     tick();
     FocusScope.of(context).unfocus();
-    await _act(() => widget.api.post('/sdo/connect', {'cookie': v}));
+    await _act(() => widget.api.post('/sdo/connect', {'cookie': v, 'agree': true}));
     if (_st?['state'] == 'ok' && _error == null) {
       _cookie.clear();
       HapticFeedback.mediumImpact();
@@ -290,6 +294,15 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Space.l, Space.m, Space.l, 0),
+          child: ConsentCheck(
+            api: widget.api,
+            value: _agree,
+            onChanged: (v) => setState(() => _agree = v),
+            extra: ', в том числе из СДО: баллы, посещения, задания',
+          ),
+        ),
         if (_error != null) _errorText(context),
         Padding(
           padding: const EdgeInsets.fromLTRB(Space.l, Space.l, Space.l, 0),
@@ -301,7 +314,7 @@ class _SdoConnectScreenState extends State<SdoConnectScreen> {
                 foregroundColor: p.onAccent,
                 shape: const StadiumBorder(),
               ),
-              onPressed: _busy ? null : _connect,
+              onPressed: _busy || !_agree ? null : _connect,
               child: Text(_busy ? 'Проверяю…' : 'Проверить и сохранить'),
             ),
           ),

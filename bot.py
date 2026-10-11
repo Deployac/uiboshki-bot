@@ -11,7 +11,8 @@ from database import init_db
 import health
 from handlers import register_handlers
 from scheduler import start_scheduler
-from middleware import GroupContextMiddleware, MenuInterruptMiddleware, OptionalSubjectsMiddleware, StatsMiddleware
+from middleware import (ConsentMiddleware, GroupContextMiddleware, MenuInterruptMiddleware,
+                        OptionalSubjectsMiddleware, StatsMiddleware)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 health.install()   # ошибки из логов за сутки — в /status у старосты
@@ -65,6 +66,7 @@ BOT_COMMANDS = [
     BotCommand(command="deadlines", description="📋 Дедлайны"),
     BotCommand(command="settings", description="⚙️ Уведомления"),
     BotCommand(command="help", description="📖 Что умеет бот"),
+    BotCommand(command="privacy", description="🔒 Мои данные: согласие и удаление"),
 ]
 STAROSTA_COMMANDS = BOT_COMMANDS + [
     BotCommand(command="announce", description="📣 Рассылка группе"),
@@ -175,6 +177,7 @@ async def main():
     dp.update.outer_middleware(OptionalSubjectsMiddleware())
     dp.update.outer_middleware(GroupContextMiddleware())
     dp.message.outer_middleware(StatsMiddleware())
+    dp.message.outer_middleware(ConsentMiddleware())     # 152-ФЗ: «Даю согласие» (handlers/privacy.py)
     dp.error.register(notify_starosta_on_error)
 
     await init_db()

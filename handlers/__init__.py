@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from .start    import router as start_router
+from .privacy  import router as privacy_router
 from .group_pick import router as group_router
 from .members_chat import router as members_chat_router
 from .schedule import router as schedule_router
@@ -50,6 +51,7 @@ async def _ensure_home_group():
 
 def register_handlers(dp: Dispatcher):
     dp.include_router(cancel_router)
+    dp.include_router(privacy_router)
     dp.include_router(start_router)
     dp.include_router(group_router)
     dp.include_router(members_chat_router)

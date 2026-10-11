@@ -110,3 +110,36 @@ class StatsMiddleware(BaseMiddleware):
             import stats
             await stats.track(user.id, "bot")
         return await handler(event, data)
+
+
+class ConsentMiddleware(BaseMiddleware):
+    """152-ФЗ: кто ещё не дал согласие на обработку персональных данных (в
+    текущей версии текста, privacy.VERSION), получает после ответа бота одно
+    сообщение с кнопкой «Даю согласие» (handlers/privacy.py) — не чаще раза в
+    день. Бота не блокирует: напоминания и расписание идут как раньше."""
+
+    def __init__(self):
+        self.asked: dict[int, str] = {}
+
+    async def __call__(self, handler, event, data):
+        result = await handler(event, data)
+        user = getattr(event, "from_user", None)
+        chat = getattr(event, "chat", None)
+        text = getattr(event, "text", None) or ""
+        if not user or not chat or chat.type != "private" or user.is_bot:
+            return result
+        if _command_name(text) in ("deleteme", "privacy") or is_anonymous(text, data.get("raw_state")):
+            return result
+        from datetime import date
+        today = date.today().isoformat()
+        if self.asked.get(user.id) == today:
+            return result
+        try:
+            import privacy
+            if await privacy.needs(user.id):
+                self.asked[user.id] = today
+                from handlers.privacy import ask_consent
+                await ask_consent(data["bot"], chat.id)
+        except Exception as e:
+            logger.warning(f"согласие: {e}")
+        return result

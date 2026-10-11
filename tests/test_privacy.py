@@ -1,0 +1,216 @@
+"""152-ФЗ (privacy.py): согласие, «удалить все мои данные», срок хранения.
+
+Главный сторож — test_erase_leaves_nothing: обходит ВСЕ таблицы схемы с
+колонкой user_id, кладёт в каждую строку человека и соседа и проверяет, что
+после удаления от человека не осталось ни строки, а сосед цел. Новая таблица
+с user_id попадёт в проверку сама."""
+import json
+
+import aiosqlite
+import pytest
+
+from tests.conftest import STAROSTA_ID
+from tests.test_review_bot import Session, TOKEN, press, send  # noqa: F401 — фикстуры ниже
+from tests.test_review_bot import bot, dp  # noqa: F401
+
+ME, OTHER = 222, 333
+
+from database.privacy import get_consents  # noqa: E402
+
+
+async def _fill_user_tables(path, uid):
+    """В каждую таблицу с user_id — строку этого человека (остальные колонки — что угодно)."""
+    async with aiosqlite.connect(path) as conn:
+        from database.privacy import user_tables
+        tables = await user_tables(conn)
+        for t in tables:
+            cols = await (await conn.execute(f"PRAGMA table_info({t})")).fetchall()
+            names, values = [], []
+            for _, name, typ, *_ in cols:
+                names.append(name)
+                if name == "user_id":
+                    values.append(uid)
+                elif "INT" in (typ or "").upper():
+                    values.append(uid * 10 + len(names))
+                else:
+                    values.append(f"{name}-{uid}")
+            await conn.execute(f"INSERT OR REPLACE INTO {t} ({','.join(names)}) VALUES ({','.join('?' * len(names))})",
+                               values)
+        await conn.commit()
+    return tables
+
+
+@pytest.mark.asyncio
+async def test_erase_leaves_nothing(db):
+    from database.homework import init_hw_table
+    await init_hw_table()
+    import privacy
+    tables = await _fill_user_tables(db.DATABASE_PATH, ME)
+    await _fill_user_tables(db.DATABASE_PATH, OTHER)
+    assert {"users", "sessions", "identities", "sdo_sessions", "consents", "events",
+            "sdo_score_history", "push_subs"} <= set(tables)
+
+    personal = await db.add_deadline("Своё", "личное", "2026-10-05", None, ME)
+    shared = await db.add_deadline("Общее", "группы", "2026-10-05", None, ME, group_id=5000)   # староста чужой группы
+    sdo = await db.add_deadline("СДО", "задание", "2026-10-05", None, 0)
+    await db.set_setting(f"goals:{ME}", "{}")
+    await db.set_setting(f"member:{ME}", "1:0")
+    await db.set_setting(f"goals:{OTHER}", "{}")
+    await db.set_setting("ai_day:2026-10-11", json.dumps({str(ME): 3, str(OTHER): 2}))
+    from database.social import feed_author_hash
+    async with aiosqlite.connect(db.DATABASE_PATH) as conn:
+        await conn.execute("INSERT INTO files (title, subject, file_id, uploaded_by) VALUES ('Лекция 1','Матан','f1',?)", (ME,))
+        await conn.execute("INSERT INTO feed_posts (text, author_id) VALUES ('пост', ?)", (feed_author_hash(ME),))
+        await conn.execute("INSERT INTO homework (subject, content, created_by) VALUES ('Матан','дз',?)", (ME,))
+        await conn.commit()
+
+    await privacy.erase(ME)
+
+    async with aiosqlite.connect(db.DATABASE_PATH) as conn:
+        for t in tables:
+            mine = (await (await conn.execute(f"SELECT COUNT(*) FROM {t} WHERE user_id=?", (ME,))).fetchone())[0]
+            other = (await (await conn.execute(f"SELECT COUNT(*) FROM {t} WHERE user_id=?", (OTHER,))).fetchone())[0]
+            assert mine == 0, f"{t}: остались строки человека"
+            assert other == 1, f"{t}: задело соседа"
+        ids = {r[0]: r[1] for r in await (await conn.execute("SELECT id, created_by FROM deadlines")).fetchall()}
+        assert personal not in ids                      # личный — удалён
+        assert ids[shared] == 0 and ids[sdo] == 0       # общий — остался группе, без автора
+        assert (await (await conn.execute("SELECT uploaded_by FROM files")).fetchone())[0] is None
+        assert (await (await conn.execute("SELECT author_id FROM feed_posts")).fetchone())[0] == 0
+        assert (await (await conn.execute("SELECT created_by FROM homework")).fetchone())[0] is None
+    assert await db.get_setting(f"goals:{ME}") is None and await db.get_setting(f"member:{ME}") is None
+    assert await db.get_setting(f"goals:{OTHER}") == "{}"
+    assert json.loads(await db.get_setting("ai_day:2026-10-11")) == {str(OTHER): 2}
+
+
+@pytest.mark.asyncio
+async def test_consent_versions(db, monkeypatch):
+    import privacy
+    await db.upsert_user(ME, "me", "Я")
+    assert await privacy.needs(ME) and await privacy.needs(ME, "sdo")
+    await privacy.give(ME, "pd", "bot")
+    assert not await privacy.needs(ME) and await privacy.needs(ME, "sdo")
+    monkeypatch.setattr(privacy, "VERSION", "2")          # новый текст — спросить заново
+    assert await privacy.needs(ME)
+    with pytest.raises(ValueError):
+        await privacy.give(ME, "ads", "bot")
+
+
+@pytest.mark.asyncio
+async def test_retention_purge(db):
+    import privacy
+    for uid in (ME, OTHER, STAROSTA_ID):
+        await db.upsert_user(uid, "", "x")
+    async with aiosqlite.connect(db.DATABASE_PATH) as conn:
+        await conn.execute("UPDATE users SET last_seen=datetime('now','-400 days') WHERE user_id IN (?, ?)",
+                           (ME, STAROSTA_ID))
+        await conn.execute("INSERT INTO solver_history (user_id, task_text, answer, created_at) "
+                           "VALUES (?, 'старое', 'a', datetime('now','-200 days')), (?, 'новое', 'b', datetime('now'))",
+                           (OTHER, OTHER))
+        await conn.commit()
+    await privacy.purge()
+    assert await db.get_user(ME) is None                  # год без заходов — стёрт
+    assert await db.get_user(OTHER) and await db.get_user(STAROSTA_ID)   # староста — нет
+    async with aiosqlite.connect(db.DATABASE_PATH) as conn:
+        left = [r[0] for r in await (await conn.execute("SELECT task_text FROM solver_history")).fetchall()]
+    assert left == ["новое"]
+
+
+@pytest.mark.asyncio
+async def test_seen_marks_last_visit(db):
+    import privacy
+    await db.upsert_user(ME, "", "x")
+    async with aiosqlite.connect(db.DATABASE_PATH) as conn:
+        await conn.execute("UPDATE users SET last_seen='2020-01-01 00:00:00' WHERE user_id=?", (ME,))
+        await conn.commit()
+    privacy._seen.pop(ME, None)
+    import stats
+    await stats.track(ME, "bot")
+    assert (await db.get_user(ME))["last_seen"] > "2026"
+
+
+def _client(monkeypatch):
+    from fastapi.testclient import TestClient
+    import webapp.server as server
+    from tests.test_webapp_home import BOT_TOKEN, _make_init_data
+    monkeypatch.setattr(server.deps, "BOT_TOKEN", BOT_TOKEN)
+    return TestClient(server.app), {"X-Telegram-Init-Data": _make_init_data()}
+
+
+@pytest.mark.asyncio
+async def test_api_consent_and_delete(db, monkeypatch):
+    c, h = _client(monkeypatch)
+    assert c.get("/api/me", headers=h).json()["consent_needed"] is True
+    assert c.post("/api/consent", json={"kind": "ads"}, headers=h).status_code == 400
+    r = c.post("/api/consent", json={"kind": "pd"}, headers=h).json()
+    assert r["pd"] is True and r["sdo"] is False
+    assert c.get("/api/me", headers=h).json()["consent_needed"] is False
+    assert (await get_consents(ME))[0]["via"] == "tg"
+
+    assert c.post("/api/me/delete", json={}, headers=h).status_code == 400   # без подтверждения — нет
+    assert c.post("/api/me/delete", json={"confirm": True}, headers=h).json() == {"ok": True}
+    assert await db.get_user(ME) is None and await get_consents(ME) == []
+
+
+def test_legal_texts_and_pages(monkeypatch):
+    import privacy
+    c, _ = _client(monkeypatch)
+    for name, title in (("consent", "Согласие на обработку персональных данных"),
+                        ("privacy", "Политика обработки персональных данных")):
+        d = c.get("/api/legal/" + name).json()
+        assert d["title"] == title and d["version"] == privacy.VERSION and d["sections"]
+        assert all(set(b) in ({"p"}, {"ul"}) for s in d["sections"] for b in s["blocks"])   # JSON без HTML
+        assert "{" not in json.dumps(d, ensure_ascii=False).replace('{"', "").replace("{}", "")  # всё подставлено
+        page = c.get("/" + name)
+        assert page.status_code == 200 and title in page.text and privacy.DATE in page.text
+    assert c.get("/api/legal/ads").status_code == 404
+    text = json.dumps(c.get("/api/legal/privacy").json(), ensure_ascii=False)
+    assert "Railway" in text and "США" in text            # правда о том, где сервер
+
+
+@pytest.mark.asyncio
+async def test_bot_deleteme(db, dp, bot):  # noqa: F811
+    await db.upsert_user(ME, "", "x")
+    await send(dp, bot, "/deleteme")
+    assert "Удалить все твои данные" in bot.session.texts()[-1]
+    await press(dp, bot, "erase:no")
+    assert await db.get_user(ME)
+    await press(dp, bot, "erase:yes")
+    assert await db.get_user(ME) is None
+    assert "всё о тебе удалено" in bot.session.named("EditMessageText")[-1].text
+
+
+@pytest.mark.asyncio
+async def test_bot_consent_prompt(db, bot):  # noqa: F811
+    from aiogram import Dispatcher
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from handlers import register_handlers
+    from middleware import ConsentMiddleware
+    import privacy
+    d = Dispatcher(storage=MemoryStorage())
+    d.message.outer_middleware(ConsentMiddleware())
+    register_handlers(d)
+    try:
+        await send(d, bot, "/help")
+        await send(d, bot, "/help")
+        prompts = [t for t in bot.session.texts() if "Даю согласие" in t or "согласие на обработку" in t]
+        assert len(prompts) == 1                            # не чаще раза в день
+        await press(d, bot, "consent:pd")
+        assert not await privacy.needs(ME)
+        assert (await get_consents(ME))[0]["via"] == "bot"
+    finally:
+        for r in list(d.sub_routers):
+            r._parent_router = None
+
+
+def test_webapp_consent_wiring():
+    """Mini App и PWA: галочка не стоит, кнопка неактивна; ссылки открывают текст листом."""
+    from pathlib import Path
+    static = Path("webapp/static")
+    html = (static / "index.html").read_text(encoding="utf-8")
+    js = {p.name: p.read_text(encoding="utf-8") for p in (static / "js").glob("*.js")}
+    assert 'id="consent-sheet"' in html and 'id="legal-sheet"' in html and "js/privacy.js" in html
+    assert "checked" not in js["privacy.js"].split("function consentRow")[1].split("\n}\n")[0]
+    assert '"sdo-save" disabled' in js["more.js"] and "agree: true" in js["more.js"]
+    assert "maybeConsent(m)" in js["home.js"] and "deleteMyData()" in js["more.js"]
+    assert "/api/legal/" in js["privacy.js"] and "preventDefault" in js["privacy.js"]

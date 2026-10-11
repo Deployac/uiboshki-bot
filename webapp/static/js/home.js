@@ -236,6 +236,7 @@ async function loadToday() {
     setGreeting(m.first_name);
     myGroup = m.group; myPlan = m.plan;
     if (!m.group && typeof openGroup === "function") openGroup(true);   // новый — сначала группа (этап 1)
+    if (typeof maybeConsent === "function") maybeConsent(m);          // 152-ФЗ: согласие — поверх (privacy.js)
     return true;
   }, () => false);
   try {

@@ -105,7 +105,8 @@ function renderSdo(connecting) {
       '</ol>' +
       '<input class="searchbox" id="sdo-cookie" placeholder="Вставь MoodleSession…" autocomplete="off" autocapitalize="off" spellcheck="false">' +
       '<div class="lock">' + icon("shield", "inl") + ' Это как «оставаться в системе». Значение сразу шифруется, в переписке и логах не остаётся.</div>' +
-      '<button class="primary" id="sdo-save" onclick="connectSdo()">Проверить и сохранить</button>' +
+      consentRow("sdo-agree", "syncSdoBtn()", ", в том числе из СДО: баллы, посещения, задания") +
+      '<button class="primary" id="sdo-save" disabled onclick="connectSdo()">Проверить и сохранить</button>' +
       (GUIDE_URL ? '<button class="ghost" onclick="openConfigLink(GUIDE_URL)">Гайд со скринами — в канале</button>' : '') +
       '<button class="ghost" onclick="renderSdo()">Позже</button>';
     return;
@@ -149,13 +150,19 @@ async function checkPulse() {
   btn.disabled = false;
 }
 
+// Кнопка подключения — только с галочкой согласия (152-ФЗ, privacy.js)
+function syncSdoBtn() {
+  document.getElementById("sdo-save").disabled = !consentChecked("sdo-agree");
+}
+
 async function connectSdo() {
   const input = document.getElementById("sdo-cookie");
   const btn = document.getElementById("sdo-save");
+  if (!consentChecked("sdo-agree")) return;
   if (!input.value.trim()) { input.focus(); return; }
   btn.disabled = true; btn.textContent = "Проверяю…";
   try {
-    sdoState = await api("/api/sdo/connect", { method: "POST", body: JSON.stringify({ cookie: input.value }) });
+    sdoState = await api("/api/sdo/connect", { method: "POST", body: JSON.stringify({ cookie: input.value, agree: true }) });
     input.value = "";
     haptic("success");
     renderSdo(); loadSdoStatus(); loadDeadlines();
@@ -420,8 +427,14 @@ async function openSecurity() {
       "Не больше " + ((lim.ai || {}).count || 15) + " вопросов ИИ в минуту и " + ((lim.submit || {}).count || 6) +
       " сдач за " + ((lim.submit || {}).minutes || 10) + " минут с одного человека — чтобы никто не сжёг общий лимит и не долбил СДО.") +
     secItem("gear", "Ключи и пароли — только на сервере",
-      "Токен бота, ключи ИИ и шифрования — в закрытых настройках сервера, в коде и базе их нет. Копия базы каждую ночь уходит только старосте.") +
+      "Токен бота, ключи ИИ и шифрования — в закрытых настройках сервера, в коде и базе их нет. Копия базы каждую ночь " +
+      "уходит только владельцу бота и хранится не дольше 30 дней.") +
     '<div id="logins"></div><div id="devices"></div>' +
+    '<h3 style="margin-top:16px">Твои данные</h3>' +
+    '<p class="sheet-hint">Что храним, сколько и кому передаём — в <a class="legal-link" onclick="openLegal(event, \'privacy\')">' +
+      'Политике обработки персональных данных</a>. Твоё <a class="legal-link" onclick="openLegal(event, \'consent\')">' +
+      'согласие на обработку персональных данных</a> можно отозвать — удалив всё:</p>' +
+    '<button class="ghost danger" onclick="deleteMyData()">Удалить все мои данные</button>' +
     '<button class="ghost" onclick="closeSheet(\'security-sheet\')">Понятно</button>';
   loadDevices();
   loadLogins();
