@@ -4,9 +4,9 @@ import re
 
 import pytest
 
-from tools.changelog import CHANGELOG, RESERVED, SONG_WORDS, check, free, versions
+from tools.changelog import RESERVED, SONG_WORDS, check, free, full_text, versions
 
-TEXT = CHANGELOG.read_text(encoding="utf-8")
+TEXT = full_text()      # CHANGELOG.md и ещё не собранные записи changelog.d/
 
 
 def _key(v):
@@ -51,11 +51,47 @@ def test_temp_name_when_songs_run_out(tmp_path, monkeypatch):
     f = tmp_path / "CHANGELOG.md"
     f.write_text("### v1.0.0 «Метель»\nтекст\n\n## Как будет дальше\n", encoding="utf-8")
     monkeypatch.setattr(cl, "CHANGELOG", f)
+    monkeypatch.setattr(cl, "FRAGMENTS", tmp_path / "changelog.d")
     import io
     monkeypatch.setattr(cl.sys, "stdin", io.StringIO("что сделано"))
     assert cl.main(["x", "add", "1.0.1", "Деникин", "--temp"]) == 0
-    assert "### v1.0.1 «Деникин» (временное имя)" in f.read_text(encoding="utf-8")
+    assert "### v1.0.1 «Деникин» (временное имя)" in cl.full_text()
     with pytest.raises(SystemExit):
         cl.main(["x", "add", "1.0.2", "Метель", "--temp"])
     with pytest.raises(SystemExit):
         cl.main(["x", "add", "1.0.2", "Сталин", "--temp"])
+
+
+def test_fragments_then_collect(tmp_path, monkeypatch):
+    """Запись версии — свой файл changelog.d/<версия>.md (владелец 11.10: PR
+    конфликтовали в одном месте CHANGELOG.md). Проверки и версия сервера видят
+    её сразу, collect переносит записи в CHANGELOG.md по порядку версий."""
+    import io
+
+    import health
+    import tools.changelog as cl
+    from webapp.routes import meta
+    f = tmp_path / "CHANGELOG.md"
+    f.write_text("### v5.9.0 «Метель»\nтекст\n\n## Как будет дальше\nправила\n", encoding="utf-8")
+    monkeypatch.setattr(cl, "CHANGELOG", f)
+    monkeypatch.setattr(cl, "FRAGMENTS", tmp_path / "changelog.d")
+    for ver, name in (("5.10.0", "Лебедев"), ("5.9.1", "Курчатов")):
+        monkeypatch.setattr(cl.sys, "stdin", io.StringIO(f"- сделано в {ver}"))
+        assert cl.main(["x", "add", ver, name]) == 0
+    assert f.read_text(encoding="utf-8").count("### v") == 1          # сам файл не тронут
+    assert (tmp_path / "changelog.d" / "5.10.0.md").exists()
+    assert check(cl.full_text(), "Лебедев") == "занято v5.10.0"
+    with pytest.raises(SystemExit):                                   # повтор версии из записи
+        monkeypatch.setattr(cl.sys, "stdin", io.StringIO("ещё"))
+        cl.main(["x", "add", "5.9.1", "Павлов"])
+    assert health.version() == "v5.10.0 «Лебедев»"
+    meta.server_version.cache_clear()
+    assert meta.server_version() == "5.10.0"
+    meta.server_version.cache_clear()
+
+    assert cl.collect() == 2
+    text = f.read_text(encoding="utf-8")
+    assert [v for v, _ in versions(text)] == ["5.9.0", "5.9.1", "5.10.0"]
+    assert text.endswith("- сделано в 5.10.0\n\n## Как будет дальше\nправила\n")
+    assert not list((tmp_path / "changelog.d").glob("*.md"))
+    assert cl.collect() == 0 and f.read_text(encoding="utf-8") == text

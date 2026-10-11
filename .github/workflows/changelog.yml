@@ -1,0 +1,52 @@
+name: CHANGELOG
+
+# Записи версий лежат в changelog.d/<версия>.md — каждый PR добавляет свой
+# файл, поэтому параллельные PR не конфликтуют в CHANGELOG.md (владелец 11.10).
+# После мержа в main этот запуск переносит их в CHANGELOG.md и удаляет файлы
+# (python tools/changelog.py collect). Коммит от github-actions не запускает
+# другие проверки; версию сервера и проверки имён это не меняет — они и так
+# читают CHANGELOG.md вместе с changelog.d/.
+
+on:
+  push:
+    branches: [main]
+    paths: ["changelog.d/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: changelog-collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Собрать и закоммитить
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          collect() {
+            python tools/changelog.py collect
+            [ -z "$(git status --porcelain)" ] && return 1
+            git add -u -- CHANGELOG.md changelog.d
+            git commit -m "CHANGELOG: собраны записи из changelog.d"
+          }
+          collect || { echo "нечего собирать"; exit 0; }
+          for i in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            # main ушёл вперёд (новый мерж) — собрать заново поверх него
+            git fetch origin main && git reset --hard origin/main
+            collect || exit 0
+          done
+          exit 1
