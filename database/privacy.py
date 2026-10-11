@@ -31,6 +31,13 @@ async def has_consent(user_id: int, kind: str, version: str) -> bool:
         return row is not None
 
 
+async def is_legacy(user_id: int) -> bool:
+    """Пользовался ботом до согласий (переходный срок, privacy.GRACE_UNTIL)."""
+    async with connect() as db:
+        row = await (await db.execute("SELECT legacy FROM users WHERE user_id=?", (user_id,))).fetchone()
+        return bool(row and row[0])
+
+
 async def get_consents(user_id: int) -> list[dict]:
     async with connect() as db:
         db.row_factory = aiosqlite.Row

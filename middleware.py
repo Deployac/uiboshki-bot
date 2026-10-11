@@ -113,33 +113,77 @@ class StatsMiddleware(BaseMiddleware):
 
 
 class ConsentMiddleware(BaseMiddleware):
-    """152-ФЗ: кто ещё не дал согласие на обработку персональных данных (в
-    текущей версии текста, privacy.VERSION), получает после ответа бота одно
-    сообщение с кнопкой «Даю согласие» (handlers/privacy.py) — не чаще раза в
-    день. Бота не блокирует: напоминания и расписание идут как раньше."""
+    """152-ФЗ: без согласия на обработку персональных данных (privacy.blocked —
+    новый человек или кончился переходный срок) бот делает только одно:
+    присылает сообщение с кнопкой «Даю согласие» (handlers/privacy.py). Можно
+    /privacy, /deleteme, вход в приложение (/start login_…, кнопки login:), сами
+    кнопки согласия и удаления; остальное не обрабатывается. В группах — молча.
+
+    Кто пользовался ботом до согласий, до privacy.GRACE_UNTIL работает как
+    раньше и раз в день после ответа бота получает то же сообщение.
+    Стоит на message, callback_query и inline_query (bot.py)."""
+
+    FREE_COMMANDS = ("deleteme", "privacy")
+    FREE_CALLBACKS = ("consent:", "erase:", "login:")
 
     def __init__(self):
         self.asked: dict[int, str] = {}
 
     async def __call__(self, handler, event, data):
+        user = data.get("event_from_user")
+        if not user or user.is_bot:
+            return await handler(event, data)
+        import privacy
+        try:
+            blocked = await privacy.blocked(user.id)
+        except Exception as e:
+            logger.warning(f"согласие: {e}")
+            return await handler(event, data)
+        if blocked:
+            return await self._blocked(handler, event, data)
         result = await handler(event, data)
-        user = getattr(event, "from_user", None)
+        await self._remind(event, data, user.id)
+        return result
+
+    async def _blocked(self, handler, event, data):
+        from aiogram.types import CallbackQuery, InlineQuery, InlineQueryResultsButton
+        if isinstance(event, CallbackQuery):
+            if (event.data or "").startswith(self.FREE_CALLBACKS):
+                return await handler(event, data)
+            await event.answer("Сначала дай согласие на обработку данных — кнопка в чате с ботом",
+                               show_alert=True)
+            return None
+        if isinstance(event, InlineQuery):
+            await event.answer([], cache_time=0, is_personal=True, button=InlineQueryResultsButton(
+                text="Сначала дай согласие на обработку данных", start_parameter="consent"))
+            return None
+        chat = getattr(event, "chat", None)
+        if not chat or chat.type != "private":
+            return None                                 # в группах — молча
+        text = getattr(event, "text", None) or ""
+        name = _command_name(text)
+        if name in self.FREE_COMMANDS or (name == "start" and " login_" in text):
+            return await handler(event, data)
+        from handlers.privacy import ask_consent
+        await ask_consent(data["bot"], chat.id, new=name == "start", first_name=event.from_user.first_name)
+        return None
+
+    async def _remind(self, event, data, user_id: int):
+        """Переходный срок: напомнить раз в день, после ответа бота."""
         chat = getattr(event, "chat", None)
         text = getattr(event, "text", None) or ""
-        if not user or not chat or chat.type != "private" or user.is_bot:
-            return result
-        if _command_name(text) in ("deleteme", "privacy") or is_anonymous(text, data.get("raw_state")):
-            return result
+        if not chat or chat.type != "private" or _command_name(text) in self.FREE_COMMANDS \
+                or is_anonymous(text, data.get("raw_state")):
+            return
         from datetime import date
         today = date.today().isoformat()
-        if self.asked.get(user.id) == today:
-            return result
+        if self.asked.get(user_id) == today:
+            return
         try:
             import privacy
-            if await privacy.needs(user.id):
-                self.asked[user.id] = today
+            if await privacy.needs(user_id):
+                self.asked[user_id] = today
                 from handlers.privacy import ask_consent
                 await ask_consent(data["bot"], chat.id)
         except Exception as e:
             logger.warning(f"согласие: {e}")
-        return result

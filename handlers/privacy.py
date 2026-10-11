@@ -2,11 +2,14 @@
 кнопкой «Даю согласие», /privacy — ссылки на тексты, /deleteme — удалить
 все свои данные с подтверждением.
 
-Согласие спрашивает ConsentMiddleware (middleware.py): кто ещё не дал его
-в текущей версии — одно сообщение после ответа бота, не чаще раза в день."""
+Согласие спрашивает ConsentMiddleware (middleware.py): новый человек до
+«Даю согласие» получает только это сообщение (и /privacy, /deleteme); после
+кнопки — обычное приветствие /start. Кто был до согласий — раз в день, до
+конца переходного срока (privacy.GRACE_UNTIL)."""
 
 from aiogram import F, Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 router = Router()
@@ -28,9 +31,12 @@ def links() -> tuple[str, str]:
             f'<a href="{base}/privacy">Политике обработки персональных данных</a>')
 
 
-def consent_text() -> str:
+def consent_text(new: bool = False, first_name: str = "") -> str:
     consent, policy = links()
-    return ("🔒 <b>Твои данные</b>\n\n"
+    from utils import esc
+    hello = (f"👋 Привет, <b>{esc(first_name or 'друг')}</b>! Я Капибара — расписание, дедлайны, "
+             "баллы и файлы группы. Сначала одно дело.\n\n") if new else ""
+    return (hello + "🔒 <b>Твои данные</b>\n\n"
             "Чтобы присылать расписание и напоминания, боту нужно хранить твой id в Telegram, "
             "группу и настройки.\n\n"
             f"Нажимая «Даю согласие», ты даёшь {consent}.\n"
@@ -41,15 +47,17 @@ CONSENT_KB = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="✅ Даю согласие", callback_data="consent:pd")]])
 
 
-async def ask_consent(bot, chat_id: int):
-    await bot.send_message(chat_id, consent_text(), parse_mode="HTML", reply_markup=CONSENT_KB,
+async def ask_consent(bot, chat_id: int, new: bool = False, first_name: str = ""):
+    await bot.send_message(chat_id, consent_text(new, first_name), parse_mode="HTML", reply_markup=CONSENT_KB,
                            disable_web_page_preview=True)
 
 
 @router.callback_query(F.data == "consent:pd")
-async def consent_given(callback: CallbackQuery):
+async def consent_given(callback: CallbackQuery, state: FSMContext | None = None):
     import privacy
-    await privacy.give(callback.from_user.id, "pd", "bot")
+    user = callback.from_user
+    first = await privacy.blocked(user.id)          # новый — дальше приветствие, как у /start
+    await privacy.give(user.id, "pd", "bot")
     consent, policy = links()
     try:
         await callback.message.edit_text(
@@ -59,6 +67,9 @@ async def consent_given(callback: CallbackQuery):
     except Exception:
         pass
     await callback.answer("Готово")
+    if first:
+        from handlers.start import welcome
+        await welcome(callback.message, user, state)
 
 
 @router.message(Command("privacy"))
@@ -102,6 +113,6 @@ async def erase_decision(callback: CallbackQuery):
     import privacy
     await privacy.erase(callback.from_user.id)
     await callback.message.edit_text(
-        "✅ Готово: всё о тебе удалено. Из ночных копий базы оно уйдёт само, когда копии сменятся.\n\n"
+        "✅ Готово: всё о тебе удалено. Из ночных копий базы оно уйдёт при ежемесячной чистке копий.\n\n"
         "Сообщения в этом чате можешь удалить сам. Если напишешь снова — начнём с нуля.")
     await callback.answer("Удалено")

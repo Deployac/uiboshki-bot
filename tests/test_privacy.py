@@ -182,6 +182,7 @@ async def test_bot_deleteme(db, dp, bot):  # noqa: F811
 
 @pytest.mark.asyncio
 async def test_bot_consent_prompt(db, bot):  # noqa: F811
+    """Переходный срок (кто был до согласий): бот работает, раз в день — просьба."""
     from aiogram import Dispatcher
     from aiogram.fsm.storage.memory import MemoryStorage
     from handlers import register_handlers
@@ -214,3 +215,135 @@ def test_webapp_consent_wiring():
     assert '"sdo-save" disabled' in js["more.js"] and "agree: true" in js["more.js"]
     assert "maybeConsent(m)" in js["home.js"] and "deleteMyData()" in js["more.js"]
     assert "/api/legal/" in js["privacy.js"] and "preventDefault" in js["privacy.js"]
+
+
+# ── Без согласия — ничего (ревьюер 152-ФЗ, 11.10) ───────────────────────────
+
+def _gated_dp():
+    """Как в bot.py: статистика и согласие на сообщениях, кнопках и inline."""
+    from aiogram import Dispatcher
+    from aiogram.fsm.storage.memory import MemoryStorage
+    from handlers import register_handlers
+    from middleware import ConsentMiddleware, StatsMiddleware
+    d = Dispatcher(storage=MemoryStorage())
+    consent = ConsentMiddleware()
+    d.message.outer_middleware(StatsMiddleware())
+    d.message.outer_middleware(consent)
+    d.callback_query.outer_middleware(consent)
+    d.inline_query.outer_middleware(consent)
+    register_handlers(d)
+    return d
+
+
+def _release(d):
+    for r in list(d.sub_routers):
+        r._parent_router = None
+
+
+async def _events(path, uid):
+    async with aiosqlite.connect(path) as conn:
+        return (await (await conn.execute("SELECT COUNT(*) FROM events WHERE user_id=?", (uid,))).fetchone())[0]
+
+
+@pytest.mark.consent_real
+@pytest.mark.asyncio
+async def test_new_user_gets_only_consent(db, bot):  # noqa: F811
+    import privacy
+    import stats
+    stats._last.clear()                                 # «не чаще раза в 30 минут» — с нуля
+    d = _gated_dp()
+    try:
+        await send(d, bot, "/start")
+        texts = bot.session.texts()
+        assert len(texts) == 1 and "Привет" in texts[0] and "Даю согласие" in texts[0]
+        await send(d, bot, "/help")
+        await send(d, bot, "скинь лекцию 3")
+        assert len(bot.session.texts()) == 3 and all("Даю согласие" in t for t in bot.session.texts())
+        await press(d, bot, "act:today")
+        assert "согласие" in bot.session.named("AnswerCallbackQuery")[-1].text
+        assert await _events(db.DATABASE_PATH, ME) == 0               # ни событий,
+        assert (await db.get_user(ME) or {}).get("full_name", "") == ""   # ни имени
+
+        await send(d, bot, "/privacy")                                # можно и до согласия
+        assert "Политике" in bot.session.texts()[-1]
+
+        await press(d, bot, "consent:pd")
+        assert not await privacy.blocked(ME)
+        assert "Привет, <b>X</b>" in bot.session.texts()[-1]          # дальше — обычный /start
+        assert (await db.get_user(ME))["full_name"] == "X"
+        n = len(bot.session.texts())
+        await send(d, bot, "/help")
+        assert len(bot.session.texts()) == n + 1 and "Даю согласие" not in bot.session.texts()[-1]
+        assert await _events(db.DATABASE_PATH, ME) == 1
+    finally:
+        _release(d)
+
+
+@pytest.mark.consent_real
+@pytest.mark.asyncio
+async def test_new_user_can_delete_and_log_in(db, bot):  # noqa: F811
+    d = _gated_dp()
+    try:
+        await send(d, bot, "/start login_nope")                       # вход в приложение — можно
+        assert "устарела" in bot.session.texts()[-1] or "Войти" in bot.session.texts()[-1]
+        await send(d, bot, "/deleteme")
+        assert "Удалить все твои данные" in bot.session.texts()[-1]
+        await press(d, bot, "erase:yes")
+        assert "удалено" in bot.session.named("EditMessageText")[-1].text
+    finally:
+        _release(d)
+
+
+@pytest.mark.consent_real
+@pytest.mark.asyncio
+async def test_grace_period_for_old_users(db, monkeypatch):
+    import privacy
+    from datetime import date
+    await db.upsert_user(ME, "me", "Я")
+    async with aiosqlite.connect(db.DATABASE_PATH) as conn:
+        await conn.execute("UPDATE users SET legacy=1 WHERE user_id=?", (ME,))
+        await conn.commit()
+    assert not await privacy.blocked(ME)                  # был до согласий — до 01.11 можно
+    assert await privacy.blocked(OTHER)                   # новый — нельзя
+    assert not await privacy.blocked(STAROSTA_ID)         # староста — оператор
+    monkeypatch.setattr(privacy, "today_msk", lambda: date(2026, 11, 1))
+    assert await privacy.blocked(ME)                      # срок кончился
+    await privacy.give(ME, "pd", "bot")
+    assert not await privacy.blocked(ME)
+
+
+@pytest.mark.consent_real
+@pytest.mark.asyncio
+async def test_blocked_get_no_broadcasts(db, bot):  # noqa: F811
+    import delivery
+    assert await delivery.deliver(bot, OTHER, "утро", kind="morning") is None
+    assert bot.session.texts() == []
+
+
+@pytest.mark.consent_real
+@pytest.mark.asyncio
+async def test_api_closed_until_consent(db, monkeypatch):
+    c, h = _client(monkeypatch)
+    me = c.get("/api/me", headers=h).json()
+    assert me["consent_needed"] is True and me["consent_blocked"] is True
+    r = c.get("/api/notify", headers=h)
+    assert r.status_code == 403 and "согласие" in r.json()["detail"]
+    assert c.get("/api/v1/notify", headers=h).status_code == 403
+    assert (await db.get_user(ME))["full_name"] == ""            # имя — только после согласия
+    assert await _events(db.DATABASE_PATH, ME) == 0
+    assert c.post("/api/consent", json={"kind": "pd"}, headers=h).status_code == 200
+    assert c.get("/api/me", headers=h).json()["consent_blocked"] is False
+    assert c.get("/api/notify", headers=h).status_code == 200
+    assert (await db.get_user(ME))["full_name"]
+
+
+def test_legal_texts_after_review(monkeypatch):
+    """Ревью 11.10: копии в Telegram (ОАЭ), цели, основание, поручение Railway,
+    фото вопроса, срок ответа; данные оператора — из переменных окружения."""
+    c, _ = _client(monkeypatch)
+    for name in ("consent", "privacy"):
+        text = json.dumps(c.get("/api/legal/" + name).json(), ensure_ascii=False)
+        assert "Telegram FZ-LLC (ОАЭ)" in text and "резервн" in text and "по поручению" in text
+        assert "текст или фото" in text and "не дольше" not in text
+    text = json.dumps(c.get("/api/legal/privacy").json(), ensure_ascii=False)
+    assert '"Цели"' in text and "ст. 6 ч. 1 п. 1" in text and "п. 5" in text and "рабочих дней" in text

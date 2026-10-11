@@ -538,4 +538,9 @@ async def init_db():
         except Exception:
             pass  # уже есть
         await db.execute("UPDATE users SET last_seen = datetime('now') WHERE last_seen IS NULL")
+        try:        # кто был до согласий — переходный срок (privacy.GRACE_UNTIL)
+            await db.execute("ALTER TABLE users ADD COLUMN legacy INTEGER")
+            await db.execute("UPDATE users SET legacy = 1")
+        except Exception:
+            pass  # уже есть
         await db.commit()

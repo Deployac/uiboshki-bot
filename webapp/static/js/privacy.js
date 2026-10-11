@@ -39,8 +39,13 @@ async function openLegal(ev, name) {
 
 // Первый вход (и новая версия текста): /api/me → consent_needed. Лист не
 // закрывается мимо — только согласием или отказом с удалением данных.
+// Новый человек (consent_blocked) до согласия видит только этот лист: API
+// закрыт (403), после «Продолжить» — заново, с данными.
+let CONSENT_BLOCKED = false;
+
 function maybeConsent(me) {
   if (!me || !me.consent_needed) return;
+  CONSENT_BLOCKED = !!me.consent_blocked;
   document.getElementById("consent-body").innerHTML =
     '<div class="sec-hero"><span class="sec-shield">' + icon("shield") + '</span><div><h3>Твои данные</h3>' +
       '<p>Один раз — и пользуйся</p></div></div>' +
@@ -68,6 +73,7 @@ async function giveConsent() {
   }
   haptic("success");
   closeSheet("consent-sheet");
+  if (CONSENT_BLOCKED) location.reload();
 }
 
 async function refuseConsent() {
@@ -90,7 +96,7 @@ async function deleteMyData(confirmed) {
   document.getElementById("consent-body").innerHTML =
     '<div class="sec-hero"><span class="sec-shield">' + icon("check") + '</span><div><h3>Данные удалены</h3>' +
       '<p>Всё о тебе стёрто</p></div></div>' +
-    '<p class="sheet-hint">Из ночных копий базы оно уйдёт само, когда копии сменятся. Если вернёшься — начнём с нуля.</p>';
+    '<p class="sheet-hint">Из ночных копий базы оно уйдёт при ежемесячной чистке копий. Если вернёшься — начнём с нуля.</p>';
   document.getElementById("consent-sheet").classList.add("open");
   if (IN_TG) { setTimeout(() => { try { tg.close(); } catch (e) {} }, 2500); return; }
   saveToken("");

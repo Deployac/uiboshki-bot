@@ -115,6 +115,7 @@ class _ShellState extends State<Shell> {
       );
       if (ok != true) return widget.onLogout(); // отказался — данные удалены, ко входу
       if (!mounted) return;
+      setState(() => _epoch++); // до согласия API закрыт — экраны загрузить заново
     }
     if (me['group'] != null) return;
     await pickGroup(required: true);

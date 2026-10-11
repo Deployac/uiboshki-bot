@@ -177,7 +177,10 @@ async def main():
     dp.update.outer_middleware(OptionalSubjectsMiddleware())
     dp.update.outer_middleware(GroupContextMiddleware())
     dp.message.outer_middleware(StatsMiddleware())
-    dp.message.outer_middleware(ConsentMiddleware())     # 152-ФЗ: «Даю согласие» (handlers/privacy.py)
+    consent = ConsentMiddleware()      # 152-ФЗ: без «Даю согласие» — ничего (handlers/privacy.py)
+    dp.message.outer_middleware(consent)
+    dp.callback_query.outer_middleware(consent)
+    dp.inline_query.outer_middleware(consent)
     dp.error.register(notify_starosta_on_error)
 
     await init_db()

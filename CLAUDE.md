@@ -494,6 +494,13 @@ JSON приложения VPN (секрет хостинга, в репозит�
   Удаление — `privacy.erase` (все таблицы с `user_id` из схемы, тест
   `test_privacy.py`); новая колонка «кто создал» в общей таблице — дописать
   в `database/privacy.AUTHOR_COLUMNS`. Срок — год без заходов (`last_seen`).
+  Без согласия (`privacy.blocked`: новый или после 01.11.2026 — все) бот
+  отвечает только сообщением согласия (/privacy, /deleteme, вход
+  `login_` — можно), API — 403 кроме `/api/me`, `/api/consent`,
+  `/api/me/delete` (`webapp/deps.CONSENT_FREE`), нет событий, имени и
+  рассылок. В тестах согласие дано (`conftest._consent_given`), настоящая
+  проверка — метка `consent_real`. Оператор в текстах — `PD_FIO`, `PD_INN`,
+  `PD_EMAIL`, `PD_CITY` (переменные окружения).
 - **Прочее**: длинные сообщения режутся на части (`long_messages.py`,
   middleware сессии бота); ночной бэкап базы старосте в 04:40 и `/backup`
   (`backup.py`); задачи по расписанию — `scheduler.py` (APScheduler).

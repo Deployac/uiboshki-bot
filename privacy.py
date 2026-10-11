@@ -11,8 +11,11 @@
 решалки — полгода."""
 
 import logging
+import os
+from datetime import date
 
 from config import STAROSTA_IDS
+from utils import today_msk
 
 logger = logging.getLogger(__name__)
 
@@ -23,19 +26,49 @@ VIAS = ("bot", "pwa", "tg", "app")
 
 INACTIVE_DAYS = 365
 SOLVER_DAYS = 180
-BACKUP_DAYS = 30               # копии базы у оператора — не дольше (политика)
+ANSWER_DAYS = 10               # ответ на запрос о данных — рабочих дней (ст. 14 ч. 3, ст. 20)
 
-# Кто оператор и как связаться — в текстах согласия и политики (legal_texts.py)
-OPERATOR = "Никита, разработчик сервиса «Капибара» (самозанятый)"
-CONTACT = "Telegram @Partykq"
+# Кто оператор и как связаться — в текстах согласия и политики (legal_texts.py).
+# ФИО, ИНН, почта и город — переменные окружения PD_FIO, PD_INN, PD_EMAIL,
+# PD_CITY (задаёт Никита на хостинге); пока пусто — в текстах их нет.
+FIO = os.getenv("PD_FIO", "").strip()
+INN = os.getenv("PD_INN", "").strip()
+EMAIL = os.getenv("PD_EMAIL", "").strip()
+CITY = os.getenv("PD_CITY", "").strip()
+OPERATOR = ", ".join(x for x in (
+    f"самозанятый {FIO or 'Никита'}, разработчик сервиса «Капибара»",
+    f"ИНН {INN}" if INN else "", f"г. {CITY}" if CITY else "") if x)
+CONTACT = "Telegram @Partykq" + (f" или почта {EMAIL}" if EMAIL else "")
 CONTACT_URL = "https://t.me/Partykq"
 
+# Кто пользовался ботом до согласий (users.legacy), пользуется без согласия
+# до этого дня; новые — только после «Даю согласие» (ревьюер 152-ФЗ, 11.10).
+GRACE_UNTIL = date(2026, 11, 1)
+
 _seen: dict[int, str] = {}     # id → день последней отметки (пишем раз в день)
+_given: set[tuple[int, str, str]] = set()   # (id, вид, версия) — уже дал, в базу не ходим
 
 
 async def needs(user_id: int, kind: str = "pd") -> bool:
     from database.privacy import has_consent
-    return not await has_consent(user_id, kind, VERSION)
+    if (user_id, kind, VERSION) in _given:
+        return False
+    if await has_consent(user_id, kind, VERSION):
+        _given.add((user_id, kind, VERSION))
+        return False
+    return True
+
+
+async def blocked(user_id: int) -> bool:
+    """Нельзя обрабатывать (кроме самого согласия, /privacy и /deleteme):
+    согласия нет, человек новый или переходный срок кончился. Без событий
+    статистики, без имени и ника в базе, без рассылок. Старосты — операторы."""
+    if user_id in STAROSTA_IDS or not await needs(user_id):
+        return False
+    if today_msk() >= GRACE_UNTIL:
+        return True
+    from database.privacy import is_legacy
+    return not await is_legacy(user_id)
 
 
 async def give(user_id: int, kind: str, via: str):
@@ -43,6 +76,7 @@ async def give(user_id: int, kind: str, via: str):
     if kind not in KINDS:
         raise ValueError(kind)
     await give_consent(user_id, kind, VERSION, via if via in VIAS else "pwa")
+    _given.add((user_id, kind, VERSION))
 
 
 async def seen(user_id: int):
@@ -60,11 +94,12 @@ async def seen(user_id: int):
 
 
 async def erase(user_id: int) -> dict:
-    """Всё о человеке — из базы и кэшей. Копии базы (бэкапы) уходят сами,
-    когда сменяются (политика это говорит)."""
+    """Всё о человеке — из базы и кэшей. Из ночных копий базы (у оператора в
+    Telegram) — при ежемесячной ручной чистке (политика это говорит)."""
     from database.privacy import erase_user
     done = await erase_user(user_id, STAROSTA_IDS)
     _seen.pop(user_id, None)
+    _given.difference_update({g for g in _given if g[0] == user_id})
     try:
         import sdo_grades
         sdo_grades.forget(user_id)

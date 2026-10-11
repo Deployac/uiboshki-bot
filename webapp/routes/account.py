@@ -18,7 +18,8 @@ async def api_me(user: dict = CurrentUser):
     import privacy
     return {"id": user["id"], "first_name": user.get("first_name", ""), "username": user.get("username", ""),
             "group": await groups.of_user(user["id"]), "plan": await plans.plan_of(user["id"]),
-            "consent_needed": await privacy.needs(user["id"])}     # лист согласия (152-ФЗ)
+            "consent_needed": await privacy.needs(user["id"]),     # лист согласия (152-ФЗ)
+            "consent_blocked": await privacy.blocked(user["id"])}   # без него API закрыт
 
 
 @router.get("/api/groups/search")

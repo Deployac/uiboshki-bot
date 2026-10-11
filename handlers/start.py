@@ -150,7 +150,11 @@ async def login_decision(callback: CallbackQuery):
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext | None = None):
-    user = message.from_user
+    await welcome(message, message.from_user, state)
+
+
+async def welcome(message: Message, user, state: FSMContext | None = None):
+    """Приветствие /start; после «Даю согласие» (handlers/privacy.py) — то же."""
     await upsert_user(user.id, user.username or "", user.full_name or "")
     # Одно короткое сообщение с одной кнопкой. Сначала оно уходит с
     # ReplyKeyboardRemove (убрать старую большую клавиатуру у тех, у кого она

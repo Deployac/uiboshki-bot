@@ -77,6 +77,25 @@ def _fixed_semester(monkeypatch):
     monkeypatch.setattr(sdo_grades, "_now_msk", lambda: datetime(2026, 9, 26, 12, 0))
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "consent_real: настоящая проверка согласия (privacy.blocked)")
+
+
+@pytest.fixture(autouse=True)
+def _consent_given(request, monkeypatch):
+    """152-ФЗ: без согласия бот и API закрыты (privacy.blocked). Тесты
+    остального ходят от имени тех, кто согласие дал; сама блокировка —
+    tests/test_privacy.py (метка consent_real)."""
+    import privacy
+    privacy._given.clear()
+    if "consent_real" in request.keywords:
+        return
+
+    async def never(user_id):
+        return False
+    monkeypatch.setattr(privacy, "blocked", never)
+
+
 @pytest.fixture(autouse=True)
 def _fresh_rate_limits():
     """Счётчики ratelimit живут в памяти процесса — между тестами сбрасываем,

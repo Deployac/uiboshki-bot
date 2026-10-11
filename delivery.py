@@ -51,7 +51,11 @@ async def push(user_id: int, kind: str, html: str, tab: str | None = None) -> in
 async def deliver(bot, user_id: int, html: str, *, kind: str, tab: str | None = None, reply_markup=None,
                   parse_mode: str = "HTML"):
     """Сообщение человеку: Telegram (как раньше) + пуш на его устройства.
-    Ошибка Telegram пробрасывается (рассылки её логируют), пуш — молча."""
+    Ошибка Telegram пробрасывается (рассылки её логируют), пуш — молча.
+    До согласия на обработку данных (privacy.blocked) — ничего."""
+    import privacy
+    if await privacy.blocked(user_id):
+        return None
     try:
         await push(user_id, kind, html, tab)
     except Exception as e:
