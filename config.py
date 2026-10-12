@@ -40,6 +40,13 @@ CHANNEL_ID = channel_id_from(os.getenv("CHANNEL_ID", ""), CHANNEL_URL)
 OPTIONAL_SUBJECTS = [s.strip() for s in os.getenv("OPTIONAL_SUBJECTS", "Военная кафедра").split(",") if s.strip()]
 TIMEZONE   = "Europe/Moscow"
 
+
+def design2_on() -> bool:
+    """Второй круг дизайна (5.79): DESIGN2=0 — откат одной переменной (приложение,
+    /api/meta features.design2, вечерняя сводка). Читается при вызове — тесты
+    меняют переменную на лету."""
+    return os.getenv("DESIGN2", "1").strip() != "0"
+
 # ─── ID старосты (твой Telegram ID) ───────────────────────────────────────────
 # Узнать свой ID: написать @userinfobot в Telegram
 # Можно несколько через запятую — второй аккаунт старосты: «111,222».

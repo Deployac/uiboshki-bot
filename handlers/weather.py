@@ -144,3 +144,53 @@ async def get_weather_for_morning() -> str:
     code = c["weathercode"]
     return (f"{weather_emoji(code)} {sign(temp)}°, {weather_desc(code).lower()}, "
             f"ощущается {sign(feels)}° · {_clothes_tip(temp)}")
+
+
+# Вечерняя сводка (evening_digest.py) — погода на завтра: дневной прогноз
+# Open-Meteo (мин/макс и код погоды). Кэш — как у fetch_weather; сбой — None.
+_tomorrow_cache: tuple[float, str, dict | None] | None = None   # (до когда верить, на какую дату, данные)
+
+
+async def fetch_tomorrow() -> dict | None:
+    """{"tmin": 2, "tmax": 6, "code": 63} на завтра по Москве или None."""
+    global _tomorrow_cache
+    from datetime import datetime, timedelta
+    day = (datetime.now(TZ).date() + timedelta(days=1)).isoformat()
+    if _tomorrow_cache and _tomorrow_cache[0] > time.monotonic() and _tomorrow_cache[1] == day:
+        return _tomorrow_cache[2]
+    data = await _fetch_tomorrow(day)
+    _tomorrow_cache = (time.monotonic() + (WEATHER_TTL if data else WEATHER_FAIL_TTL), day, data)
+    return data
+
+
+async def _fetch_tomorrow(day: str) -> dict | None:
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast"
+            f"?latitude={LAT}&longitude={LON}"
+            f"&daily=temperature_2m_max,temperature_2m_min,weathercode"
+            f"&timezone=Europe/Moscow&start_date={day}&end_date={day}"
+        )
+        async with net.client(timeout=WEATHER_TIMEOUT) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            d = resp.json()["daily"]
+        return {"tmin": round(d["temperature_2m_min"][0]), "tmax": round(d["temperature_2m_max"][0]),
+                "code": int(d["weathercode"][0])}
+    except Exception as e:
+        logger.error(f"Weather (завтра) error: {e}")
+        return None
+
+
+def tomorrow_text(w: dict | None) -> str:
+    """«+2…+6°, дождь» — без эмодзи (одно уже в начале сводки); нет данных — ""."""
+    if not w:
+        return ""
+    sign = lambda t: f"+{t}" if t > 0 else str(t)
+    temp = sign(w["tmax"]) if w["tmin"] == w["tmax"] else f"{sign(w['tmin'])}…{sign(w['tmax'])}"
+    return f"{temp}°, {weather_desc(w['code']).lower()}"
+
+
+async def get_weather_for_tomorrow() -> str:
+    """Строка погоды на завтра для вечерней сводки; сбой — пустая строка."""
+    return tomorrow_text(await fetch_tomorrow())

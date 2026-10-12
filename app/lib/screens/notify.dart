@@ -229,7 +229,71 @@ class _NotifyBodyState extends State<_NotifyBody> {
             on: _prefs['new_tasks'] == true,
             onChanged: () => _toggle('new_tasks'),
           ),
+          // Вечерняя сводка на завтра (evening_digest.py, Никита 12.10) — только при
+          // новом дизайне: при DESIGN2=0 сервер не отдаёт ключ, а приложение — design2.
+          if (s.design2 && _prefs.containsKey('evening'))
+            _Card(
+              icon: Icons.bedtime_outlined,
+              title: 'Вечерняя сводка',
+              sub: 'Пары и сроки на завтра · ${_eveningTime()}',
+              switchKey: 'evening',
+              on: _prefs['evening'] == true,
+              onChanged: () => _toggle('evening'),
+              children: [_EveningTime(value: _eveningTime(), onPick: _setEvening, onCustom: _customEvening)],
+            ),
         ],
+      ],
+    );
+  }
+
+  String _eveningTime() => _prefs['evening_time'] as String? ?? '20:00';
+
+  void _setEvening(String t) => _save({
+    'prefs': {'evening_time': t},
+  });
+
+  /// «Своё» время: часы — от 17 до 23, минуты — округлим до получаса (сервер
+  /// проверяет раз в 30 минут и другое не примет).
+  Future<void> _customEvening() async {
+    final cur = _eveningTime().split(':');
+    final got = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: int.tryParse(cur.first) ?? 20, minute: int.tryParse(cur.last) ?? 0),
+      helpText: 'Во сколько прислать сводку',
+    );
+    if (got == null || !mounted) return;
+    _setEvening(eveningSlot(got.hour, got.minute));
+  }
+}
+
+/// Время сводки из любого: до получаса, в пределах 17:00–23:30.
+String eveningSlot(int hour, int minute) {
+  var m = hour * 60 + ((minute + 15) ~/ 30) * 30;
+  m = m.clamp(17 * 60, 23 * 60 + 30);
+  String two(int x) => x.toString().padLeft(2, '0');
+  return '${two(m ~/ 60)}:${two(m % 60)}';
+}
+
+/// Время вечерней сводки: частые — плашками, «своё» — часы.
+class _EveningTime extends StatelessWidget {
+  static const presets = ['19:00', '20:00', '21:00', '22:00'];
+  final String value;
+  final ValueChanged<String> onPick;
+  final VoidCallback onCustom;
+  const _EveningTime({required this.value, required this.onPick, required this.onCustom});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = AppStyle.of(context).p;
+    final own = !presets.contains(value);
+    Widget chip(String text, bool on, VoidCallback tap) =>
+        _Pill(key: Key('evening:$text'), text: text, on: on, onTap: tap, color: p.accent, wide: true);
+    return Wrap(
+      spacing: Space.xs,
+      runSpacing: Space.xs,
+      children: [
+        for (final t in presets) chip(t, value == t, () => onPick(t)),
+        chip(own ? value : 'своё', own, onCustom),
       ],
     );
   }

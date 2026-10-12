@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel
 
-from config import is_starosta
+from config import design2_on, is_starosta
 from webapp.deps import CurrentUser
 
 router = APIRouter()
@@ -92,6 +92,11 @@ class NotifyBody(BaseModel):
     prefs: dict | None = None
 
 
+# Вечерняя сводка (evening_digest.py) — часть второго круга дизайна: при
+# DESIGN2=0 ключи не отдаём и не принимаем (Никита 12.10).
+EVENING_KEYS = ("evening", "evening_time")
+
+
 async def _notify_view(uid: int) -> dict:
     import notify_prefs
     from config import DEADLINE_REMINDER_HOUR, DEADLINE_REMINDER_MINUTE, SCHEDULE_HOUR, SCHEDULE_MINUTE
@@ -102,8 +107,12 @@ async def _notify_view(uid: int) -> dict:
         home = notify_prefs.home_campus(await raw_for_user(uid))
     except Exception:
         home = None
+    prefs = notify_prefs.merge(user.get("notify"))
+    if not design2_on():
+        for k in EVENING_KEYS:              # DESIGN2=0 — пункта «Вечерняя сводка» в клиентах нет
+            prefs.pop(k, None)
     return {"subscribed": bool(user.get("subscribed", 1)), "reminder_minutes": user.get("reminder_minutes") or 15,
-            "reminder_choices": list(notify_prefs.REMINDER_CHOICES), "prefs": notify_prefs.merge(user.get("notify")),
+            "reminder_choices": list(notify_prefs.REMINDER_CHOICES), "prefs": prefs,
             "remind": [{"key": k, **v} for k, v in notify_prefs.REMIND.items()],
             "home_campus": home, "morning_time": f"{SCHEDULE_HOUR}:{SCHEDULE_MINUTE:02d}",
             "deadline_time": f"{DEADLINE_REMINDER_HOUR}:{DEADLINE_REMINDER_MINUTE:02d}"}
@@ -130,7 +139,11 @@ async def api_notify_save(body: NotifyBody, user: dict = CurrentUser):
         from locks import lock
         async with lock("notify", uid):          # два быстрых нажатия не перетирают друг друга
             current = notify_prefs.merge((await get_user(uid) or {}).get("notify"))
-            await set_notify(uid, notify_prefs.merge({**current, **body.prefs}))
+            new = dict(body.prefs)
+            if not design2_on():
+                for k in EVENING_KEYS:
+                    new.pop(k, None)
+            await set_notify(uid, notify_prefs.merge({**current, **new}))
     return await _notify_view(uid)
 
 
