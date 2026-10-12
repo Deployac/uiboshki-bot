@@ -53,6 +53,23 @@ class _LessonScreenState extends State<LessonScreen> {
   /// файлы при каждой перерисовке — по три раза за открытие.
   late final Future<LessonExtras> _extras = _loadExtras();
 
+  /// С кем эта пара (Никита 12.10): группы, у которых в это время пара в
+  /// той же аудитории, — на лекциях весь поток. В календаре своей группы
+  /// других групп нет, их знает календарь аудитории (`/api/lesson/groups`).
+  late final Future<List<String>> _together = _loadTogether();
+
+  Future<List<String>> _loadTogether() async {
+    final at = lesson.startAt;
+    if (at == null || lesson.groups.contains(',') || (lesson.room.isEmpty && lesson.teacher.isEmpty)) return const [];
+    try {
+      final q = {'start': at.toIso8601String(), 'room': lesson.room, 'teacher': lesson.teacher};
+      final j = await api.get('/lesson/groups?${Uri(queryParameters: q).query}');
+      return [for (final g in (j['groups'] as List? ?? const [])) '$g'];
+    } catch (_) {
+      return const [];
+    }
+  }
+
   /// Баллы и лекции по предмету — что найдётся; нет СДО — просто без них.
   Future<LessonExtras> _loadExtras() async {
     Course? course;
@@ -178,6 +195,32 @@ class _LessonScreenState extends State<LessonScreen> {
                           onTap: () => openTarget(context, api, lesson.teacher, 2),
                         ),
                       ],
+                      if (groups.length <= 1)
+                        FutureBuilder<List<String>>(
+                          future: _together,
+                          builder: (context, snap) {
+                            final g = snap.data ?? const <String>[];
+                            if (g.isEmpty) return const SizedBox.shrink();
+                            final n = g.length;
+                            return Column(
+                              children: [
+                                Divider(height: 1, color: p.line),
+                                _InfoRow(
+                                  icon: Icons.groups_outlined,
+                                  title: n == 1
+                                      ? 'Вместе с ${g.first}'
+                                      : 'Общая пара · ещё $n ${plural(n, 'группа', 'группы', 'групп')}',
+                                  text: n == 1
+                                      ? 'общая пара · расписание группы'
+                                      : n > 10
+                                      ? '${g.take(9).join(', ')} и ещё ${n - 9}'
+                                      : g.join(', '),
+                                  onTap: n == 1 ? () => openTarget(context, api, g.first, 1) : null,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
                       if (groups.length > 1) ...[
                         Divider(height: 1, color: p.line),
                         _InfoRow(
@@ -329,8 +372,8 @@ class _CourseStrip extends StatelessWidget {
   }
 }
 
-/// Расписание преподавателя или аудитории: найти в справочнике МИРЭА
-/// (тип 2 — преподаватель, 3 — аудитория) и открыть (search.dart).
+/// Расписание группы, преподавателя или аудитории: найти в справочнике МИРЭА
+/// (тип 1 — группа, 2 — преподаватель, 3 — аудитория) и открыть (search.dart).
 Future<void> openTarget(BuildContext context, Api api, String query, int type) async {
   final s = AppStyle.of(context);
   final toast = Overlay.of(context, rootOverlay: true);
