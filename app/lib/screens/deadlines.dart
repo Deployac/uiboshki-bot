@@ -18,6 +18,7 @@ import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../widget_data.dart';
 import '../widgets/capy.dart';
 import '../widgets/cheer.dart';
 import '../widgets/common.dart';
@@ -81,11 +82,9 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
     final j = await widget.api.get('/deadlines?include_done=true');
     final raw = [for (final x in j['items'] as List) Map<String, dynamic>.from(x)];
     final sdo = _sdo = SdoCheck.fromJson(j['sdo']);
-    return (
-      list: [for (final x in raw) Deadline.fromJson(x)],
-      extra: {for (final x in raw) x['id'] as int: DlExtra.fromJson(x)},
-      sdo: sdo,
-    );
+    final list = [for (final x in raw) Deadline.fromJson(x)];
+    if (!Api.cacheOnly) unawaited(HomeWidgets.fromDeadlines(list)); // горящий срок на виджете
+    return (list: list, extra: {for (final x in raw) x['id'] as int: DlExtra.fromJson(x)}, sdo: sdo);
   }
 
   SdoCheck? _sdo;
@@ -567,7 +566,7 @@ class _SubjectLine extends StatelessWidget {
                 width: 7,
                 height: 7,
                 margin: const EdgeInsets.only(right: 6),
-                decoration: BoxDecoration(color: subjectColor(course), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: s.ink(course), shape: BoxShape.circle),
               ),
             ),
           ],

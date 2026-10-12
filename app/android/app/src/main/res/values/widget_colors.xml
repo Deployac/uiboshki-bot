@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Виджеты: светлые — в цвет «Тетради» (design/tokens.json, notebook) -->
+<resources>
+    <color name="w_bg">#F3EEE5</color>
+    <color name="w_text">#2A2721</color>
+    <color name="w_muted">#7D776B</color>
+    <color name="w_accent">#B75438</color>
+    <color name="w_ok">#5C8A4E</color>
+    <color name="w_danger">#C4473A</color>
+</resources>

@@ -14,6 +14,7 @@ import '../theme/app_theme.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
+import '../widget_data.dart';
 import '../widgets/common.dart';
 import 'lesson.dart';
 import 'week.dart' show mondayOf;
@@ -217,7 +218,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final group = me['group'] is Map ? '${me['group']['name'] ?? ''}' : '';
     final week = res[2] is Map ? res[2]['week'] : null;
     final days = res[2] is Map && res[2]['days'] is List ? res[2]['days'] as List : null;
-    return TodayData(
+    final data = TodayData(
       lessons,
       tf == null ? null : Lesson.fromJson(tf),
       soon,
@@ -231,6 +232,9 @@ class _TodayScreenState extends State<TodayScreen> {
           : days.any((d) => d is Map && '${d['date']}'.compareTo(today) > 0 && (d['dots'] as List? ?? []).isNotEmpty),
       tomorrow: [for (final l in tomorrowJson) Lesson.fromJson(l)],
     );
+    // виджеты рабочего стола — свежим днём, не запасом (запас догонит сеть)
+    if (!Api.cacheOnly) unawaited(HomeWidgets.fromToday(api, stale ? today : '${j['date'] ?? today}', data));
+    return data;
   }
 
   @override
@@ -694,7 +698,7 @@ class _LiveFocus extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
-    final c = subjectColor(lesson.title);
+    final c = s.ink(lesson.title);
     final total = lesson.endAt!.difference(lesson.startAt!).inSeconds;
     final passed = at.difference(lesson.startAt!).inSeconds.clamp(0, total);
     final n = next;
@@ -875,8 +879,8 @@ class RoomTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
-    final c = subjectColor(lesson.title);
-    final on = Color.lerp(c, Colors.black, 0.82)!;
+    final c = s.ink(lesson.title);
+    final on = s.darkInk ? Colors.white : Color.lerp(c, Colors.black, 0.82)!;
     final r = splitRoom(lesson.room);
     return _TileBox(
       color: c,
@@ -956,7 +960,8 @@ class LessonCard extends StatelessWidget {
     final s = AppStyle.of(context);
     final p = s.p;
     final l = lesson;
-    final c = subjectColor(l.title);
+    final base = subjectColor(l.title); // подсветка карточки
+    final c = s.ink(l.title); // точка, полоска, кабинет
     final past = l.endAt != null && !at.isBefore(l.endAt!);
     final live = l.startAt != null && l.endAt != null && !past && !at.isBefore(l.startAt!);
     final total = live ? l.endAt!.difference(l.startAt!).inSeconds : 0;
@@ -965,8 +970,8 @@ class LessonCard extends StatelessWidget {
     // полоской слева
     final stripe = s.look.card == CardStyle.stripe;
     final tint = p.dark
-        ? c.withValues(alpha: live ? 0.2 : 0.13)
-        : Color.alphaBlend(c.withValues(alpha: live ? 0.16 : 0.1), p.card);
+        ? base.withValues(alpha: live ? 0.2 : 0.13)
+        : Color.alphaBlend(base.withValues(alpha: live ? 0.16 : 0.1), p.card);
     Widget dotLine(Color dot, String text, TextStyle style) => Row(
       children: [
         Container(
@@ -1031,7 +1036,7 @@ class LessonCard extends StatelessWidget {
                           ),
                         ] else if (l.room.isNotEmpty) ...[
                           const SizedBox(height: 7),
-                          if (moved) RoomWas(l, size: 13) else RoomPill(l.room, color: c, size: 13),
+                          if (moved) RoomWas(l, size: 13) else RoomPill(l.room, color: c, size: 13, inked: true),
                         ],
                         if (l.teacher.isNotEmpty && !gone) ...[
                           const SizedBox(height: 5),
@@ -1156,10 +1161,7 @@ class LessonList extends StatelessWidget {
                           Container(
                             width: 3,
                             margin: const EdgeInsets.only(right: Space.m),
-                            decoration: BoxDecoration(
-                              color: subjectColor(l.title),
-                              borderRadius: BorderRadius.circular(2),
-                            ),
+                            decoration: BoxDecoration(color: s.ink(l.title), borderRadius: BorderRadius.circular(2)),
                           ),
                           Expanded(
                             child: Column(
@@ -1219,13 +1221,18 @@ class RoomPill extends StatelessWidget {
   final String room;
   final Color color;
   final double size;
-  const RoomPill(this.room, {super.key, required this.color, this.size = 14});
+
+  /// [color] — уже тёмный оттенок предмета ([AppStyle.ink]): текст им же.
+  final bool inked;
+  const RoomPill(this.room, {super.key, required this.color, this.size = 14, this.inked = false});
 
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
-    final fg = Color.lerp(color, p.dark ? Colors.white : Colors.black, p.dark ? 0.55 : 0.35)!;
+    final fg = inked && s.darkInk
+        ? color
+        : Color.lerp(color, p.dark ? Colors.white : Colors.black, p.dark ? 0.55 : 0.35)!;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: size * 0.65, vertical: size * 0.25),
       decoration: BoxDecoration(
@@ -1287,7 +1294,7 @@ class RoomLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
-    final c = subjectColor(lesson.title);
+    final c = s.ink(lesson.title);
     final rest = [if (lesson.kind.isNotEmpty) lesson.kind.toLowerCase(), ...extra].join(' · ');
     return Wrap(
       spacing: Space.s,
@@ -1302,7 +1309,7 @@ class RoomLine extends StatelessWidget {
         else if (s.design2 && lesson.roomWas.isNotEmpty)
           RoomWas(lesson)
         else if (lesson.room.isNotEmpty)
-          RoomPill(lesson.room, color: c),
+          RoomPill(lesson.room, color: c, inked: true),
         if (rest.isNotEmpty) Text(rest, style: s.body(13, color: s.p.muted)),
         if (live)
           Text(

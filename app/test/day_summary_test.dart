@@ -1,5 +1,5 @@
 // Итоги дня (5.79, Никита 12.10, А+Г): на прошедших днях после пар —
-// «День сделан», сколько пар, что сдал и сколько баллов. Пустой день — без
+// «Сводка за день», сколько пар, что сдал и сколько баллов. Пустой день — без
 // карточки; только в новом дизайне; в обоих видах «Недели».
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -79,7 +79,7 @@ void main() {
         final card = find.byType(DaySummaryCard);
         await t.scrollUntilVisible(card, 200, scrollable: find.byType(Scrollable).last);
         expect(card, findsOneWidget);
-        expect(find.text('День сделан'), findsOneWidget);
+        expect(find.text('Сводка за день'), findsOneWidget);
         expect(find.text('Лабораторная 3'), findsOneWidget);
         expect(find.text('Анализ данных: +6'), findsOneWidget);
         // 3 пары (сдвоенная — две), 1 сдано, +6 баллов
@@ -103,7 +103,7 @@ void main() {
         await _show(t, design2: false);
         expect(find.text('Архитектура'), findsWidgets);
         expect(find.byType(DaySummaryCard, skipOffstage: false), findsNothing);
-        expect(find.text('День сделан', skipOffstage: false), findsNothing);
+        expect(find.text('Сводка за день', skipOffstage: false), findsNothing);
       });
     });
   }

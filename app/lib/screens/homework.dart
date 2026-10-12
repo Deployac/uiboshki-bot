@@ -75,8 +75,14 @@ class HomeworkScreen extends StatelessWidget {
     load: () async => [for (final h in (await api.get('/homework'))['items'] as List) Homework.fromJson(h)],
     builder: (context, items) {
       final t = now();
-      final past = [for (final h in items) if (homeworkPast(h, t)) h];
-      final ahead = [for (final h in items) if (!homeworkPast(h, t)) h];
+      final past = [
+        for (final h in items)
+          if (homeworkPast(h, t)) h,
+      ];
+      final ahead = [
+        for (final h in items)
+          if (!homeworkPast(h, t)) h,
+      ];
       Widget card(Homework h, {bool past = false}) => Padding(
         padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
         child: Opacity(
@@ -96,10 +102,7 @@ class HomeworkScreen extends StatelessWidget {
               pose: CapyPose.joy,
             ),
           for (final h in ahead) card(h),
-          if (past.isNotEmpty) ...[
-            const Section('Прошло'),
-            for (final h in past) card(h, past: true),
-          ],
+          if (past.isNotEmpty) ...[const Section('Прошло'), for (final h in past) card(h, past: true)],
         ],
       );
     },
@@ -126,7 +129,7 @@ class _HomeworkCard extends StatelessWidget {
             Container(
               width: 3,
               margin: const EdgeInsets.only(right: Space.m),
-              decoration: BoxDecoration(color: subjectColor(h.subject), borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(color: s.ink(h.subject), borderRadius: BorderRadius.circular(2)),
             ),
             Expanded(
               child: Column(

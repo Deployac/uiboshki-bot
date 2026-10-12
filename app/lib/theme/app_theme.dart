@@ -227,18 +227,29 @@ class AppStyle extends InheritedWidget {
           color: color ?? p.muted,
         );
 
+  /// Тёмные оттенки предметов (5.79.6, Никита 12.10): светлая тема нового
+  /// дизайна, где яркие цвета предметов на бумаге читаются плохо.
+  bool get darkInk => design2 && !p.dark;
+
+  /// Цвет предмета для текста, цифр, колец, полос и заливки под белым
+  /// текстом: в светлых темах нового дизайна — тот же оттенок темнее, иначе
+  /// [subjectColor]. Подсветка фона и светлые заливки — [subjectColor].
+  Color ink(String title) => darkInk ? subjectInkColors[_subjectIndex(title)] : subjectColor(title);
+
   @override
   bool updateShouldNotify(AppStyle old) =>
       old.p != p || old.font != font || old.theme != theme || old.look != look || old.design2 != design2;
 }
 
 /// Цвет предмета: у каждого свой во всём приложении (по названию).
-Color subjectColor(String title) {
+Color subjectColor(String title) => subjectColors[_subjectIndex(title)];
+
+int _subjectIndex(String title) {
   var h = 0;
   for (final c in title.toLowerCase().codeUnits) {
     h = (h * 31 + c) & 0x7fffffff;
   }
-  return subjectColors[h % subjectColors.length];
+  return h % subjectColors.length;
 }
 
 ThemeData materialTheme(Palette p) => ThemeData(

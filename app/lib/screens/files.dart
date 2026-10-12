@@ -404,7 +404,7 @@ class _SubjectRow extends StatelessWidget {
           Container(
             width: 10,
             height: 10,
-            decoration: BoxDecoration(color: subjectColor(subject), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: AppStyle.of(context).ink(subject), shape: BoxShape.circle),
           ),
           const SizedBox(width: Space.m),
           Expanded(
@@ -519,7 +519,7 @@ class _SubjectFilesScreenState extends State<SubjectFilesScreen> {
     ];
     final s = AppStyle.of(context);
     final p = s.p;
-    final color = subjectColor(widget.subject);
+    final color = s.ink(widget.subject);
     Widget chip(String? key, String label) {
       final on = _filter == key;
       return Padding(
@@ -570,7 +570,7 @@ class _SubjectFilesScreenState extends State<SubjectFilesScreen> {
 
     return Scaffold(
       body: Backdrop(
-        tint: color,
+        tint: subjectColor(widget.subject),
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.only(bottom: Space.xxl),

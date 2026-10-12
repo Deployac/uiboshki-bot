@@ -22,11 +22,96 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Значок на рабочем столе — у alias-ов ниже (иконка на выбор, 5.79).
+                 Этот фильтр с выдуманной схемой лаунчер не показывает (запуск без
+                 данных под него не подходит), а `flutter run` ищет LAUNCHER только
+                 у <activity> и запускает MainActivity по имени. -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+                <data android:scheme="uiboshki-dev"/>
+            </intent-filter>
+        </activity>
+        <!-- Иконка приложения на выбор («Оформление», 5.79): включён ровно один
+             alias, переключает MainActivity.kt (канал uiboshki/icon). Имена —
+             AppIcon.* в lib/theme/app_icon.dart, картинки — tools/app_icons.py. -->
+        <activity-alias
+            android:name=".IconClassic"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:enabled="true"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconDepth"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_depth"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconIndigo"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_indigo"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconTerracotta"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_terracotta"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconPage"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_page"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconSunset"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_sunset"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".IconLibrary"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_library"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -44,6 +129,32 @@
                 <data android:scheme="ru.uiboshki.app" />
             </intent-filter>
         </activity>
+        <!-- Виджеты рабочего стола (widget/Widgets.kt): «Пара» 2×2 и «Весь день» 4×4 -->
+        <receiver
+            android:name=".widget.LessonWidget"
+            android:exported="false"
+            android:label="@string/w_lesson_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_lesson_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.DayWidget"
+            android:exported="false"
+            android:label="@string/w_day_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_day_info" />
+        </receiver>
+        <receiver
+            android:name=".widget.WidgetTickReceiver"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

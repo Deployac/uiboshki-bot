@@ -22,3 +22,11 @@ def test_localized_name_is_kapibara_and_bundled():
         assert '"CFBundleDisplayName" = "Капибара";' in text
         assert f"path = {lang}.lproj/InfoPlist.strings;" in PBXPROJ.read_text(encoding="utf-8")
     assert "InfoPlist.strings in Resources */," in PBXPROJ.read_text(encoding="utf-8")
+
+
+def test_widget_extension_name_is_ascii():
+    """Виджет — отдельный App ID у AltStore: его имя тоже латиницей."""
+    info = plistlib.loads((RUNNER.parent / "KapibaraWidget" / "Info.plist").read_bytes())
+    assert info["CFBundleDisplayName"].isascii()
+    assert info["NSExtension"]["NSExtensionPointIdentifier"] == "com.apple.widgetkit-extension"
+    assert "PRODUCT_BUNDLE_IDENTIFIER = ru.uiboshki.app.KapibaraWidget;" in PBXPROJ.read_text(encoding="utf-8")
