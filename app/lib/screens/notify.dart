@@ -229,6 +229,19 @@ class _NotifyBodyState extends State<_NotifyBody> {
             on: _prefs['new_tasks'] == true,
             onChanged: () => _toggle('new_tasks'),
           ),
+          // Тесты СДО (quiz_alerts.py, Никита 12.10): один пункт, по нажатию —
+          // напоминания до закрытия (несколько сразу) и «Тест открылся».
+          _QuizCard(
+            choices: [for (final m in (_s['quiz_choices'] as List? ?? quizChoices)) m as int],
+            remind: [for (final m in (_prefs['quiz_remind'] as List? ?? const [])) m as int],
+            open: _prefs['quiz_open'] != false,
+            expanded: _quizExpanded,
+            onExpand: () => setState(() => _quizExpanded = !_quizExpanded),
+            onRemind: _toggleQuizRemind,
+            onOpen: () => _save({
+              'prefs': {'quiz_open': _prefs['quiz_open'] == false},
+            }),
+          ),
           // Вечерняя сводка на завтра (evening_digest.py, Никита 12.10) — только при
           // новом дизайне: при DESIGN2=0 сервер не отдаёт ключ, а приложение — design2.
           if (s.design2 && _prefs.containsKey('evening'))
@@ -244,6 +257,17 @@ class _NotifyBodyState extends State<_NotifyBody> {
         ],
       ],
     );
+  }
+
+  bool _quizExpanded = false;
+
+  void _toggleQuizRemind(int m) {
+    final list = [for (final x in (_prefs['quiz_remind'] as List? ?? const [])) x as int];
+    list.contains(m) ? list.remove(m) : list.add(m);
+    list.sort((a, b) => b.compareTo(a));
+    _save({
+      'prefs': {'quiz_remind': list},
+    });
   }
 
   String _eveningTime() => _prefs['evening_time'] as String? ?? '20:00';
@@ -263,6 +287,135 @@ class _NotifyBodyState extends State<_NotifyBody> {
     );
     if (got == null || !mounted) return;
     _setEvening(eveningSlot(got.hour, got.minute));
+  }
+}
+
+/// За сколько минут до закрытия теста можно напомнить (как quiz_choices сервера).
+const quizChoices = [1440, 180, 60, 30, 10];
+
+String quizLabel(int m) => m >= 1440 ? '1 день' : minText(m);
+
+/// «за 1 день и 10 мин до закрытия · когда откроют» — под заголовком пункта.
+String quizSummary(List<int> remind, bool open) {
+  final names = [
+    for (final m in [...remind]..sort((a, b) => b.compareTo(a))) quizLabel(m),
+  ];
+  final parts = [
+    if (names.length == 1) 'за ${names.first} до закрытия',
+    if (names.length > 1) 'за ${names.sublist(0, names.length - 1).join(', ')} и ${names.last} до закрытия',
+    if (open) 'когда откроют',
+  ];
+  return parts.isEmpty ? 'выключено' : parts.join(' · ');
+}
+
+/// «Тесты СДО»: по нажатию раскрывается — плашки «за сколько до закрытия»
+/// (несколько) и переключатель «Тест открылся».
+class _QuizCard extends StatelessWidget {
+  final List<int> choices, remind;
+  final bool open, expanded;
+  final VoidCallback onExpand, onOpen;
+  final ValueChanged<int> onRemind;
+  const _QuizCard({
+    required this.choices,
+    required this.remind,
+    required this.open,
+    required this.expanded,
+    required this.onExpand,
+    required this.onOpen,
+    required this.onRemind,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final on = remind.isNotEmpty || open;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+      child: Tile(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              key: const Key('notify:quiz'),
+              onTap: onExpand,
+              borderRadius: BorderRadius.circular(Radii.chip),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: p.accent.withValues(alpha: on ? 0.16 : 0.06),
+                      borderRadius: BorderRadius.circular(Radii.chip),
+                    ),
+                    child: Icon(Icons.timer_outlined, size: 20, color: on ? p.accent : p.muted),
+                  ),
+                  const SizedBox(width: Space.m),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Тесты СДО',
+                          style: s.body(16, weight: FontWeight.w600, color: on ? p.text : p.muted),
+                        ),
+                        Text(quizSummary(remind, open), style: s.body(13, color: p.muted)),
+                      ],
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: expanded ? 0.25 : 0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(Icons.chevron_right_rounded, color: p.muted),
+                  ),
+                ],
+              ),
+            ),
+            if (expanded) ...[
+              const SizedBox(height: Space.m),
+              Text(
+                'Напомнить до закрытия · можно несколько',
+                style: s.body(13, weight: FontWeight.w600, color: p.muted),
+              ),
+              const SizedBox(height: Space.xs),
+              Wrap(
+                spacing: Space.xs,
+                runSpacing: Space.xs,
+                children: [
+                  for (final m in choices)
+                    _Pill(
+                      key: Key('quiz:$m'),
+                      text: quizLabel(m),
+                      on: remind.contains(m),
+                      onTap: () => onRemind(m),
+                      color: p.accent,
+                      wide: true,
+                    ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: Space.s),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Тест открылся', style: s.body(15, weight: FontWeight.w500)),
+                          Text('напишу, когда преподаватель откроет тест', style: s.body(12, color: p.muted)),
+                        ],
+                      ),
+                    ),
+                    AppSwitch(key: const Key('notify:quiz_open'), value: open, onChanged: onOpen),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 

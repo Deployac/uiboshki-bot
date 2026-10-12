@@ -322,19 +322,28 @@ async def _note_sync(result: dict):
         await health.note("sdo_sync", True, f"новых {result.get('added', 0)}, изменено {result.get('updated', 0)}")
 
 
-async def sdo_keepalive():
-    """Лёгкий запрос в СДО раз в час (сессия не гаснет) + отметка для /status."""
+async def sdo_keepalive(bot: Bot | None = None):
+    """Лёгкий запрос в СДО раз в час (сессия не гаснет) + отметка для /status.
+    Заодно той же сессией — календарь текущего месяца (quiz_alerts.peek):
+    тест внезапно открыли — полный синк сейчас, а не через 6 часов."""
     import health
     from sdo_parser import keepalive
     from config import SDO_SESSION_COOKIE
     if not SDO_SESSION_COOKIE:
         return
-    ok = await keepalive()
+    changed = []
+
+    async def peek(client, html):
+        import quiz_alerts
+        changed.append(await quiz_alerts.peek(client, html))
+    ok = await keepalive(peek=peek if bot else None)
     await health.note("sdo_cookie", ok, "" if ok else "СДО не пустил — возможно, кука протухла")
     import sdo_parser
     if ok and sdo_parser.IDLE_TIMEOUT:
         from database import set_setting
         await set_setting("sdo:idle_timeout", str(sdo_parser.IDLE_TIMEOUT))
+    if ok and any(changed):
+        await sync_sdo_deadlines(bot)
 
 
 async def sync_sdo_deadlines(bot: Bot):
@@ -429,6 +438,10 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler.add_job(check_new_grades,        "cron", hour="10,13,16,19,22", minute=7, args=[bot])
     from deadline_reminders import send_due as send_deadline_custom_reminders   # свои напоминания о дедлайне
     scheduler.add_job(send_deadline_custom_reminders, "cron", minute="*",        args=[bot])
+    import quiz_alerts                    # тесты СДО: до закрытия и «открыли тест» (Уведомления → Тесты СДО)
+    scheduler.add_job(quiz_alerts.send_due,    "cron", minute="*",             args=[bot])
+    from database.sdo import purge_quiz_alerts
+    scheduler.add_job(purge_quiz_alerts,       "cron", hour=4, minute=22)
     # Первый синк — через минуту после запуска: после деплоя СДО иначе молчал
     # до 6 часов, и сессия Moodle успевала истечь. Плюс лёгкий запрос в СДО
     # каждый час, чтобы сессия не гасла без обращений (sdo_parser.keepalive).
@@ -437,7 +450,7 @@ def start_scheduler(bot: Bot) -> AsyncIOScheduler:
     import group_sync                     # СДО других групп по входам, которыми поделились (этап 1 (в))
     scheduler.add_job(group_sync.sync_all,     "interval", hours=SDO_SYNC_INTERVAL_HOURS, args=[bot],
                       next_run_time=datetime.now(TZ) + timedelta(minutes=5))
-    scheduler.add_job(sdo_keepalive,           "interval", minutes=55)
+    scheduler.add_job(sdo_keepalive,           "interval", minutes=55, args=[bot])
     # Входы студентов в СДО — вразнобой: раз в минуту проверяются те, чья
     # очередь (50–59 мин случайно, потом 55), а не все разом (sdo_accounts.py)
     from sdo_accounts import keepalive_due

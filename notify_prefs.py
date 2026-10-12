@@ -41,7 +41,11 @@ DEFAULTS = {
     "new_tasks": True,       # новые задания из СДО после синка (new_tasks.py)
     "evening": False,        # вечерняя сводка на завтра (evening_digest.py)
     "evening_time": "20:00",
+    "quiz_remind": [],       # тесты СДО: за сколько минут до закрытия (quiz_alerts.py), несколько
+    "quiz_open": True,       # тесты СДО: «Открыли тест»
 }
+# Тесты СДО (quiz_alerts.CHOICES): за 1 день, 3 ч, 1 ч, 30 мин, 10 мин до закрытия
+QUIZ_REMIND_CHOICES = (1440, 180, 60, 30, 10)
 DAYS_KEY = {"morning": "morning_days", "lessons": "lesson_days", "deadlines": "deadline_days"}
 _BOOLS = [k for k, v in DEFAULTS.items() if isinstance(v, bool)]
 _DAYS = [k for k in DEFAULTS if k.endswith("_days")]
@@ -63,6 +67,10 @@ def merge(raw: str | dict | None) -> dict:
         v = raw.get(k)
         if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= spec["max"]:
             out[k] = v
+    v = raw.get("quiz_remind")
+    if isinstance(v, list):
+        out["quiz_remind"] = sorted({m for m in v if isinstance(m, int) and not isinstance(m, bool)
+                                     and m in QUIZ_REMIND_CHOICES}, reverse=True)
     if raw.get("evening_time") in EVENING_TIMES:
         out["evening_time"] = raw["evening_time"]
     for k in _DAYS:
