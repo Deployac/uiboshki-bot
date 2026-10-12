@@ -729,7 +729,7 @@ class _DayBlock extends StatelessWidget {
   }
 }
 
-/// «День сделан»: сколько было пар, что сдал и сколько баллов прибавилось —
+/// «Сводка за день»: сколько было пар, что сдал и сколько баллов прибавилось —
 /// одинаково в ленте и по дням. Рамка и фон приглушённые: это итог, не пара.
 class DaySummaryCard extends StatelessWidget {
   final DaySummary summary;
@@ -779,7 +779,7 @@ class DaySummaryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('День сделан', style: s.name(17)),
+            Text('Сводка за день', style: s.name(17)),
             const SizedBox(height: Space.s),
             Wrap(
               crossAxisAlignment: WrapCrossAlignment.end,

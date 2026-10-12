@@ -117,13 +117,14 @@ class Look {
 bool design2FromPrefs(SharedPreferences p) => p.getBool('uib_design2') ?? true;
 
 /// Спросить сервер (/api/meta → features.design2) и запомнить ответ.
-/// [get] — запрос к API; ошибка сети — остаётся то, что помнили. Сервер
-/// без этого поля (старый) — новый дизайн выключен.
+/// [get] — запрос к API; ошибка сети — остаётся то, что помнили. Выключает
+/// только явное `design2: false` (DESIGN2=0); сервер без этого поля (ещё
+/// старый) — новый дизайн включён (Никита 12.10: «врубай», тест до мержа).
 Future<bool?> refreshDesign2(Future<dynamic> Function(String) get) async {
   try {
     final m = await get('/meta');
     final f = m is Map ? m['features'] : null;
-    final on = f is Map && f['design2'] == true;
+    final on = !(f is Map && f['design2'] == false);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('uib_design2', on);
     return on;

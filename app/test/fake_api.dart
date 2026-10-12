@@ -40,6 +40,15 @@ Api fakeApi({
       return http.Response('{"detail":"нет входа"}', 401);
     }
     Object? body = overrides.containsKey(key) ? overrides[key] : fx[key];
+    // запись стенда без features.design2; приложение теперь считает это
+    // «включён», а тесты по умолчанию — про прежний вид (как раньше)
+    if (key == 'GET /api/meta' && body is Map && !((body['features'] as Map?)?.containsKey('design2') ?? false)) {
+      final f = Map<String, dynamic>.from(body['features'] as Map? ?? {});
+      body = {
+        ...body,
+        'features': {'design2': false, ...f},
+      };
+    }
     body ??= switch (path) {
       '/api/day' => {'lessons': []},
       '/api/week' => {'week': null, 'days': []},
