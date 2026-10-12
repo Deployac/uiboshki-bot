@@ -2,7 +2,8 @@
 // предмет; под ответом — откуда взято («Лекция 4 · стр. 3»), нажал — страница.
 // Вложение (фото или PDF/DOCX/PPTX/TXT до 10 МБ) уходит ИИ один раз, а текст
 // документа (file_text с сервера) помнится в вопросе — следующие вопросы знают
-// файл. История — на телефоне (последние 40 сообщений), «Новый чат» — с нуля.
+// файл. Чаты — на телефоне (до 20, в каждом последние 40 сообщений), «Прошлые
+// чаты» — листом, «Новый чат» — с нуля, старый остаётся в списке.
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -11,7 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api.dart';
-import '../api/models.dart' show plural;
+import '../api/models.dart' show monthsShort, plural;
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
@@ -106,9 +107,59 @@ Future<ChatAttachment?> systemPickAttachment() async {
   return ChatAttachment(f.name, mimeOf(f.name), await f.xFile.readAsBytes());
 }
 
-/// История чата на телефоне. Ключ — с приставкой кэша API: «выйти» стирает и её.
-const chatStoreKey = 'uib_cache:chat';
+/// Чаты на телефоне — как в WebApp: до 20 последних разговоров, только текст
+/// (без вложений). Ключ — с приставкой кэша API: «выйти» стирает и их.
+/// `current` — открытый чат; '' — нажали «Новый чат» и ещё ничего не написали
+/// (тогда при следующем заходе открывается пустой, а не старый).
+const chatsStoreKey = 'uib_cache:chats';
+
+/// Прежняя одна история ({log, subject}) — переезжает первым чатом.
+const chatLegacyKey = 'uib_cache:chat';
 const chatKeep = 40;
+const chatsMax = 20;
+
+/// Прошлый разговор: заголовок — начало первого вопроса.
+class ChatThread {
+  final String id;
+  String title, subject;
+  DateTime updated;
+  List<Map<String, dynamic>> log;
+
+  ChatThread({required this.id, required this.title, required this.updated, required this.log, this.subject = ''});
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'updated': updated.millisecondsSinceEpoch,
+    'log': log,
+    'subject': subject,
+  };
+
+  factory ChatThread.fromJson(Map<String, dynamic> j) => ChatThread(
+    id: '${j['id']}',
+    title: '${j['title'] ?? 'Новый чат'}',
+    updated: DateTime.fromMillisecondsSinceEpoch((j['updated'] as num?)?.toInt() ?? 0),
+    log: [for (final m in (j['log'] as List? ?? [])) Map<String, dynamic>.from(m)],
+    subject: '${j['subject'] ?? ''}',
+  );
+}
+
+/// Заголовок чата — начало первого вопроса (как в WebApp, до 60 знаков).
+String chatTitle(List<Map<String, dynamic>> log) {
+  for (final m in log) {
+    final c = '${m['content'] ?? ''}'.trim();
+    if (m['role'] == 'user' && c.isNotEmpty) return c.length > 60 ? c.substring(0, 60) : c;
+  }
+  return 'Новый чат';
+}
+
+/// «сегодня, 14:05» / «вчера» / «12 окт» — когда писали в чат.
+String chatWhen(DateTime d, DateTime today) {
+  final diff = DateTime(today.year, today.month, today.day).difference(DateTime(d.year, d.month, d.day)).inDays;
+  if (diff == 0) return 'сегодня, ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  if (diff == 1) return 'вчера';
+  return '${d.day} ${monthsShort[d.month - 1]}${d.year != today.year ? ' ${d.year}' : ''}';
+}
 
 class ChatScreen extends StatefulWidget {
   final Api api;
@@ -120,7 +171,9 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final _log = <ChatMsg>[];
+  /// Открытый разговор. Новый список при каждой смене чата: ответ на вопрос из
+  /// прошлого чата сверяется с ним и уходит в свой чат, а не в открытый.
+  var _log = <ChatMsg>[];
   final _input = TextEditingController();
   final _scroll = ScrollController();
   String _subject = '';
@@ -128,7 +181,16 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _waiting = false;
   ChatAttachment? _att;
   String? _attNote; // «больше 10 МБ» и т. п.
-  int _chat = 0; // номер разговора: ответ на вопрос из прошлого чата не попадёт в новый
+
+  /// Прошлые чаты, свежие сверху; [_id] — открытый (null — новый, ещё без вопросов).
+  List<ChatThread> _chats = [];
+  String? _id;
+
+  /// Есть несохранённое (вопрос ждёт ответа, сменили предмет) — сохранить, уходя из чата.
+  bool _dirty = false;
+
+  /// Пока чаты не прочитаны с телефона, не пишем — иначе затрём их.
+  late final Future<void> _ready = _restore();
 
   /// Сколько вопросов осталось сегодня (сервер, ai_quota.left); null — без
   /// лимита (староста) или сервер не сказал — число не показываем.
@@ -137,7 +199,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _restore();
+    _ready;
     widget.api
         .get('/subjects')
         .then((j) {
@@ -163,45 +225,162 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _restore() async {
     try {
-      final raw = (await SharedPreferences.getInstance()).getString(chatStoreKey);
-      if (raw == null || !mounted || _log.isNotEmpty) return;
-      final j = jsonDecode(raw) as Map<String, dynamic>;
+      final prefs = await SharedPreferences.getInstance();
+      var chats = <ChatThread>[];
+      String? current;
+      final raw = prefs.getString(chatsStoreKey);
+      if (raw != null) {
+        final j = jsonDecode(raw) as Map<String, dynamic>;
+        chats = [for (final c in j['chats'] as List? ?? []) ChatThread.fromJson(Map<String, dynamic>.from(c))];
+        current = j['current'] as String?;
+      } else {
+        final old = prefs.getString(chatLegacyKey);
+        if (old != null) {
+          // прежняя одна история — первым чатом, он и откроется
+          final j = jsonDecode(old) as Map<String, dynamic>;
+          final log = [for (final m in j['log'] as List? ?? []) Map<String, dynamic>.from(m)];
+          if (log.isNotEmpty) {
+            final c = ChatThread(
+              id: 'c${now().microsecondsSinceEpoch}',
+              title: chatTitle(log),
+              updated: now(),
+              log: log,
+              subject: '${j['subject'] ?? ''}',
+            );
+            chats = [c];
+            current = c.id;
+          }
+          await prefs.setString(chatsStoreKey, jsonEncode({'chats': chats, 'current': current ?? ''}));
+          await prefs.remove(chatLegacyKey);
+        }
+      }
+      if (!mounted) return;
+      final open = current == null ? chats.firstOrNull : chats.where((c) => c.id == current).firstOrNull;
       setState(() {
-        _log.addAll([for (final m in j['log'] as List) ChatMsg.fromJson(Map<String, dynamic>.from(m))]);
-        _subject = j['subject'] ?? '';
+        _chats = chats;
+        // пока читали, человек уже начал писать — его разговор не трогаем
+        if (open != null && _log.isEmpty && _id == null) _open(open);
       });
       _toEnd();
     } catch (_) {}
   }
 
-  /// Ошибки и «по какому предмету?» не храним — это не разговор.
-  Future<void> _save() async {
-    final keep = [
-      for (final m in _log)
-        if (!m.error && m.choose.isEmpty) m.toJson(),
-    ];
+  /// Открыть сохранённый чат (без setState — его зовут внутри).
+  void _open(ChatThread c) {
+    _id = c.id;
+    _log = [for (final m in c.log) ChatMsg.fromJson(m)];
+    _subject = c.subject;
+    _dirty = false;
+  }
+
+  Future<void> _persist() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      if (keep.isEmpty) {
-        await prefs.remove(chatStoreKey);
-      } else {
-        final tail = keep.length > chatKeep ? keep.sublist(keep.length - chatKeep) : keep;
-        await prefs.setString(chatStoreKey, jsonEncode({'log': tail, 'subject': _subject}));
-      }
+      await prefs.setString(chatsStoreKey, jsonEncode({'chats': _chats, 'current': _id ?? ''}));
     } catch (_) {}
   }
 
-  void _newChat() {
+  /// Записать разговор [log] в чат [id] (null — новый) и поднять его наверх.
+  /// Ошибки и «по какому предмету?» не храним — это не разговор. Возвращает
+  /// id чата; null — нечего хранить в новом или чат уже удалили.
+  String? _store(String? id, List<ChatMsg> log, String subject, {bool create = true}) {
+    final keep = [
+      for (final m in log)
+        if (!m.error && m.choose.isEmpty) m.toJson(),
+    ];
+    var c = id == null ? null : _chats.where((x) => x.id == id).firstOrNull;
+    if (keep.isEmpty) return c?.id;
+    if (c == null) {
+      if (!create) return null; // чат удалили, пока ждали ответ
+      c = ChatThread(id: id ?? 'c${now().microsecondsSinceEpoch}', title: '', updated: now(), log: const []);
+    }
+    final t = c
+      ..log = keep.length > chatKeep ? keep.sublist(keep.length - chatKeep) : keep
+      ..title = chatTitle(keep)
+      ..subject = subject
+      ..updated = now();
+    _chats = [t, ..._chats.where((x) => x.id != t.id)].take(chatsMax).toList();
+    return t.id;
+  }
+
+  /// Сохранить открытый чат.
+  Future<void> _save() async {
+    await _ready;
+    if (!mounted) return;
+    _id = _store(_id, _log, _subject);
+    _dirty = false;
+    await _persist();
+  }
+
+  /// Уходя из чата (в новый, в другой): несохранённое — в свой чат.
+  Future<void> _leave() async {
+    if (_dirty) await _save();
+  }
+
+  Future<void> _newChat() async {
     tick();
+    await _leave();
+    if (!mounted) return;
     setState(() {
-      _chat++;
-      _log.clear();
+      _id = null;
+      _log = [];
       _att = null;
       _attNote = null;
       _waiting = false;
       _input.clear();
     });
-    _save();
+    await _persist();
+  }
+
+  Future<void> _switchTo(ChatThread c) async {
+    if (c.id == _id) return;
+    await _leave();
+    if (!mounted) return;
+    setState(() {
+      _open(c);
+      _att = null;
+      _attNote = null;
+      _waiting = false;
+      _input.clear();
+    });
+    await _persist();
+    _toEnd();
+  }
+
+  Future<void> _delete(ChatThread c) async {
+    await _ready;
+    if (!mounted) return;
+    setState(() {
+      _chats = [
+        for (final x in _chats)
+          if (x.id != c.id) x,
+      ];
+      if (c.id == _id) {
+        _id = null;
+        _log = [];
+        _waiting = false;
+        _dirty = false;
+      }
+    });
+    await _persist();
+  }
+
+  /// «Прошлые чаты» — листом снизу: открыть, удалить (крестик или смахнуть), новый.
+  Future<void> _openChats() async {
+    tick();
+    if (_dirty) await _save(); // открытый — в списке вместе со своим вопросом
+    if (!mounted) return;
+    final picked = await appSheet<Object>(
+      context,
+      (ctx) => _ChatsSheet(chats: _chats, current: _id, canNew: _log.isNotEmpty, onDelete: _delete),
+    );
+    if (!mounted) return;
+    if (picked is ChatThread) {
+      tick();
+      await _switchTo(picked);
+    } else if (picked == _ChatsSheet.newChat) {
+      await _newChat();
+    }
   }
 
   Future<void> _attach() async {
@@ -232,7 +411,9 @@ class _ChatScreenState extends State<ChatScreen> {
     final att = again != null ? againAtt : _att;
     if ((text.isEmpty && att == null) || _waiting) return;
     tick();
-    final chat = _chat;
+    final log = _log; // ответ — в этот разговор, даже если открыли другой
+    _id ??= 'c${now().microsecondsSinceEpoch}';
+    final id = _id;
     ChatMsg entry;
     if (again == null) {
       // В истории — только текст; само вложение уходит отдельным полем.
@@ -242,6 +423,7 @@ class _ChatScreenState extends State<ChatScreen> {
         att: att == null ? null : (name: att.name, image: att.image),
       );
       _log.add(entry);
+      _dirty = true;
     } else {
       entry = _log.lastWhere((m) => m.role == 'user');
     }
@@ -282,7 +464,18 @@ class _ChatScreenState extends State<ChatScreen> {
       entry.failed = true;
       answer = ChatMsg('assistant', errorText(e), error: true);
     }
-    if (!mounted || chat != _chat) return; // пока ждали, начали новый чат
+    if (!mounted) return;
+    if (!identical(log, _log)) {
+      // пока ждали, ушли в другой чат — ответ в свой (если его не удалили)
+      await _ready;
+      final c = _chats.where((x) => x.id == id).firstOrNull;
+      if (c == null || !mounted) return;
+      log.add(answer);
+      _store(id, log, c.subject, create: false);
+      if (_id == id) setState(() => _open(c)); // уже вернулись в него
+      await _persist();
+      return;
+    }
     setState(() {
       _log.add(answer);
       _waiting = false;
@@ -327,7 +520,12 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
-    if (picked != null) setState(() => _subject = picked);
+    if (picked != null && picked != _subject) {
+      setState(() {
+        _subject = picked;
+        _dirty = _log.isNotEmpty;
+      });
+    }
   }
 
   @override
@@ -342,29 +540,44 @@ class _ChatScreenState extends State<ChatScreen> {
               Row(
                 children: [
                   const BackRow(),
-                  const Spacer(),
-                  if (_log.isNotEmpty)
-                    IconButton(
-                      tooltip: 'Новый чат',
-                      onPressed: _newChat,
-                      icon: Icon(Icons.add_comment_outlined, color: p.text),
-                    ),
-                  Padding(
-                    padding: const EdgeInsets.only(right: Space.l),
-                    child: ActionChip(
-                      onPressed: _pickSubject,
-                      backgroundColor: p.card,
-                      side: BorderSide(color: p.line),
-                      shape: const StadiumBorder(),
-                      avatar: Icon(Icons.menu_book_outlined, size: 16, color: p.accent),
-                      label: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 170),
-                        child: Text(
-                          _subject.isEmpty ? 'Все предметы' : _subject,
-                          overflow: TextOverflow.ellipsis,
-                          style: s.body(13, weight: FontWeight.w600),
+                  // узкий экран и крупный шрифт — название предмета сжимается, кнопки не съезжают
+                  Expanded(
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (_chats.isNotEmpty)
+                          IconButton(
+                            tooltip: 'Прошлые чаты',
+                            onPressed: _openChats,
+                            icon: Icon(Icons.history_rounded, color: p.text),
+                          ),
+                        if (_log.isNotEmpty)
+                          IconButton(
+                            tooltip: 'Новый чат',
+                            onPressed: _newChat,
+                            icon: Icon(Icons.add_comment_outlined, color: p.text),
+                          ),
+                        Flexible(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: Space.l),
+                            child: ActionChip(
+                              onPressed: _pickSubject,
+                              backgroundColor: p.card,
+                              side: BorderSide(color: p.line),
+                              shape: const StadiumBorder(),
+                              avatar: Icon(Icons.menu_book_outlined, size: 16, color: p.accent),
+                              label: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 170),
+                                child: Text(
+                                  _subject.isEmpty ? 'Все предметы' : _subject,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: s.body(13, weight: FontWeight.w600),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ],
@@ -433,6 +646,146 @@ class _ChatScreenState extends State<ChatScreen> {
               _InputBar(controller: _input, busy: _waiting, onSend: _send, onAttach: _attach),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Лист «Прошлые чаты»: свежие сверху, открытый — с рамкой цвета темы.
+/// Нажал — открыть (лист отдаёт ChatThread), крестик или смахнуть влево —
+/// удалить, «Новый чат» — отдаёт [newChat].
+class _ChatsSheet extends StatefulWidget {
+  static const newChat = 'new';
+  final List<ChatThread> chats;
+  final String? current;
+  final bool canNew;
+  final ValueChanged<ChatThread> onDelete;
+  const _ChatsSheet({required this.chats, required this.current, required this.canNew, required this.onDelete});
+
+  @override
+  State<_ChatsSheet> createState() => _ChatsSheetState();
+}
+
+class _ChatsSheetState extends State<_ChatsSheet> {
+  late final _list = [...widget.chats];
+
+  void _delete(ChatThread c) {
+    tick();
+    setState(() => _list.remove(c));
+    widget.onDelete(c);
+    if (_list.isEmpty) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final today = now();
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.75),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.m),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Прошлые чаты', style: s.title(22)),
+                  const SizedBox(height: 4),
+                  Text('Хранятся на этом телефоне — до $chatsMax последних.', style: s.body(13, color: p.muted)),
+                ],
+              ),
+            ),
+            if (widget.canNew)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+                child: Tile(
+                  key: const Key('chats:new'),
+                  onTap: () => Navigator.pop(context, _ChatsSheet.newChat),
+                  padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
+                  child: Row(
+                    children: [
+                      Icon(Icons.add_comment_outlined, color: p.accent, size: 20),
+                      const SizedBox(width: Space.m),
+                      Expanded(
+                        child: Text('Новый чат', style: s.body(15, weight: FontWeight.w600)),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.l),
+                children: [
+                  for (final c in _list)
+                    Padding(
+                      key: ValueKey('chat:${c.id}'),
+                      padding: const EdgeInsets.only(bottom: Space.s),
+                      child: Dismissible(
+                        key: ValueKey('chat-swipe:${c.id}'),
+                        direction: DismissDirection.endToStart,
+                        onDismissed: (_) => _delete(c),
+                        background: Container(
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: Space.xl),
+                          decoration: BoxDecoration(color: p.danger, borderRadius: BorderRadius.circular(Radii.tile)),
+                          child: Text(
+                            'Удалить',
+                            style: s.body(15, weight: FontWeight.w700, color: Colors.white),
+                          ),
+                        ),
+                        child: Tile(
+                          onTap: () => Navigator.pop(context, c),
+                          border: c.id == widget.current ? p.accent : null,
+                          padding: const EdgeInsets.fromLTRB(Space.l, Space.m, Space.xs, Space.m),
+                          child: Row(
+                            children: [
+                              Icon(Icons.chat_bubble_outline_rounded, color: p.accent, size: 20),
+                              const SizedBox(width: Space.m),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      c.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: s.body(15, weight: FontWeight.w600),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      [
+                                        chatWhen(c.updated, today),
+                                        '${c.log.length} ${plural(c.log.length, 'сообщение', 'сообщения', 'сообщений')}',
+                                        if (c.subject.isNotEmpty) c.subject,
+                                      ].join(' · '),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: s.body(13, color: p.muted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Удалить чат',
+                                onPressed: () => _delete(c),
+                                icon: Icon(Icons.close_rounded, size: 20, color: p.muted),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

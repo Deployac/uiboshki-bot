@@ -123,7 +123,10 @@ void main() {
     await settle(t);
     expect(find.text('Чем метрика отличается от KPI?'), findsOneWidget); // осталась только подсказка
     expect(find.textContaining('все KPI — метрики', findRichText: true), findsNothing);
-    expect((await SharedPreferences.getInstance()).getString(chatStoreKey), isNull);
+    // прошлый разговор не стёрт — он в «Прошлых чатах», открыт новый
+    final stored = jsonDecode((await SharedPreferences.getInstance()).getString(chatsStoreKey)!) as Map;
+    expect((stored['chats'] as List).single['title'], 'Чем метрика отличается от KPI?');
+    expect(stored['current'], '');
   });
 
   testWidgets('файлы: поиск по названию и в тексте лекций → страница', (t) async {
