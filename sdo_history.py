@@ -27,6 +27,9 @@ async def record(user_id: int, courses: list[dict]):
             att[c["id"]] = (float(cat["score"]), float(cat["max"]))
     if att:
         await save_attendance_points(user_id, today_msk().isoformat(), att)
+    # названия курсов — общим словарём: «Итоги дня» пишут «Анализ данных: +6»
+    import day_summary
+    await day_summary.remember_courses(courses)
 
 
 async def series(user_id: int, course_id: int, current: float | None = None) -> dict:

@@ -45,14 +45,35 @@ class SubmitRules {
 
   bool fits(String name) => accepted.isEmpty || accepted.any((e) => name.toLowerCase().endsWith(e));
 
+  /// Предел размера: «20 МБ».
+  String get limit => '${(maxBytes / 1048576).toStringAsFixed(maxBytes >= 10485760 ? 0 : 1)} МБ';
+
   String describe() {
     final parts = <String>[
       if (labels.isNotEmpty) labels.join(', ') else if (accepted.isNotEmpty) accepted.join(' ') else 'любые файлы',
       'до $perSubmit ${plural(perSubmit, 'файла', 'файлов', 'файлов')}',
-      if (maxBytes > 0) 'до ${(maxBytes / 1048576).toStringAsFixed(maxBytes >= 10485760 ? 0 : 1)} МБ',
+      if (maxBytes > 0) 'до $limit',
     ];
     return parts.join(' · ');
   }
+
+  /// Почему задание не примет файл; null — подходит (проверка файла, Никита 12.10).
+  String? problem(Picked f) {
+    if (!fits(f.name)) {
+      final dot = f.name.lastIndexOf('.');
+      final what = dot > 0 ? f.name.substring(dot).toLowerCase() : 'Файл без расширения';
+      return '$what задание не примет — нужно ${labels.isNotEmpty ? labels.join(', ') : accepted.join(', ')}';
+    }
+    if (maxBytes > 0 && f.bytes.length > maxBytes) return 'больше $limit — задание не примет';
+    return null;
+  }
+}
+
+/// Размер по-человечески: «820 КБ», «1,2 МБ».
+String fileSize(int bytes) {
+  if (bytes < 1048576) return '${(bytes / 1024).ceil()} КБ';
+  final mb = bytes / 1048576;
+  return '${mb.toStringAsFixed(mb >= 10 ? 0 : 1).replaceAll('.', ',')} МБ';
 }
 
 /// Открыть лист сдачи. Задание — по сроку (deadlineId) или из работ предмета (cmid).
@@ -100,8 +121,16 @@ class SubmitSheet extends StatefulWidget {
 class _SubmitSheetState extends State<SubmitSheet> {
   SubmitRules? _rules;
   String? _error, _done;
-  final _files = <Picked>[];
+  // why — почему задание не примет (только в новом дизайне: плохой файл
+  // остаётся в списке с причиной, а не отбрасывается молча).
+  final _files = <({Picked f, String? why})>[];
   bool _sending = false;
+
+  /// Что уйдёт в СДО — только подходящие.
+  List<Picked> get _good => [
+    for (final e in _files)
+      if (e.why == null) e.f,
+  ];
 
   @override
   void initState() {
@@ -124,11 +153,27 @@ class _SubmitSheetState extends State<SubmitSheet> {
     tick();
     final rules = _rules!;
     final got = await widget.pick(rules.accepted);
+    if (!mounted) return;
+    if (AppStyle.of(context).design2) {
+      // Лимит — по подходящим; плохих в списке не больше трёх сверх него.
+      setState(() {
+        for (final f in got) {
+          final why = rules.problem(f);
+          if (why == null ? _good.length < rules.perSubmit : _files.length < rules.perSubmit + 3) {
+            _files.add((f: f, why: why));
+          }
+        }
+        _error = null;
+      });
+      return;
+    }
     final bad = got.where((f) => !rules.fits(f.name)).map((f) => f.name).toList();
     final big = rules.maxBytes > 0 ? got.where((f) => f.bytes.length > rules.maxBytes).map((f) => f.name).toList() : [];
     setState(() {
       for (final f in got) {
-        if (!bad.contains(f.name) && !big.contains(f.name) && _files.length < rules.perSubmit) _files.add(f);
+        if (!bad.contains(f.name) && !big.contains(f.name) && _files.length < rules.perSubmit) {
+          _files.add((f: f, why: null));
+        }
       }
       _error = bad.isNotEmpty
           ? 'Задание не примет: ${bad.join(', ')} — нужно ${rules.labels.isNotEmpty ? rules.labels.join(', ') : rules.accepted.join(' ')}'
@@ -150,7 +195,7 @@ class _SubmitSheetState extends State<SubmitSheet> {
         'cmid': widget.cmid,
         if (widget.replace) 'replace': true,
         'files': [
-          for (final f in _files) {'name': f.name, 'data': base64Encode(f.bytes)},
+          for (final f in _good) {'name': f.name, 'data': base64Encode(f.bytes)},
         ],
       });
       HapticFeedback.mediumImpact();
@@ -169,6 +214,9 @@ class _SubmitSheetState extends State<SubmitSheet> {
     final s = AppStyle.of(context);
     final p = s.p;
     final rules = _rules;
+    final d2 = s.design2;
+    final good = _good.length;
+    final verb = widget.replace ? 'Заменить' : 'Сдать';
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl + MediaQuery.viewInsetsOf(context).bottom),
@@ -212,29 +260,14 @@ class _SubmitSheetState extends State<SubmitSheet> {
                         ),
                       ],
                       const SizedBox(height: Space.m),
-                      for (final f in _files)
+                      for (final e in _files)
                         Padding(
                           padding: const EdgeInsets.only(bottom: Space.s),
-                          child: Tile(
-                            padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.s),
-                            child: Row(
-                              children: [
-                                Icon(Icons.insert_drive_file_outlined, size: 18, color: p.accent),
-                                const SizedBox(width: Space.s),
-                                Expanded(
-                                  child: Text(f.name, style: s.body(14, weight: FontWeight.w600)),
-                                ),
-                                Text('${(f.bytes.length / 1024).ceil()} КБ', style: s.body(12, color: p.muted)),
-                                IconButton(
-                                  tooltip: 'Убрать',
-                                  onPressed: () => setState(() => _files.remove(f)),
-                                  icon: Icon(Icons.close_rounded, size: 18, color: p.muted),
-                                ),
-                              ],
-                            ),
-                          ),
+                          child: d2 ? _checkedFile(s, e.f, e.why) : _plainFile(s, e.f),
                         ),
-                      if (_files.length < rules.perSubmit)
+                      if (d2
+                          ? good < rules.perSubmit && _files.length < rules.perSubmit + 3
+                          : _files.length < rules.perSubmit)
                         OutlinedButton.icon(
                           style: OutlinedButton.styleFrom(
                             foregroundColor: p.text,
@@ -260,14 +293,20 @@ class _SubmitSheetState extends State<SubmitSheet> {
                           foregroundColor: p.onAccent,
                           shape: const StadiumBorder(),
                         ),
-                        onPressed: _files.isEmpty || _sending ? null : _send,
+                        onPressed: good == 0 || _sending ? null : _send,
                         icon: _sending
                             ? SizedBox.square(
                                 dimension: 18,
                                 child: CircularProgressIndicator(strokeWidth: 2, color: p.onAccent),
                               )
                             : const Icon(Icons.upload_rounded),
-                        label: Text(_sending ? 'Отправляю…' : (widget.replace ? 'Заменить' : 'Сдать')),
+                        label: Text(
+                          _sending
+                              ? 'Отправляю…'
+                              : d2 && good > 0
+                              ? '$verb $good ${plural(good, 'файл', 'файла', 'файлов')}'
+                              : verb,
+                        ),
                       ),
                     ),
                   ],
@@ -276,6 +315,65 @@ class _SubmitSheetState extends State<SubmitSheet> {
       ),
     );
   }
+
+  /// Файл, как было: имя, размер, «Убрать».
+  Widget _plainFile(AppStyle s, Picked f) {
+    final p = s.p;
+    return Tile(
+      padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.s),
+      child: Row(
+        children: [
+          Icon(Icons.insert_drive_file_outlined, size: 18, color: p.accent),
+          const SizedBox(width: Space.s),
+          Expanded(
+            child: Text(f.name, style: s.body(14, weight: FontWeight.w600)),
+          ),
+          Text('${(f.bytes.length / 1024).ceil()} КБ', style: s.body(12, color: p.muted)),
+          _remove(p, f),
+        ],
+      ),
+    );
+  }
+
+  /// Проверка файла (новый дизайн, Никита 12.10): подходит — зелёная галочка,
+  /// нет — красный «!» и причина под именем.
+  Widget _checkedFile(AppStyle s, Picked f, String? why) {
+    final p = s.p;
+    return Tile(
+      padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.s),
+      child: Row(
+        children: [
+          Icon(Icons.insert_drive_file_outlined, size: 18, color: why == null ? p.accent : p.danger),
+          const SizedBox(width: Space.s),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(f.name, style: s.body(14, weight: FontWeight.w600)),
+                if (why != null) ...[const SizedBox(height: 2), Text(why, style: s.body(12, color: p.danger))],
+              ],
+            ),
+          ),
+          const SizedBox(width: Space.s),
+          Text(fileSize(f.bytes.length), style: s.body(12, color: p.muted)),
+          const SizedBox(width: Space.s),
+          Semantics(
+            label: why == null ? 'Подходит' : 'Не подходит',
+            child: why == null
+                ? Icon(Icons.check_rounded, size: 18, color: p.ok)
+                : Icon(Icons.priority_high_rounded, size: 18, color: p.danger),
+          ),
+          _remove(p, f),
+        ],
+      ),
+    );
+  }
+
+  Widget _remove(Palette p, Picked f) => IconButton(
+    tooltip: 'Убрать',
+    onPressed: () => setState(() => _files.removeWhere((e) => identical(e.f, f))),
+    icon: Icon(Icons.close_rounded, size: 18, color: p.muted),
+  );
 }
 
 /// Сдал — капибара радуется: подпрыгивает, рядом зелёная галочка.

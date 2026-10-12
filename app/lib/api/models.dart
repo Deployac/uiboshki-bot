@@ -8,6 +8,9 @@ class Lesson {
 
   /// Номер пары по звонку: «4», у сдвоенной — «1–5» (поле `num` в API).
   final String number;
+
+  /// Сколько пар в блоке: подряд идущие одинаковые склеены в один (`pairs`).
+  final int pairs;
   final DateTime? startAt, endAt;
 
   /// Изменения в расписании (5.79, своя группа): прежний кабинет и когда
@@ -25,6 +28,7 @@ class Lesson {
     required this.status,
     this.groups = '',
     this.number = '',
+    this.pairs = 1,
     this.startAt,
     this.endAt,
     this.roomWas = '',
@@ -42,6 +46,7 @@ class Lesson {
     status: j['status'] ?? '',
     groups: j['groups'] ?? '',
     number: j['num'] == null ? '' : '${j['num']}',
+    pairs: j['pairs'] is int ? j['pairs'] as int : 1,
     startAt: j['start_iso'] != null ? DateTime.tryParse(j['start_iso']) : null,
     endAt: j['end_iso'] != null ? DateTime.tryParse(j['end_iso']) : null,
     roomWas: j['room_was'] ?? '',
@@ -52,6 +57,34 @@ class Lesson {
   /// «Лекция · А-17 (В-78)»
   String get place =>
       [if (kind.isNotEmpty) kind[0].toUpperCase() + kind.substring(1), if (room.isNotEmpty) room].join(' · ');
+}
+
+/// «Итоги дня» (поле `summary` в /day): что сдал и сколько баллов прибавилось.
+class DaySummary {
+  /// Названия сданных работ.
+  final List<String> done;
+
+  /// Прирост баллов по предметам: (предмет, изменение), бывает и минус.
+  final List<(String, double)> grades;
+
+  /// Сумма изменений баллов за день.
+  final double points;
+
+  const DaySummary({this.done = const [], this.grades = const [], this.points = 0});
+
+  factory DaySummary.fromJson(Map<String, dynamic> j) => DaySummary(
+    done: [
+      for (final d in (j['done'] as List? ?? const []))
+        if (d is Map && '${d['title'] ?? ''}'.isNotEmpty) '${d['title']}',
+    ],
+    grades: [
+      for (final g in (j['grades'] as List? ?? const []))
+        if (g is Map && g['delta'] is num) ('${g['name'] ?? 'Предмет'}', (g['delta'] as num).toDouble()),
+    ],
+    points: (j['points'] as num?)?.toDouble() ?? 0,
+  );
+
+  bool get isEmpty => done.isEmpty && grades.isEmpty;
 }
 
 class Deadline {

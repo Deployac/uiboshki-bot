@@ -227,7 +227,16 @@ async def api_day(date: str, user: dict = CurrentUser):
         raise HTTPException(status_code=502, detail="расписание сейчас недоступно")
     now = datetime.now(TZ)
     lessons = lessons_for_date(raw, d, now=now if d == now.date() else None)
-    return {**_day_label(d), "lessons": lessons, "cancelled": await _changes(user["id"], d, lessons)}
+    out = {**_day_label(d), "lessons": lessons, "cancelled": await _changes(user["id"], d, lessons)}
+    if d <= now.date():
+        # «Итоги дня» (day_summary.py): сданное и баллы; None — пустой день.
+        # Сбой — без поля, как у изменений расписания.
+        try:
+            import day_summary
+            out["summary"] = await day_summary.summary(user["id"], d)
+        except Exception as e:
+            logger.warning(f"итоги дня не прочитались: {e}")
+    return out
 
 
 async def _changes(user_id: int, d, lessons: list[dict]) -> list[dict]:

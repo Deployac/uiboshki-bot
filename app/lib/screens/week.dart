@@ -9,6 +9,8 @@
 // дней и пары (владелец, 3.4). Пока грузится новая неделя, видна прошлая,
 // бледнее, — без мигания всей страницы.
 // Сроки сдачи тут не показываем — для них вкладка «Сдать» (владелец, 09.10).
+// Итоги дня (5.79, А+Г): на прошедших днях после пар — что сдал и сколько
+// баллов прибавилось; пустой день — без карточки. Только в новом дизайне.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -31,7 +33,28 @@ class WeekData {
   final int? number;
   final DateTime monday;
   final Map<String, List<Lesson>> days;
-  WeekData(this.number, this.monday, this.days);
+
+  /// Итоги прошедших дней по дате (поле `summary` в /day); пустых нет.
+  final Map<String, DaySummary> summaries;
+  WeekData(this.number, this.monday, this.days, {this.summaries = const {}});
+
+  /// Итог дня, если его пора показать: прошедший день или сегодняшний, когда
+  /// пары кончились (или их не было). Старый дизайн — никогда.
+  DaySummary? summaryFor(BuildContext context, DateTime date, DateTime at) {
+    if (!AppStyle.of(context).design2) return null;
+    final sum = summaries[iso(date)];
+    if (sum == null) return null;
+    final today = DateTime(at.year, at.month, at.day);
+    final day = DateTime(date.year, date.month, date.day);
+    if (day.isAfter(today)) return null;
+    if (day == today) {
+      for (final l in days[iso(date)] ?? const <Lesson>[]) {
+        final end = l.endAt ?? DateTime.tryParse('${iso(date)}T${l.end}:00');
+        if (end == null || at.isBefore(end)) return null;
+      }
+    }
+    return sum;
+  }
 }
 
 /// Пустой день — одинаково в обоих видах недели (владелец, 2.13).
@@ -136,10 +159,17 @@ class _WeekScreenState extends State<WeekScreen> {
       for (final d in dates) widget.api.get('/day?date=${iso(d)}'),
     ]);
     final days = <String, List<Lesson>>{};
+    final summaries = <String, DaySummary>{};
     for (var i = 0; i < 7; i++) {
-      days[iso(dates[i])] = [for (final l in (res[i + 1]['lessons'] as List? ?? [])) Lesson.fromJson(l)];
+      final day = res[i + 1];
+      days[iso(dates[i])] = [for (final l in (day['lessons'] as List? ?? [])) Lesson.fromJson(l)];
+      final sum = day['summary'];
+      if (sum is Map<String, dynamic>) {
+        final ds = DaySummary.fromJson(sum);
+        if (!ds.isEmpty) summaries[iso(dates[i])] = ds;
+      }
     }
-    return WeekData(res[0]['week'] as int?, monday, days);
+    return WeekData(res[0]['week'] as int?, monday, days, summaries: summaries);
   }
 
   /// Неделя пришла: из запаса телефона сразу, из сети — следом (как Loader).
@@ -413,6 +443,7 @@ class _WeekViewState extends State<_WeekView> {
                       lessons: d.days[iso(d.monday.add(Duration(days: i)))] ?? const [],
                       today: iso(d.monday.add(Duration(days: i))) == todayIso,
                       at: t,
+                      summary: d.summaryFor(context, d.monday.add(Duration(days: i)), t),
                       onLesson: widget.onLesson,
                     ),
                   ),
@@ -645,6 +676,9 @@ class _DayBlock extends StatelessWidget {
   final bool today;
   final DateTime at;
   final ValueChanged<Lesson>? onLesson;
+
+  /// Итог дня после пар (только в новом дизайне, см. [WeekData.summaryFor]).
+  final DaySummary? summary;
   const _DayBlock({
     super.key,
     required this.date,
@@ -652,6 +686,7 @@ class _DayBlock extends StatelessWidget {
     required this.today,
     required this.at,
     this.onLesson,
+    this.summary,
   });
 
   @override
@@ -683,7 +718,96 @@ class _DayBlock extends StatelessWidget {
             )
           else
             LessonList(lessons: lessons, at: at, onTap: onLesson),
+          if (summary case final sum?)
+            Padding(
+              padding: const EdgeInsets.only(top: Space.s),
+              child: DaySummaryCard(summary: sum, lessons: lessons),
+            ),
         ],
+      ),
+    );
+  }
+}
+
+/// «День сделан»: сколько было пар, что сдал и сколько баллов прибавилось —
+/// одинаково в ленте и по дням. Рамка и фон приглушённые: это итог, не пара.
+class DaySummaryCard extends StatelessWidget {
+  final DaySummary summary;
+  final List<Lesson> lessons;
+  const DaySummaryCard({super.key, required this.summary, required this.lessons});
+
+  /// «6», «4,5», «−2» — без лишнего нуля, минус типографский.
+  static String num1(double v) {
+    final a = v.abs(), t = a == a.roundToDouble() ? '${a.round()}' : a.toStringAsFixed(1).replaceAll('.', ',');
+    return v < 0 ? '−$t' : t;
+  }
+
+  static String signed(double v) => v < 0 ? num1(v) : '+${num1(v)}';
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final pairs = lessons.fold<int>(0, (n, l) => n + l.pairs);
+    final points = summary.points;
+    final whole = points == points.roundToDouble();
+    final parts = <(String, String)>[
+      ('$pairs', plural(pairs, 'пара', 'пары', 'пар')),
+      if (summary.done.isNotEmpty) ('${summary.done.length}', 'сдано'),
+      if (summary.grades.isNotEmpty && points.abs() >= 0.05)
+        (signed(points), whole ? plural(points.abs().round(), 'балл', 'балла', 'баллов') : 'балла'),
+    ];
+    Widget line(IconData icon, Color color, String text) => Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: Space.s),
+          Expanded(child: Text(text, style: s.body(14))),
+        ],
+      ),
+    );
+    return Semantics(
+      container: true,
+      child: Tile(
+        color: p.card.withValues(alpha: p.card.a * 0.5),
+        border: p.line,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('День сделан', style: s.name(17)),
+            const SizedBox(height: Space.s),
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.end,
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                for (var i = 0; i < parts.length; i++) ...[
+                  if (i > 0) Text('·', style: s.body(15, color: p.muted)),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(text: parts[i].$1, style: s.number(22)),
+                        TextSpan(
+                          text: ' ${parts[i].$2}',
+                          style: s.body(13, color: p.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (summary.done.isNotEmpty || summary.grades.isNotEmpty) const SizedBox(height: 4),
+            for (final d in summary.done) line(Icons.check_circle_rounded, p.ok, d),
+            for (final (name, delta) in summary.grades)
+              line(Icons.auto_awesome_rounded, p.accent, '$name: ${signed(delta)}'),
+          ],
+        ),
       ),
     );
   }
