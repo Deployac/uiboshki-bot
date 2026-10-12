@@ -20,6 +20,7 @@
  "GET /api/homework",
  "GET /api/lecture-search",
  "GET /api/legal/{name}",
+ "GET /api/lesson/groups",
  "GET /api/me",
  "GET /api/meta",
  "GET /api/notes",

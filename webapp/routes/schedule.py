@@ -321,6 +321,66 @@ async def api_target(target_type: int, target_id: int, user: dict = CurrentUser)
     }
 
 
+async def _find_target(query: str, target_type: int) -> int | None:
+    """id аудитории или преподавателя в справочнике — только если однозначно:
+    «А-17 (В-78)» — точное совпадение, без корпуса — единственная такая;
+    однофамильцы — не угадываем."""
+    import schedule_index
+    q = schedule_index._norm(query)
+    if not q:
+        return None
+    items = await schedule_index.search(query, (target_type,), limit=10)
+    exact = [i for i in items if schedule_index._norm(i["title"]) == q]
+    if len(exact) == 1:
+        return exact[0]["id"]
+    if target_type == 3 and (m := re.fullmatch(r"(.+?)\s*\(([^)]+)\)", query.strip())):
+        room, campus = m.group(1), schedule_index._norm(m.group(2))
+        near = [i for i in await schedule_index.search(room, (3,), limit=20)
+                if campus in schedule_index._norm(i["title"])
+                and schedule_index._norm(i["title"]).startswith(schedule_index._norm(room))]
+        if len(near) == 1:
+            return near[0]["id"]
+    return items[0]["id"] if len(items) == 1 else None
+
+
+@router.get("/api/lesson/groups")
+async def api_lesson_groups(start: str, room: str = "", teacher: str = "", user: dict = CurrentUser):
+    """С кем эта пара: группы, у которых в то же время пара в этой аудитории
+    (Никита 12.10: на лекциях — весь поток), без своей. Календарь аудитории,
+    нет её в справочнике (кафедра, дистант) — преподавателя. Не нашлось или
+    МИРЭА молчит — пустой список, экран просто без строки."""
+    from datetime import datetime
+    from mirea_schedule_api import fetch_ical
+    from schedule_events import groups_at
+    from utils import TZ
+    import config
+    import groups as groups_mod
+    try:
+        when = datetime.fromisoformat(start)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="start — время ISO")
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=TZ)
+    mine = (await groups_mod.of_user(user["id"]) or {}).get("name") or config.GROUP_NAME
+    for query, target_type, source in ((room, 3, "room"), (teacher, 2, "teacher")):
+        if not query.strip():
+            continue
+        target_id = await _find_target(query, target_type)
+        if target_id is None:
+            continue
+        ical = await fetch_ical(target_id, target_type)
+        if ical is None:
+            continue
+        try:
+            found = groups_at(ical, when)
+        except Exception as e:
+            logger.info(f"api_lesson_groups: календарь {target_type}/{target_id} не разобрался: {e!r}")
+            continue
+        if found:
+            return {"groups": [g for g in found if g != mine], "source": source}
+    return {"groups": [], "source": ""}
+
+
 def _own_group(target_type: int, target_id: int) -> bool:
     """Это календарь самой группы бота (ICAL_URL …/ical/1/4928)?"""
     from config import ICAL_URL
