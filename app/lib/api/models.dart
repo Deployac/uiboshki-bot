@@ -10,6 +10,11 @@ class Lesson {
   final String number;
   final DateTime? startAt, endAt;
 
+  /// Изменения в расписании (5.79, своя группа): прежний кабинет и когда
+  /// заметили перенос; отменённая пара — [cancelled] (её нет в счёте пар).
+  final String roomWas, changedAt;
+  final bool cancelled;
+
   const Lesson({
     required this.start,
     required this.end,
@@ -22,6 +27,9 @@ class Lesson {
     this.number = '',
     this.startAt,
     this.endAt,
+    this.roomWas = '',
+    this.changedAt = '',
+    this.cancelled = false,
   });
 
   factory Lesson.fromJson(Map<String, dynamic> j) => Lesson(
@@ -36,6 +44,9 @@ class Lesson {
     number: j['num'] == null ? '' : '${j['num']}',
     startAt: j['start_iso'] != null ? DateTime.tryParse(j['start_iso']) : null,
     endAt: j['end_iso'] != null ? DateTime.tryParse(j['end_iso']) : null,
+    roomWas: j['room_was'] ?? '',
+    changedAt: j['room_changed_at'] ?? j['cancelled_at'] ?? '',
+    cancelled: j['cancelled_at'] != null,
   );
 
   /// «Лекция · А-17 (В-78)»

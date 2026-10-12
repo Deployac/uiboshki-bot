@@ -32,6 +32,10 @@ class TodayData {
   /// Будут ли ещё пары на этой неделе после сегодня (null — не знаем):
   /// после последней пары недели у капибары своя подпись.
   final bool? moreThisWeek;
+
+  /// Отменённые сегодня пары (5.79): в счёт пар и «идёт сейчас» не входят,
+  /// в списке — серыми и зачёркнутыми.
+  final List<Lesson> cancelled;
   TodayData(
     this.lessons,
     this.tomorrowFirst,
@@ -41,6 +45,7 @@ class TodayData {
     this.group = '',
     this.week,
     this.moreThisWeek,
+    this.cancelled = const [],
   });
 }
 
@@ -171,6 +176,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final j = res[0];
     final today = iso(now());
     var lessonsJson = j['lessons'] as List;
+    var cancelledJson = j['cancelled'] as List? ?? const [];
     var tf = j['tomorrow_first'];
     var weather = '${j['weather'] ?? ''}';
     var stale = false;
@@ -185,6 +191,7 @@ class _TodayScreenState extends State<TodayScreen> {
       }
       final next = await Api.fromCache(() => api.get('/day?date=${iso(now().add(const Duration(days: 1)))}'));
       lessonsJson = day['lessons'] as List;
+      cancelledJson = day['cancelled'] as List? ?? const [];
       tf = next is Map && next['lessons'] is List && (next['lessons'] as List).isNotEmpty
           ? (next['lessons'] as List).first
           : null;
@@ -208,6 +215,7 @@ class _TodayScreenState extends State<TodayScreen> {
       name: '${me['first_name'] ?? ''}'.trim(),
       group: group,
       week: week is int ? week : null,
+      cancelled: [for (final l in cancelledJson) Lesson.fromJson(Map<String, dynamic>.from(l))],
       moreThisWeek: days == null || days.isEmpty
           ? null
           : days.any((d) => d is Map && '${d['date']}'.compareTo(today) > 0 && (d['dots'] as List? ?? []).isNotEmpty),
@@ -479,6 +487,10 @@ class _MainView extends StatelessWidget {
       if (next == null && t.isBefore(l.startAt!)) next = l;
     }
     void open(Lesson l) => openLesson(context, api, l);
+    // отменённые пары (5.79) — на своих местах в списке дня, только в новом дизайне
+    final shown = s.design2 && data.cancelled.isNotEmpty
+        ? ([...lessons, ...data.cancelled]..sort((a, b) => a.start.compareTo(b.start)))
+        : lessons;
     final hello = data.name.isEmpty ? greeting(t.hour) : '${greeting(t.hour)},\n${data.name}';
     final String title;
     Widget? focus, notice;
@@ -540,13 +552,13 @@ class _MainView extends StatelessWidget {
           if (s.look.day == DayView.rows)
             Padding(
               padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-              child: LessonList(lessons: lessons, at: t, onTap: open),
+              child: LessonList(lessons: shown, at: t, onTap: open),
             )
           else
-            for (final l in lessons)
+            for (final l in shown)
               Padding(
                 padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-                child: LessonCard(lesson: l, at: t, onTap: () => open(l)),
+                child: LessonCard(lesson: l, at: t, onTap: l.cancelled ? null : () => open(l)),
               ),
         ],
         if (data.soon.isNotEmpty) ...[
@@ -918,12 +930,15 @@ class LessonCard extends StatelessWidget {
         Flexible(child: Text(text, style: style)),
       ],
     );
+    // изменения в расписании (5.79): кабинет сменили — рамка; пару отменили — серая
+    final moved = s.design2 && l.roomWas.isNotEmpty && !l.cancelled;
+    final gone = s.design2 && l.cancelled;
     final card = Tile(
       onTap: onTap,
       radius: 18,
       padding: EdgeInsets.zero,
-      border: live ? p.ok.withValues(alpha: 0.6) : null,
-      gradient: stripe ? null : LinearGradient(colors: [tint, p.card], stops: const [0, 0.6]),
+      border: live ? p.ok.withValues(alpha: 0.6) : (moved ? p.warn : null),
+      gradient: stripe || gone ? null : LinearGradient(colors: [tint, p.card], stops: const [0, 0.6]),
       child: _withStripe(
         stripe ? c : null,
         Column(
@@ -950,13 +965,27 @@ class LessonCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(l.title, style: s.name(15)),
+                        Text(
+                          l.title,
+                          style: gone
+                              ? s.name(15).copyWith(decoration: TextDecoration.lineThrough, color: p.muted)
+                              : s.name(15),
+                        ),
                         if (l.kind.isNotEmpty) ...[
                           const SizedBox(height: 5),
-                          dotLine(c, l.kind.toLowerCase(), s.body(13, color: p.muted)),
+                          dotLine(gone ? p.muted : c, l.kind.toLowerCase(), s.body(13, color: p.muted)),
                         ],
-                        if (l.room.isNotEmpty) ...[const SizedBox(height: 7), RoomPill(l.room, color: c, size: 13)],
-                        if (l.teacher.isNotEmpty) ...[
+                        if (gone) ...[
+                          const SizedBox(height: 7),
+                          Text(
+                            'пары не будет',
+                            style: s.body(13, weight: FontWeight.w700, color: p.muted),
+                          ),
+                        ] else if (l.room.isNotEmpty) ...[
+                          const SizedBox(height: 7),
+                          if (moved) RoomWas(l, size: 13) else RoomPill(l.room, color: c, size: 13),
+                        ],
+                        if (l.teacher.isNotEmpty && !gone) ...[
                           const SizedBox(height: 5),
                           Text(l.teacher, style: s.body(13, color: p.muted)),
                         ],
@@ -986,7 +1015,7 @@ class LessonCard extends StatelessWidget {
         ),
       ),
     );
-    return Opacity(opacity: past ? 0.5 : 1, child: card);
+    return Opacity(opacity: past || gone ? 0.5 : 1, child: card);
   }
 
   static Widget _withStripe(Color? c, Widget child) => c == null
@@ -1056,8 +1085,9 @@ class LessonList extends StatelessWidget {
                 final l = lessons[i];
                 final past = l.endAt != null && !at.isBefore(l.endAt!);
                 final live = l.startAt != null && !past && !at.isBefore(l.startAt!);
+                final gone = s.design2 && l.cancelled; // отменили (5.79) — серой и зачёркнутой
                 final row = Opacity(
-                  opacity: past ? 0.45 : 1,
+                  opacity: past || gone ? 0.45 : 1,
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: Space.l, vertical: Space.m),
                     child: IntrinsicHeight(
@@ -1087,7 +1117,12 @@ class LessonList extends StatelessWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(l.title, style: s.name(15)),
+                                Text(
+                                  l.title,
+                                  style: gone
+                                      ? s.name(15).copyWith(decoration: TextDecoration.lineThrough)
+                                      : s.name(15),
+                                ),
                                 const SizedBox(height: 5),
                                 RoomLine(l, extra: [if (showGroups && l.groups.isNotEmpty) l.groups], live: live),
                               ],
@@ -1098,7 +1133,7 @@ class LessonList extends StatelessWidget {
                     ),
                   ),
                 );
-                if (onTap == null) return row;
+                if (onTap == null || gone) return row;
                 return InkWell(
                   onTap: () {
                     tick();
@@ -1157,6 +1192,42 @@ class RoomPill extends StatelessWidget {
   }
 }
 
+/// Кабинет сменили (5.79, Никита 12.10, «изменения» Б): прежний зачёркнут,
+/// новый — плашкой, ниже — когда заметили.
+class RoomWas extends StatelessWidget {
+  final Lesson lesson;
+  final double size;
+  const RoomWas(this.lesson, {super.key, this.size = 14});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: Space.s,
+          runSpacing: 4,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Text(
+              roomText(lesson.roomWas),
+              style: s.body(size, color: p.muted).copyWith(decoration: TextDecoration.lineThrough),
+            ),
+            RoomPill(lesson.room, color: p.warn, size: size),
+          ],
+        ),
+        const SizedBox(height: 3),
+        Text(
+          lesson.changedAt.isEmpty ? 'кабинет изменён' : 'кабинет изменён в ${lesson.changedAt}',
+          style: s.body(12, weight: FontWeight.w600, color: p.warn),
+        ),
+      ],
+    );
+  }
+}
+
 /// Строка под названием пары: кабинет плашкой, рядом серым тип пары
 /// (и чьи пары — в расписании преподавателя), у идущей — «идёт».
 class RoomLine extends StatelessWidget {
@@ -1175,7 +1246,15 @@ class RoomLine extends StatelessWidget {
       runSpacing: 4,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (lesson.room.isNotEmpty) RoomPill(lesson.room, color: c),
+        if (s.design2 && lesson.cancelled)
+          Text(
+            'пары не будет',
+            style: s.body(13, weight: FontWeight.w700, color: s.p.muted),
+          )
+        else if (s.design2 && lesson.roomWas.isNotEmpty)
+          RoomWas(lesson)
+        else if (lesson.room.isNotEmpty)
+          RoomPill(lesson.room, color: c),
         if (rest.isNotEmpty) Text(rest, style: s.body(13, color: s.p.muted)),
         if (live)
           Text(

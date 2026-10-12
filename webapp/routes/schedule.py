@@ -135,10 +135,11 @@ async def api_today(user: dict = CurrentUser):
     weather_task = asyncio.create_task(get_weather_for_morning())
     now = datetime.now(TZ)
     today = now.date()
-    lessons, tomorrow_first, schedule_ok, campus = [], None, True, ""
+    lessons, cancelled, tomorrow_first, schedule_ok, campus = [], [], None, True, ""
     try:
         raw = await raw_for_user(user["id"])
         lessons = lessons_for_date(raw, today, now=now)
+        cancelled = await _changes(user["id"], today, lessons)
         tomorrow = lessons_for_date(raw, today + timedelta(days=1))
         tomorrow_first = tomorrow[0] if tomorrow else None
         import notify_prefs        # «сегодня пары на МП-1, не на В-78»
@@ -164,7 +165,7 @@ async def api_today(user: dict = CurrentUser):
     notes = await get_lesson_notes(today.isoformat(), await viewer_group(user["id"]))
     return {
         **_day_label(today), "now": now.isoformat(), "hour": now.hour,
-        "lessons": lessons, "tomorrow_first": tomorrow_first, "schedule_ok": schedule_ok,
+        "lessons": lessons, "cancelled": cancelled, "tomorrow_first": tomorrow_first, "schedule_ok": schedule_ok,
         "weather": weather, "campus": campus, "stale": await _stale_for(user["id"]),
         "deadlines": {"active": len(items), "soon": soon},
         "notes": [{"subject": n.get("subject") or "", "text": _clip(n["text"])} for n in notes],
@@ -225,7 +226,19 @@ async def api_day(date: str, user: dict = CurrentUser):
     except Exception:
         raise HTTPException(status_code=502, detail="расписание сейчас недоступно")
     now = datetime.now(TZ)
-    return {**_day_label(d), "lessons": lessons_for_date(raw, d, now=now if d == now.date() else None)}
+    lessons = lessons_for_date(raw, d, now=now if d == now.date() else None)
+    return {**_day_label(d), "lessons": lessons, "cancelled": await _changes(user["id"], d, lessons)}
+
+
+async def _changes(user_id: int, d, lessons: list[dict]) -> list[dict]:
+    """Кабинет изменён (room_was у пары) и отменённые пары (отдельным списком,
+    в lessons их нет — счёт пар и «идёт сейчас» не меняются). Сбой — без отметок."""
+    try:
+        from schedule_diff import day_changes
+        return await day_changes(user_id, d, lessons)
+    except Exception as e:
+        logger.warning(f"изменения расписания не прочитались: {e}")
+        return []
 
 
 @router.get("/api/week")
