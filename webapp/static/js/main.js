@@ -6,6 +6,7 @@ else {
   renderSdoTile(readSdoTile());     // плитка «Баллы СДО»: сразу последнее сохранённое,
   loadToday().then(loadSdoTile);    // а свежее — после главной, не задерживая её
   initHomeAdd();
+  initPwaHint();                    // PWA: экран «Домой» и уведомления (5.81)
   initOptional();
   renderChat();
   loadChatSubjects();

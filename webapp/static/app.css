@@ -123,6 +123,24 @@
                      padding: 7px 13px; font-size: 13px; font-weight: 700; white-space: nowrap; }
   .home-add button.x { background: none; color: var(--hint); padding: 4px; font-size: 14px; font-weight: 400; }
   .home-link { display: block; margin: 18px auto 4px; color: var(--hint); font-weight: 600; }
+  /* PWA (5.81): как поставить на экран «Домой» и включить уведомления — home.js */
+  .pwa-hint {
+    margin: 0 0 12px; padding: 12px 10px 12px 14px; background: var(--bg-card);
+    border: 1px solid var(--border); border-radius: var(--radius-sm); animation: fadein .3s ease-out;
+  }
+  .pwa-hint .head { display: flex; align-items: flex-start; gap: 10px; }
+  .pwa-hint .head .ico { width: 22px; height: 22px; flex: none; margin-top: 1px; color: var(--accent); }
+  .pwa-hint .txt { flex: 1; min-width: 0; font-size: 12.5px; color: var(--hint); line-height: 1.35; }
+  .pwa-hint .txt b { display: block; font-size: 14px; color: var(--text); margin-bottom: 2px; }
+  .pwa-hint button.x { flex: none; background: none; border: none; color: var(--hint); padding: 2px 4px; }
+  .pwa-hint ol { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 7px; counter-reset: st; }
+  .pwa-hint li { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); counter-increment: st; }
+  .pwa-hint li::before { content: counter(st); flex: none; width: 20px; height: 20px; border-radius: 50%;
+                         background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-size: 12px;
+                         font-weight: 700; display: grid; place-items: center; }
+  .pwa-hint li .ico { width: 18px; height: 18px; flex: none; color: var(--accent); }
+  .pwa-hint .go { display: block; width: 100%; margin-top: 10px; background: var(--accent); color: #fff; border: none;
+                  border-radius: 999px; padding: 9px 0; font-size: 14px; font-weight: 700; }
   .weather-pill {
     display: inline-block; margin: 0 0 10px; padding: 7px 12px; border-radius: 999px;
     background: var(--bg-card); border: 1px solid var(--border); color: var(--hint); font-size: 13px;
