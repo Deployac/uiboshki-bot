@@ -337,7 +337,17 @@ class Notice extends StatelessWidget {
 
   /// Капибара слева: радостная — «всё хорошо, пусто», грустная — «не вышло».
   final CapyPose? pose;
-  const Notice({super.key, required this.title, required this.text, this.onRetry, this.pose});
+
+  /// Подпись кнопки повтора (по умолчанию «Ещё раз»).
+  final String retryLabel;
+  const Notice({
+    super.key,
+    required this.title,
+    required this.text,
+    this.onRetry,
+    this.pose,
+    this.retryLabel = 'Ещё раз',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -352,7 +362,7 @@ class Notice extends StatelessWidget {
           const SizedBox(height: Space.m),
           TextButton(
             onPressed: onRetry,
-            child: Text('Ещё раз', style: s.body(15, color: s.p.accent)),
+            child: Text(retryLabel, style: s.body(15, color: s.p.accent)),
           ),
         ],
       ],

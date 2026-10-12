@@ -5,6 +5,10 @@
 // в конце — «Срок прошёл». «Сдано» — сданное, свежее сверху. Свайп вправо —
 // «сдал» (у сданного — «вернуть»), нажатие — действия (изменить, напомнить,
 // убрать…), «+» — свой срок. Сверху — входы в «ДЗ группы» и «Заметки».
+// Новый дизайн (5.80, «Пусто и ошибка»): пусто и сбой выглядят по-разному —
+// «Ближайших сроков нет · СДО проверено в 12:40» с радостной капибарой и
+// «СДО не ответил · показываю сроки от 09:41» с грустной (над списком —
+// строкой); «Попробовать ещё раз» только перечитывает экран, синк не зовёт.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -21,7 +25,47 @@ import 'deadline_edit.dart';
 import 'homework.dart';
 import 'submit.dart';
 
-typedef _Items = ({List<Deadline> list, Map<int, DlExtra> extra});
+typedef _Items = ({List<Deadline> list, Map<int, DlExtra> extra, SdoCheck? sdo});
+
+/// Последняя проверка СДО группы (/api/deadlines → sdo): получилось ли,
+/// когда проверяли и когда получилось в последний раз.
+class SdoCheck {
+  final bool ok;
+  final DateTime? checkedAt, lastOk;
+  const SdoCheck({required this.ok, this.checkedAt, this.lastOk});
+
+  /// null — группу не проверяли (нет СДО) или ответ старого сервера.
+  static SdoCheck? fromJson(Object? j) {
+    if (j is! Map || j['ok'] is! bool) return null;
+    DateTime? at(Object? v) => v is String ? DateTime.tryParse(v) : null;
+    return SdoCheck(ok: j['ok'] as bool, checkedAt: at(j['checked_at']), lastOk: at(j['last_ok']));
+  }
+}
+
+/// Время сервера — по Москве (сроки и пары тоже московские), без пояса.
+DateTime _msk(DateTime t) {
+  final u = t.toUtc().add(const Duration(hours: 3));
+  return DateTime(u.year, u.month, u.day, u.hour, u.minute);
+}
+
+String _hm(DateTime t) => '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+/// «СДО проверено в 12:40» / «вчера в 12:40» / «10 октября в 12:40».
+String sdoCheckedText(DateTime checked, DateTime at) {
+  final t = _msk(checked);
+  final n = _daysBetween(t, at);
+  final day = n <= 0 ? '' : (n == 1 ? 'вчера ' : '${t.day} ${monthsGen[t.month - 1]} ');
+  return 'СДО проверено $dayв ${_hm(t)}';
+}
+
+/// «Показываю сроки от 09:41» / «от вчера, 09:41» / «от 10 октября, 09:41».
+String sdoShownText(DateTime? lastOk, DateTime at) {
+  if (lastOk == null) return 'Новые сроки пока не подтянулись';
+  final t = _msk(lastOk);
+  final n = _daysBetween(t, at);
+  final day = n <= 0 ? '' : (n == 1 ? 'вчера, ' : '${t.day} ${monthsGen[t.month - 1]}, ');
+  return 'Показываю сроки от $day${_hm(t)}';
+}
 
 class DeadlinesScreen extends StatefulWidget {
   final Api api;
@@ -36,10 +80,24 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
   Future<_Items> _load() async {
     final j = await widget.api.get('/deadlines?include_done=true');
     final raw = [for (final x in j['items'] as List) Map<String, dynamic>.from(x)];
+    final sdo = _sdo = SdoCheck.fromJson(j['sdo']);
     return (
       list: [for (final x in raw) Deadline.fromJson(x)],
       extra: {for (final x in raw) x['id'] as int: DlExtra.fromJson(x)},
+      sdo: sdo,
     );
+  }
+
+  SdoCheck? _sdo;
+
+  /// «Попробовать ещё раз»: только перечитать экран — синк СДО идёт по
+  /// расписанию на сервере; всё ещё молчит — так и скажем.
+  Future<void> _retry(Future<void> Function() reload) async {
+    tick();
+    await reload();
+    if (mounted && _sdo?.ok == false) {
+      snack(context, 'СДО пока молчит — бот проверит его сам', kind: ToastKind.info);
+    }
   }
 
   /// Запрос с ошибкой внизу экрана; true — прошёл.
@@ -116,6 +174,8 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
       items: items.list,
       extra: items.extra,
       api: widget.api,
+      sdo: items.sdo,
+      onRetry: () => _retry(reload),
       onAdd: () => _add(reload),
       onOpen: (d) => _actions(d, items.extra[d.id] ?? DlExtra.fromJson(const {}), reload),
       onSubmit: (d) => _submit(d, reload),
@@ -168,6 +228,10 @@ class DeadlinesView extends StatefulWidget {
   final ValueChanged<Deadline> onSubmit, onOpen;
   final VoidCallback onAdd;
   final DateTime? at;
+
+  /// Последняя проверка СДО (новый дизайн): «проверено в …» или «не ответил».
+  final SdoCheck? sdo;
+  final VoidCallback? onRetry;
   const DeadlinesView({
     super.key,
     required this.items,
@@ -178,6 +242,8 @@ class DeadlinesView extends StatefulWidget {
     required this.onOpen,
     required this.onAdd,
     this.at,
+    this.sdo,
+    this.onRetry,
   });
 
   @override
@@ -206,9 +272,12 @@ class _DeadlinesViewState extends State<DeadlinesView> {
 
   @override
   Widget build(BuildContext context) {
-    final p = AppStyle.of(context).p;
+    final style = AppStyle.of(context);
+    final p = style.p;
     final t = widget.at ?? now();
     final items = widget.items;
+    final sdo = style.design2 ? widget.sdo : null;
+    final sdoDown = sdo != null && !sdo.ok;
     final open = items.where((d) => !d.done && d.due.isAfter(t)).toList()..sort((a, b) => a.due.compareTo(b.due));
     final late = items.where((d) => !d.done && !d.due.isAfter(t)).toList()..sort((a, b) => b.due.compareTo(a.due));
     final done = items.where((d) => d.done).toList()..sort((a, b) => b.due.compareTo(a.due));
@@ -286,6 +355,11 @@ class _DeadlinesViewState extends State<DeadlinesView> {
           ),
         ),
         if (!_done) ...[
+          if (sdoDown && open.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.m),
+              child: _SdoDown(text: sdoShownText(sdo.lastOk, t), onRetry: widget.onRetry),
+            ),
           if (hot != null)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Space.l),
@@ -298,7 +372,23 @@ class _DeadlinesViewState extends State<DeadlinesView> {
                 onOpen: () => widget.onOpen(hot),
               ),
             ),
-          if (open.isEmpty)
+          if (open.isEmpty && sdoDown)
+            Notice(
+              title: 'СДО не ответил',
+              text: sdoShownText(sdo.lastOk, t),
+              pose: CapyPose.sad,
+              onRetry: widget.onRetry,
+              retryLabel: 'Попробовать ещё раз',
+            )
+          else if (open.isEmpty && style.design2)
+            Notice(
+              title: 'Ближайших сроков нет',
+              text: sdo?.checkedAt != null
+                  ? sdoCheckedText(sdo!.checkedAt!, t)
+                  : 'Новые задания из СДО появятся здесь сами. Свой срок — кнопкой +.',
+              pose: CapyPose.joy,
+            )
+          else if (open.isEmpty)
             Notice(
               title: late.isEmpty ? 'Всё сдано' : 'Новых сроков нет',
               text: 'Новые задания из СДО появятся здесь сами. Свой срок — кнопкой +.',
@@ -311,6 +401,49 @@ class _DeadlinesViewState extends State<DeadlinesView> {
         else
           card(done),
       ],
+    );
+  }
+}
+
+/// «СДО не ответил» строкой над списком: сроки есть, но могли устареть.
+class _SdoDown extends StatelessWidget {
+  final String text;
+  final VoidCallback? onRetry;
+  const _SdoDown({required this.text, this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Tile(
+      padding: const EdgeInsets.fromLTRB(Space.m, Space.m, Space.m, Space.s),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CapyImage(pose: CapyPose.sad, size: 44, color: p.muted),
+          const SizedBox(width: Space.m),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('СДО не ответил', style: s.body(15, weight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(text, style: s.body(13, color: p.muted)),
+                if (onRetry != null)
+                  TextButton(
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.zero,
+                      minimumSize: const Size(0, 36),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: onRetry,
+                    child: Text('Попробовать ещё раз', style: s.body(14, color: p.accent)),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

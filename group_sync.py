@@ -36,11 +36,14 @@ async def sync_group(group_id: int) -> dict:
     from database.groups import home
     if group_id == home():
         return {"error": "своя группа синкается общим входом"}
+    import sdo_check
     last = "нет входа, которым поделились"
+    tried = False
     for donor in await get_group_donors(group_id):
         cookie = sdo_accounts.decrypt(donor["cookie_enc"])
         if not cookie:
             continue
+        tried = True
         try:
             items = await _calendar_items(cookie)
         except sdo_parser.SdoSessionExpired as e:
@@ -51,8 +54,11 @@ async def sync_group(group_id: int) -> dict:
             continue
         res = await sdo_parser.apply_items(items, group_id=group_id)
         res["donor"] = donor["user_id"]
+        await sdo_check.note(group_id, True)            # «СДО проверено в …» во вкладке «Сдать»
         logger.info(f"СДО группы {group_id}: +{res['added']}, обновлено {res['updated']}")
         return res
+    if tried:
+        await sdo_check.note(group_id, False)           # «СДО не ответил, показываю сроки от …»
     return {"error": last, "added": 0, "updated": 0, "new_ids": [], "moved": {}}
 
 

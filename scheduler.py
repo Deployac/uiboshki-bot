@@ -307,8 +307,10 @@ _sdo_error_notified = False    # то же для сетевой недосту�
 
 
 async def _note_sync(result: dict):
-    """Чем кончился синк — для /status (health.py)."""
+    """Чем кончился синк — для /status (health.py) и вкладки «Сдать» (sdo_check.py)."""
     import health
+    import sdo_check
+    await sdo_check.note_home(result)
     if result.get("missing"):
         return
     if "error" in result:
