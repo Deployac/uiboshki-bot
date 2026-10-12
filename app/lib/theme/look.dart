@@ -11,6 +11,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_icon.dart';
+
 /// Светлая тема: «Тетрадь» (бумага) или «Кампус» (белые карточки, синий).
 enum LightTheme { notebook, campus }
 
@@ -39,6 +41,9 @@ class Look {
   final DayView day;
   final Cheer cheer;
 
+  /// Иконка приложения на телефоне (theme/app_icon.dart).
+  final AppIcon icon;
+
   const Look({
     this.light = LightTheme.notebook,
     this.dark = DarkTheme.depth,
@@ -46,20 +51,29 @@ class Look {
     this.card = CardStyle.tint,
     this.day = DayView.cards,
     this.cheer = Cheer.quiet,
+    this.icon = AppIcon.classic,
   });
 
   /// Как до 5.79 — и по умолчанию, и при выключенном новом дизайне.
   static const classic = Look();
 
-  Look copyWith({LightTheme? light, DarkTheme? dark, Paper? paper, CardStyle? card, DayView? day, Cheer? cheer}) =>
-      Look(
-        light: light ?? this.light,
-        dark: dark ?? this.dark,
-        paper: paper ?? this.paper,
-        card: card ?? this.card,
-        day: day ?? this.day,
-        cheer: cheer ?? this.cheer,
-      );
+  Look copyWith({
+    LightTheme? light,
+    DarkTheme? dark,
+    Paper? paper,
+    CardStyle? card,
+    DayView? day,
+    Cheer? cheer,
+    AppIcon? icon,
+  }) => Look(
+    light: light ?? this.light,
+    dark: dark ?? this.dark,
+    paper: paper ?? this.paper,
+    card: card ?? this.card,
+    day: day ?? this.day,
+    cheer: cheer ?? this.cheer,
+    icon: icon ?? this.icon,
+  );
 
   static T _pick<T extends Enum>(List<T> values, String? name, T fallback) =>
       values.firstWhere((v) => v.name == name, orElse: () => fallback);
@@ -71,6 +85,7 @@ class Look {
     card: _pick(CardStyle.values, p.getString('uib_look_card'), CardStyle.tint),
     day: _pick(DayView.values, p.getString('uib_look_day'), DayView.cards),
     cheer: _pick(Cheer.values, p.getString('uib_look_cheer'), Cheer.quiet),
+    icon: _pick(AppIcon.values, p.getString('uib_look_icon'), AppIcon.classic),
   );
 
   Future<void> save(SharedPreferences p) => Future.wait([
@@ -80,6 +95,7 @@ class Look {
     p.setString('uib_look_card', card.name),
     p.setString('uib_look_day', day.name),
     p.setString('uib_look_cheer', cheer.name),
+    p.setString('uib_look_icon', icon.name),
   ]);
 
   @override
@@ -90,10 +106,11 @@ class Look {
       other.paper == paper &&
       other.card == card &&
       other.day == day &&
-      other.cheer == cheer;
+      other.cheer == cheer &&
+      other.icon == icon;
 
   @override
-  int get hashCode => Object.hash(light, dark, paper, card, day, cheer);
+  int get hashCode => Object.hash(light, dark, paper, card, day, cheer, icon);
 }
 
 /// Включён ли новый дизайн: последнее слово сервера, без ответа — включён.

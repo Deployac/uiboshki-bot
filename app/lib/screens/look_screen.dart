@@ -3,12 +3,15 @@
 // всё как было; «Вернуть как было» убирает новое разом. Сервер может
 // выключить экран целиком (features.design2) — тогда в «Ещё» старый лист
 // «Тема и шрифт».
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
+import '../theme/app_icon.dart';
 import '../theme/app_theme.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
+import '../widgets/capy.dart';
 import '../widgets/cheer.dart';
 import '../widgets/common.dart';
 import 'files.dart' show BackRow;
@@ -182,6 +185,39 @@ class LookScreen extends StatelessWidget {
                   },
                 ),
               ),
+
+              // иконка на телефоне (5.79) — только в приложении на Android и iPhone
+              if (appIconSupported) ...[
+                const Section('иконка приложения'),
+                _Pad(
+                  Column(
+                    children: [
+                      for (var r = 0; r < AppIcon.values.length; r += 3) ...[
+                        if (r > 0) const SizedBox(height: Space.m),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            for (var i = r; i < r + 3; i++) ...[
+                              if (i > r) const SizedBox(width: Space.s),
+                              Expanded(
+                                child: i < AppIcon.values.length
+                                    ? _IconTile(
+                                        icon: AppIcon.values[i],
+                                        selected: look.icon == AppIcon.values[i],
+                                        onTap: () => set(look.copyWith(icon: AppIcon.values[i])),
+                                      )
+                                    : const SizedBox(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (defaultTargetPlatform == TargetPlatform.android)
+                  const _Hint('На Android ярлык на рабочем столе может переставиться.'),
+              ],
 
               if (changed) ...[
                 const SizedBox(height: Space.xl),
@@ -529,6 +565,109 @@ class _FontCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Иконка образцом — нарисована так же, как в tools/app_icons.py: фон и
+/// капибара на мяче (82 % по центру); «Из-за страницы» — крупнее, низ под листом.
+class _IconTile extends StatelessWidget {
+  final AppIcon icon;
+  final bool selected;
+  final VoidCallback onTap;
+  const _IconTile({required this.icon, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: icon.label,
+      excludeSemantics: true,
+      child: InkWell(
+        key: Key('look:icon:${icon.name}'),
+        borderRadius: BorderRadius.circular(Radii.tile),
+        onTap: selected ? null : onTap,
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(Radii.tile + 3),
+                border: Border.all(color: selected ? p.accent : Colors.transparent, width: 2),
+              ),
+              child: AspectRatio(
+                aspectRatio: 1,
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final w = box.maxWidth;
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(w * 0.225),
+                      child: DecoratedBox(decoration: icon.background, child: _art(w)),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              icon.label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              style: s.body(
+                12.5,
+                weight: selected ? FontWeight.w600 : FontWeight.w400,
+                color: selected ? p.text : p.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _art(double w) {
+    if (icon != AppIcon.page) {
+      return Center(
+        child: CapyImage(size: w * 0.8164, color: icon.capy),
+      );
+    }
+    // как в tools/app_icons.py: маска 0.96 от иконки с отступом сверху 0.06,
+    // край листа на 0.60; между лапами и мячом над листом — сплошное тело
+    final c = w * 0.96, x = w * 0.02, y = w * 0.06, edge = w * 0.6;
+    final bodyTop = y + c * 100 / 256;
+    return Stack(
+      children: [
+        Positioned(
+          left: x + c * 42 / 256,
+          width: c * 124 / 256,
+          top: bodyTop,
+          height: edge - bodyTop,
+          child: ColoredBox(color: icon.capy),
+        ),
+        Positioned(
+          left: x,
+          top: y,
+          child: CapyImage(size: c, color: icon.capy),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: edge,
+          bottom: 0,
+          child: const ColoredBox(color: pagePaper),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          top: edge,
+          height: w * 0.022,
+          child: const ColoredBox(color: pageLine),
+        ),
+      ],
     );
   }
 }

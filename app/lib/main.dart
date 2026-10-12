@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api/api.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
+import 'theme/app_icon.dart';
 import 'theme/app_theme.dart';
 import 'theme/look.dart';
 import 'widgets/capy.dart';
@@ -74,6 +75,9 @@ class _UiboAppState extends State<UiboApp> {
     // сервер мог выключить новый дизайн (откат) — узнаём при запуске
     refreshDesign2(widget.api.get).then((on) {
       if (on != null && on != _design2 && mounted) setState(() => _design2 = on);
+      // иконка на телефоне — по выбору, а без нового дизайна — обычная
+      // (откат DESIGN2=0 убирает и её; включат снова — выбор вернётся)
+      syncAppIcon((on ?? _design2) ? _look.icon : AppIcon.classic);
     });
     // «по закату»: раз в минуту проверить, не пора ли темнеть
     _sun = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -105,8 +109,10 @@ class _UiboAppState extends State<UiboApp> {
   }
 
   Future<void> _setLook(Look l) async {
+    final icon = l.icon != _look.icon;
     setState(() => _look = l);
     await l.save(await SharedPreferences.getInstance());
+    if (icon && _design2) await syncAppIcon(l.icon);
   }
 
   Future<void> _setTheme(ThemeChoice t) async {
