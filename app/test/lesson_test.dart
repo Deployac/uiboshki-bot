@@ -122,4 +122,68 @@ void main() {
     expect(asked.where((k) => k == 'GET /api/sdo/grades').length, 1);
     expect(asked.where((k) => k == 'GET /api/files').length, 1);
   });
+
+  testWidgets('с кем пара: другие группы в той же аудитории (Никита 12.10)', (t) async {
+    phone(t);
+    final asked = <String>[];
+    final at = DateTime.utc(2099, 1, 5, 6);
+    String key(String room, String teacher) =>
+        'GET /api/lesson/groups?${Uri(queryParameters: {'start': at.toIso8601String(), 'room': room, 'teacher': teacher}).query}';
+    Lesson lesson(String room, {String teacher = 'Стебунова О. И.', String groups = ''}) => Lesson(
+      start: '09:00',
+      end: '10:30',
+      title: 'Анализ данных',
+      kind: 'лекция',
+      room: room,
+      teacher: teacher,
+      status: '',
+      groups: groups,
+      startAt: at,
+      endAt: at.add(const Duration(minutes: 90)),
+    );
+    final api = fakeApi(
+      requests: asked,
+      overrides: {
+        key('А-17 (В-78)', 'Стебунова О. И.'): {
+          'groups': ['УИБО-01-24', 'УИБО-02-24'],
+          'source': 'room',
+        },
+        key('Б-1 (В-78)', 'Стебунова О. И.'): {
+          'groups': ['УИБО-01-24'],
+          'source': 'room',
+        },
+      },
+    );
+    Future<void> open(Lesson l) async {
+      await t.pumpWidget(
+        AppStyle(
+          p: Palette.notebook,
+          font: FontChoice.strict,
+          child: MaterialApp(
+            home: LessonScreen(key: UniqueKey(), api: api, lesson: l),
+          ),
+        ),
+      );
+      await settle(t);
+    }
+
+    await open(lesson('А-17 (В-78)'));
+    expect(find.text('Общая пара · ещё 2 группы'), findsOneWidget);
+    expect(find.text('УИБО-01-24, УИБО-02-24'), findsOneWidget);
+
+    await open(lesson('Б-1 (В-78)'));
+    expect(find.text('Вместе с УИБО-01-24'), findsOneWidget);
+    expect(find.text('общая пара · расписание группы'), findsOneWidget);
+
+    // пара только своя (или МИРЭА молчит) — строки нет
+    await open(lesson('В-2 (В-78)'));
+    expect(find.textContaining('Общая пара'), findsNothing);
+    expect(find.textContaining('Вместе с'), findsNothing);
+
+    // поток уже известен из расписания — лишний раз не спрашиваем
+    asked.clear();
+    await open(lesson('А-17 (В-78)', groups: 'УИБО-01-24, УИБО-02-24'));
+    expect(asked.any((k) => k.startsWith('GET /api/lesson/groups')), isFalse);
+    expect(find.text('Поток · 2 группы'), findsOneWidget);
+  });
 }
