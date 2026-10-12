@@ -402,8 +402,10 @@ class _Entry extends StatelessWidget {
   }
 }
 
-/// Пометки на карточке — только если есть что показать.
-bool _hasChips(DlExtra? x) => x != null && (x.personal || x.mineChanged || x.reminders.isNotEmpty);
+/// Пометки на карточке — только если есть что показать (время теста — в
+/// новом дизайне и у несданного).
+bool _hasChips(BuildContext context, Deadline d, DlExtra? x) =>
+    x != null && x.hasChips(time: AppStyle.of(context).design2 && !d.done);
 
 String _time(Deadline d) => d.dueTime.isEmpty ? '23:59' : d.dueTime;
 
@@ -522,7 +524,7 @@ class _Hot extends StatelessWidget {
             const SizedBox(height: 4),
             _SubjectLine(course: name.course, rest: '', size: 14),
           ],
-          if (_hasChips(x)) ...[const SizedBox(height: Space.s), DlChips(x: x!)],
+          if (_hasChips(context, d, x)) ...[const SizedBox(height: Space.s), DlChips(x: x!)],
           const SizedBox(height: Space.m),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -636,7 +638,7 @@ class _Row extends StatelessWidget {
                     const SizedBox(height: 2),
                     _SubjectLine(course: name.course, rest: d.done ? '' : _time(d)),
                   ],
-                  if (_hasChips(x)) ...[const SizedBox(height: 6), DlChips(x: x!)],
+                  if (_hasChips(context, d, x)) ...[const SizedBox(height: 6), DlChips(x: x!, time: !d.done)],
                 ],
               ),
             ),

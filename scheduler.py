@@ -382,6 +382,12 @@ async def sync_sdo_deadlines(bot: Bot):
 
     _sdo_expired_notified = False  # сессия снова живая — сбрасываем флаг
 
+    try:            # время новых тестов (quiz_time.py) — для подписи в «Сдать»
+        import quiz_time
+        await quiz_time.learn_missing()
+    except Exception as e:
+        logger.warning(f"время тестов: не вышло узнать: {e}")
+
     if (result["added"] or result.get("updated") or result.get("gone")) and STAROSTA_ID:
         parts = []
         if result["added"]:

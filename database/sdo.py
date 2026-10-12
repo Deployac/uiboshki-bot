@@ -158,3 +158,36 @@ async def get_sharing_groups() -> list[int]:
             "WHERE s.status = 'ok' AND COALESCE(s.share, 0) = 1 AND u.group_id IS NOT NULL AND u.group_id != ?",
             (HOME_GROUP_ID,))).fetchall()
         return [r[0] for r in rows]
+
+
+# ── Ограничение по времени у тестов (quiz_time.py) ───────────────────────────
+
+async def save_quiz_limits(limits: dict[int, int]):
+    """{cmid теста: минуты (0 — без ограничения)} — последнее увиденное."""
+    if not limits:
+        return
+    async with connect() as db:
+        await db.executemany(
+            "INSERT INTO quiz_limits (cmid, minutes) VALUES (?, ?) "
+            "ON CONFLICT(cmid) DO UPDATE SET minutes=excluded.minutes, seen_at=datetime('now')",
+            list(limits.items()))
+        await db.commit()
+
+
+async def get_quiz_limits(cmids) -> dict[int, int]:
+    cmids = sorted({int(c) for c in cmids if c})
+    if not cmids:
+        return {}
+    async with connect() as db:
+        rows = await (await db.execute(
+            f"SELECT cmid, minutes FROM quiz_limits WHERE cmid IN ({','.join('?' * len(cmids))})", cmids)).fetchall()
+        return {c: m for c, m in rows}
+
+
+async def get_quiz_deadline_links(since: str) -> list[str]:
+    """Ссылки тестов из дедлайнов своей группы со сроком не раньше since."""
+    async with connect() as db:
+        rows = await (await db.execute(
+            "SELECT description FROM deadlines WHERE group_id IS NULL AND due_date >= ? "
+            "AND description LIKE '%/mod/quiz/view.php%'", (since,))).fetchall()
+        return [r[0] for r in rows]
