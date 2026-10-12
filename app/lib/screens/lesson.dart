@@ -77,7 +77,7 @@ class _LessonScreenState extends State<LessonScreen> {
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
-    final c = subjectColor(lesson.title);
+    final c = s.ink(lesson.title); // точка, «идёт», полоса, кольцо баллов
     final t = now();
     final live =
         lesson.startAt != null && lesson.endAt != null && !t.isBefore(lesson.startAt!) && t.isBefore(lesson.endAt!);
@@ -86,7 +86,7 @@ class _LessonScreenState extends State<LessonScreen> {
     final groups = lesson.groups.split(RegExp(r',\s*')).where((g) => g.isNotEmpty).toList();
     return Scaffold(
       body: Backdrop(
-        tint: c,
+        tint: subjectColor(lesson.title),
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.only(bottom: Space.xxl),

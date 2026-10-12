@@ -398,7 +398,7 @@ class _CourseRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
-    final color = subjectColor(c.title);
+    final color = s.ink(c.title);
     final status = c.finalMark.isNotEmpty
         ? 'итог — ${c.finalMark}'
         : c.need > 0
@@ -450,10 +450,10 @@ class CourseScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
-    final color = subjectColor(course.title);
+    final color = s.ink(course.title);
     return Scaffold(
       body: Backdrop(
-        tint: color,
+        tint: subjectColor(course.title),
         child: SafeArea(
           child: Loader<Course>(
             load: () async => Course.fromJson(await api.get('/sdo/grades/${course.id}')),

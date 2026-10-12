@@ -70,6 +70,7 @@ class ThemeLibrary {
 }
 
 const subjectColors = <Color>[Color(0xFF8B7CF6), Color(0xFFF5A524), Color(0xFF2EC4B6), Color(0xFFFF6B6B), Color(0xFF4F8CFF), Color(0xFFE86FB0), Color(0xFF7BC67E), Color(0xFFF2994A)];
+const subjectInkColors = <Color>[Color(0xFF5B4BC4), Color(0xFF8C5800), Color(0xFF0F6E66), Color(0xFFB83A3A), Color(0xFF2F5FC0), Color(0xFFA83C7A), Color(0xFF376F3A), Color(0xFF985019)];
 
 class Radii {
   static const double card = 26;

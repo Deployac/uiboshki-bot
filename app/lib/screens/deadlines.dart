@@ -566,7 +566,7 @@ class _SubjectLine extends StatelessWidget {
                 width: 7,
                 height: 7,
                 margin: const EdgeInsets.only(right: 6),
-                decoration: BoxDecoration(color: subjectColor(course), shape: BoxShape.circle),
+                decoration: BoxDecoration(color: s.ink(course), shape: BoxShape.circle),
               ),
             ),
           ],

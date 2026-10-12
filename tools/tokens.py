@@ -28,6 +28,7 @@ def css(t: dict) -> str:
         out.append("}")
     out.append(":root {")
     out += [f"  --t-subject-{i}: {c};" for i, c in enumerate(t["subjects"])]
+    out += [f"  --t-subject-ink-{i}: {c};" for i, c in enumerate(t["subjects_ink"])]
     out += [f"  --t-radius-{k}: {v}px;" for k, v in t["radius"].items()]
     out += [f"  --t-space-{k}: {v}px;" for k, v in t["space"].items()]
     out.append("}")
@@ -53,6 +54,7 @@ def dart(t: dict) -> str:
             lines.append(f"  static const {camel} = Color({_argb(v)});")
         lines += ["}", ""]
     lines.append("const subjectColors = <Color>[" + ", ".join(f"Color({_argb(c)})" for c in t["subjects"]) + "];")
+    lines.append("const subjectInkColors = <Color>[" + ", ".join(f"Color({_argb(c)})" for c in t["subjects_ink"]) + "];")
     lines += ["", "class Radii {"] + [f"  static const double {k} = {v};" for k, v in t["radius"].items()] + ["}"]
     lines += ["", "class Space {"] + [f"  static const double {k} = {v};" for k, v in t["space"].items()] + ["}"]
     return "\n".join(lines) + "\n"
