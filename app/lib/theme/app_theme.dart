@@ -1,14 +1,18 @@
 // Тема приложения из дизайн-токенов (design/tokens.json → tokens.dart):
 // тёмная «Глубина» и светлая «Тетрадь» — как в телефоне или своя (настройка);
 // шрифт — настройка («Книжный»: засечки в заголовках и цифрах, «Строгий»: Onest).
+// С 5.79 (экран «Оформление», look.dart): ещё «Кампус» и «Библиотека»,
+// тёмная по закату, шрифты «Рукописный» и «Широкий».
 import 'package:flutter/material.dart';
 
+import 'look.dart';
 import 'tokens.dart';
 
-enum FontChoice { book, strict }
+enum FontChoice { book, strict, hand, wide }
 
-/// Тема: как в телефоне (по умолчанию), всегда светлая или всегда тёмная.
-enum ThemeChoice { system, light, dark }
+/// Тема: как в телефоне (по умолчанию), по закату в Москве (5.79), всегда
+/// светлая или всегда тёмная.
+enum ThemeChoice { system, sunset, light, dark }
 
 class Palette {
   final bool dark;
@@ -67,6 +71,70 @@ class Palette {
     danger: ThemeNotebook.danger,
     tabbar: ThemeNotebook.tabbar,
   );
+
+  static const campus = Palette(
+    dark: false,
+    bg: ThemeCampus.bg,
+    glow1: ThemeCampus.bgGlow1,
+    glow2: ThemeCampus.bgGlow2,
+    card: ThemeCampus.card,
+    cardSolid: ThemeCampus.cardSolid,
+    line: ThemeCampus.line,
+    text: ThemeCampus.text,
+    muted: ThemeCampus.muted,
+    accent: ThemeCampus.accent,
+    onAccent: ThemeCampus.onAccent,
+    ok: ThemeCampus.ok,
+    warn: ThemeCampus.warn,
+    danger: ThemeCampus.danger,
+    tabbar: ThemeCampus.tabbar,
+  );
+
+  static const library = Palette(
+    dark: true,
+    bg: ThemeLibrary.bg,
+    glow1: ThemeLibrary.bgGlow1,
+    glow2: ThemeLibrary.bgGlow2,
+    card: ThemeLibrary.card,
+    cardSolid: ThemeLibrary.cardSolid,
+    line: ThemeLibrary.line,
+    text: ThemeLibrary.text,
+    muted: ThemeLibrary.muted,
+    accent: ThemeLibrary.accent,
+    onAccent: ThemeLibrary.onAccent,
+    ok: ThemeLibrary.ok,
+    warn: ThemeLibrary.warn,
+    danger: ThemeLibrary.danger,
+    tabbar: ThemeLibrary.tabbar,
+  );
+
+  static Palette ofLight(LightTheme t) => t == LightTheme.campus ? campus : notebook;
+  static Palette ofDark(DarkTheme t) => t == DarkTheme.library ? library : depth;
+
+  /// Перед закатом (режим «по закату»): фон и карточки светлой темы чуть
+  /// темнеют, текст тот же — читается при любом [k] (0…1).
+  Palette dusk(double k) {
+    if (k <= 0 || dark) return this;
+    final a = 0.14 * k.clamp(0.0, 1.0);
+    Color d(Color c) => Color.alphaBlend(const Color(0xFF1B1E2B).withValues(alpha: a), c);
+    return Palette(
+      dark: dark,
+      bg: d(bg),
+      glow1: d(glow1),
+      glow2: d(glow2),
+      card: d(card),
+      cardSolid: d(cardSolid),
+      line: line,
+      text: text,
+      muted: muted,
+      accent: accent,
+      onAccent: onAccent,
+      ok: ok,
+      warn: warn,
+      danger: danger,
+      tabbar: d(tabbar),
+    );
+  }
 }
 
 /// Палитра и шрифт — всем экранам через контекст.
@@ -77,32 +145,58 @@ class AppStyle extends InheritedWidget {
   /// Что выбрано в «Тема и шрифт» (палитра [p] — уже по нему).
   final ThemeChoice theme;
 
+  /// Настройки «Оформления» (5.79); выключен новый дизайн — [Look.classic].
+  final Look look;
+
+  /// Новый дизайн включён сервером (/api/meta → features.design2).
+  final bool design2;
+
   const AppStyle({
     super.key,
     required this.p,
     required this.font,
     this.theme = ThemeChoice.system,
+    this.look = Look.classic,
+    this.design2 = false,
     required super.child,
   });
 
   static AppStyle of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<AppStyle>()!;
 
-  String get headFamily => font == FontChoice.book ? 'SourceSerif' : 'Onest';
+  String get headFamily => switch (font) {
+    FontChoice.book => 'SourceSerif',
+    FontChoice.strict => 'Onest',
+    FontChoice.hand => 'Neucha',
+    FontChoice.wide => 'Unbounded',
+  };
+
+  /// Цифры: у «Рукописного» — Onest (рукописные цифры в счётчиках не читаются).
+  String get numberFamily => font == FontChoice.hand ? 'Onest' : headFamily;
 
   TextStyle title(double size, {FontWeight? weight, Color? color}) => TextStyle(
     fontFamily: headFamily,
-    fontSize: size,
-    fontWeight: weight ?? (font == FontChoice.book ? FontWeight.w500 : FontWeight.w700),
-    letterSpacing: -size * 0.03,
+    // широкий шрифт крупнее остальных — заголовки чуть меньше, чтобы влезали
+    fontSize: font == FontChoice.wide ? size * 0.8 : (font == FontChoice.hand ? size * 1.08 : size),
+    fontWeight:
+        weight ??
+        switch (font) {
+          FontChoice.book || FontChoice.wide => FontWeight.w500,
+          FontChoice.strict => FontWeight.w700,
+          FontChoice.hand => FontWeight.w400,
+        },
+    letterSpacing: font == FontChoice.wide || font == FontChoice.hand ? 0 : -size * 0.03,
     height: 1.1,
     color: color ?? p.text,
   );
 
   TextStyle number(double size, {Color? color}) => TextStyle(
-    fontFamily: headFamily,
-    fontSize: size,
-    fontWeight: font == FontChoice.book ? FontWeight.w500 : FontWeight.w800,
-    letterSpacing: -size * 0.05,
+    fontFamily: numberFamily,
+    fontSize: font == FontChoice.wide ? size * 0.85 : size,
+    fontWeight: switch (font) {
+      FontChoice.book || FontChoice.wide => FontWeight.w500,
+      FontChoice.strict || FontChoice.hand => FontWeight.w800,
+    },
+    letterSpacing: font == FontChoice.wide ? -size * 0.02 : -size * 0.05,
     height: 0.95,
     color: color ?? p.text,
     fontFeatures: const [FontFeature.tabularFigures()],
@@ -134,7 +228,8 @@ class AppStyle extends InheritedWidget {
         );
 
   @override
-  bool updateShouldNotify(AppStyle old) => old.p != p || old.font != font || old.theme != theme;
+  bool updateShouldNotify(AppStyle old) =>
+      old.p != p || old.font != font || old.theme != theme || old.look != look || old.design2 != design2;
 }
 
 /// Цвет предмета: у каждого свой во всём приложении (по названию).

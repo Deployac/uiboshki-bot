@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
+import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
 import '../widgets/common.dart';
@@ -535,11 +536,18 @@ class _MainView extends StatelessWidget {
         if (notice != null) ...[const SizedBox(height: Space.m), notice],
         if (lessons.isNotEmpty) ...[
           Section('сегодня · ${lessons.length} ${plural(lessons.length, 'пара', 'пары', 'пар')}'),
-          for (final l in lessons)
+          // «строками» (5.79, «Оформление»): весь день одной карточкой, как в «Неделе»
+          if (s.look.day == DayView.rows)
             Padding(
               padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-              child: LessonCard(lesson: l, at: t, onTap: () => open(l)),
-            ),
+              child: LessonList(lessons: lessons, at: t, onTap: open),
+            )
+          else
+            for (final l in lessons)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+                child: LessonCard(lesson: l, at: t, onTap: () => open(l)),
+              ),
         ],
         if (data.soon.isNotEmpty) ...[
           const Section('горит'),
@@ -893,6 +901,9 @@ class LessonCard extends StatelessWidget {
     final live = l.startAt != null && l.endAt != null && !past && !at.isBefore(l.startAt!);
     final total = live ? l.endAt!.difference(l.startAt!).inSeconds : 0;
     final passed = live ? at.difference(l.startAt!).inSeconds.clamp(0, total) : 0;
+    // «с полоской» (5.79, «Оформление»): карточка без заливки, цвет предмета —
+    // полоской слева
+    final stripe = s.look.card == CardStyle.stripe;
     final tint = p.dark
         ? c.withValues(alpha: live ? 0.2 : 0.13)
         : Color.alphaBlend(c.withValues(alpha: live ? 0.16 : 0.1), p.card);
@@ -912,68 +923,80 @@ class LessonCard extends StatelessWidget {
       radius: 18,
       padding: EdgeInsets.zero,
       border: live ? p.ok.withValues(alpha: 0.6) : null,
-      gradient: LinearGradient(colors: [tint, p.card], stops: const [0, 0.6]),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, Space.m, Space.m, Space.m),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  // «09:00» не рвётся на «09:0/0» при крупном системном шрифте
-                  width: MediaQuery.textScalerOf(context).scale(50),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l.start, style: s.body(15, weight: FontWeight.w700)),
-                      const SizedBox(height: 1),
-                      Text(l.end, style: s.body(12, color: p.muted)),
-                    ],
+      gradient: stripe ? null : LinearGradient(colors: [tint, p.card], stops: const [0, 0.6]),
+      child: _withStripe(
+        stripe ? c : null,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, Space.m, Space.m, Space.m),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    // «09:00» не рвётся на «09:0/0» при крупном системном шрифте
+                    width: MediaQuery.textScalerOf(context).scale(50),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(l.start, style: s.body(15, weight: FontWeight.w700)),
+                        const SizedBox(height: 1),
+                        Text(l.end, style: s.body(12, color: p.muted)),
+                      ],
+                    ),
                   ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l.title, style: s.name(15)),
-                      if (l.kind.isNotEmpty) ...[
-                        const SizedBox(height: 5),
-                        dotLine(c, l.kind.toLowerCase(), s.body(13, color: p.muted)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(l.title, style: s.name(15)),
+                        if (l.kind.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          dotLine(c, l.kind.toLowerCase(), s.body(13, color: p.muted)),
+                        ],
+                        if (l.room.isNotEmpty) ...[const SizedBox(height: 7), RoomPill(l.room, color: c, size: 13)],
+                        if (l.teacher.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Text(l.teacher, style: s.body(13, color: p.muted)),
+                        ],
+                        if (live) ...[
+                          const SizedBox(height: 7),
+                          dotLine(
+                            p.ok,
+                            'идёт · ещё ${spanText(minutesTo(at, l.endAt!))}',
+                            s.body(13, weight: FontWeight.w700, color: p.ok),
+                          ),
+                        ],
                       ],
-                      if (l.room.isNotEmpty) ...[const SizedBox(height: 7), RoomPill(l.room, color: c, size: 13)],
-                      if (l.teacher.isNotEmpty) ...[
-                        const SizedBox(height: 5),
-                        Text(l.teacher, style: s.body(13, color: p.muted)),
-                      ],
-                      if (live) ...[
-                        const SizedBox(height: 7),
-                        dotLine(
-                          p.ok,
-                          'идёт · ещё ${spanText(minutesTo(at, l.endAt!))}',
-                          s.body(13, weight: FontWeight.w700, color: p.ok),
-                        ),
-                      ],
-                    ],
+                    ),
                   ),
-                ),
-                if (l.number.isNotEmpty) ...[const SizedBox(width: Space.s), PairBadge(l.number, live: live)],
-              ],
+                  if (l.number.isNotEmpty) ...[const SizedBox(width: Space.s), PairBadge(l.number, live: live)],
+                ],
+              ),
             ),
-          ),
-          if (live)
-            LinearProgressIndicator(
-              value: total == 0 ? 0 : passed / total,
-              minHeight: 3,
-              color: p.ok,
-              backgroundColor: p.ok.withValues(alpha: 0.12),
-            ),
-        ],
+            if (live)
+              LinearProgressIndicator(
+                value: total == 0 ? 0 : passed / total,
+                minHeight: 3,
+                color: p.ok,
+                backgroundColor: p.ok.withValues(alpha: 0.12),
+              ),
+          ],
+        ),
       ),
     );
     return Opacity(opacity: past ? 0.5 : 1, child: card);
   }
+
+  static Widget _withStripe(Color? c, Widget child) => c == null
+      ? child
+      : Stack(
+          children: [
+            child,
+            Positioned(left: 0, top: 0, bottom: 0, child: Container(width: 4, color: c)),
+          ],
+        );
 }
 
 /// Номер пары по звонку — квадратик справа («4», у сдвоенной «1–5»);

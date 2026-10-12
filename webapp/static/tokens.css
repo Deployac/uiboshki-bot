@@ -31,6 +31,38 @@
   --t-danger: #C4473A;
   --t-tabbar: #F3EEE5DB;
 }
+[data-app-theme="campus"] {
+  --t-bg: #F6F7FA;
+  --t-bg-glow-1: #EEF1FA;
+  --t-bg-glow-2: #F1F3F8;
+  --t-card: #FFFFFF;
+  --t-card-solid: #FFFFFF;
+  --t-line: #E3E6EE;
+  --t-text: #202631;
+  --t-muted: #6B7385;
+  --t-accent: #4355DB;
+  --t-on-accent: #FFFFFF;
+  --t-ok: #2E9A5E;
+  --t-warn: #C98A1B;
+  --t-danger: #D0453A;
+  --t-tabbar: #FFFFFFE6;
+}
+[data-app-theme="library"] {
+  --t-bg: #111715;
+  --t-bg-glow-1: #1E3329;
+  --t-bg-glow-2: #2A2E1C;
+  --t-card: #FFFFFF12;
+  --t-card-solid: #1C2521;
+  --t-line: #FFFFFF1A;
+  --t-text: #EDF0E8;
+  --t-muted: #9AA79D;
+  --t-accent: #B9DCA3;
+  --t-on-accent: #111715;
+  --t-ok: #5FD08A;
+  --t-warn: #F0B44C;
+  --t-danger: #FF7B6B;
+  --t-tabbar: #1C2521CC;
+}
 :root {
   --t-subject-0: #8B7CF6;
   --t-subject-1: #F5A524;

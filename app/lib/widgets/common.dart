@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../api/api.dart';
 import '../theme/app_theme.dart';
+import '../theme/look.dart';
 import '../theme/tokens.dart';
 import 'capy.dart';
 import 'capy_refresh.dart';
@@ -32,7 +33,9 @@ class Backdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final p = AppStyle.of(context).p;
+    final s = AppStyle.of(context);
+    final p = s.p;
+    final paper = !p.dark && s.look.light == LightTheme.notebook ? s.look.paper : Paper.smooth;
     return DecoratedBox(
       decoration: BoxDecoration(color: p.bg),
       child: Stack(
@@ -65,11 +68,70 @@ class Backdrop extends StatelessWidget {
               ),
             ),
           ),
+          if (paper != Paper.smooth)
+            Positioned.fill(
+              child: IgnorePointer(child: CustomPaint(painter: PaperPainter(paper, p.text))),
+            ),
           child,
         ],
       ),
     );
   }
+}
+
+/// Бумага «Тетради» (5.79, настройка в «Оформлении»): клетка, линейка,
+/// точки или миллиметровка — тонко, чтобы не спорить с карточками.
+class PaperPainter extends CustomPainter {
+  final Paper paper;
+  final Color ink;
+  const PaperPainter(this.paper, this.ink);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final thin = Paint()
+      ..color = ink.withValues(alpha: 0.06)
+      ..strokeWidth = 1;
+    switch (paper) {
+      case Paper.smooth:
+        return;
+      case Paper.cell:
+        for (var x = 0.0; x < size.width; x += 22) {
+          canvas.drawLine(Offset(x, 0), Offset(x, size.height), thin);
+        }
+        for (var y = 0.0; y < size.height; y += 22) {
+          canvas.drawLine(Offset(0, y), Offset(size.width, y), thin);
+        }
+      case Paper.line:
+        for (var y = 28.0; y < size.height; y += 28) {
+          canvas.drawLine(Offset(0, y), Offset(size.width, y), thin);
+        }
+      case Paper.dots:
+        final dot = Paint()..color = ink.withValues(alpha: 0.13);
+        for (var y = 9.0; y < size.height; y += 18) {
+          for (var x = 9.0; x < size.width; x += 18) {
+            canvas.drawCircle(Offset(x, y), 1, dot);
+          }
+        }
+      case Paper.grid:
+        final fine = Paint()
+          ..color = const Color(0xFFC9784B).withValues(alpha: 0.07)
+          ..strokeWidth = 0.6;
+        final bold = Paint()
+          ..color = const Color(0xFFC9784B).withValues(alpha: 0.13)
+          ..strokeWidth = 1;
+        var i = 0;
+        for (var x = 0.0; x < size.width; x += 8, i++) {
+          canvas.drawLine(Offset(x, 0), Offset(x, size.height), i % 5 == 0 ? bold : fine);
+        }
+        i = 0;
+        for (var y = 0.0; y < size.height; y += 8, i++) {
+          canvas.drawLine(Offset(0, y), Offset(size.width, y), i % 5 == 0 ? bold : fine);
+        }
+    }
+  }
+
+  @override
+  bool shouldRepaint(PaperPainter old) => old.paper != paper || old.ink != ink;
 }
 
 class Tile extends StatelessWidget {
@@ -172,10 +234,7 @@ class ScreenTitle extends StatelessWidget {
       // строка над заголовком — во всю ширину, кнопки справа её не теснят (Б5)
       child: lead == null
           ? row
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [lead!, const SizedBox(height: 6), row],
-            ),
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [lead!, const SizedBox(height: 6), row]),
     );
   }
 }
@@ -231,7 +290,10 @@ class FitWords extends StatelessWidget {
       final floor = (style.fontSize ?? 14) * 0.6;
       while (maxLines != null && size > floor) {
         final tp = TextPainter(
-          text: TextSpan(text: shown, style: style.copyWith(fontSize: size)),
+          text: TextSpan(
+            text: shown,
+            style: style.copyWith(fontSize: size),
+          ),
           textScaler: scaler,
           textDirection: dir,
           maxLines: maxLines,

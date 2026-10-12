@@ -27,6 +27,8 @@ Future<void> loadFonts() async {
 
   await one('Onest', 'assets/fonts/Onest.ttf');
   await one('SourceSerif', 'assets/fonts/SourceSerif4.ttf');
+  await one('Neucha', 'assets/fonts/Neucha.ttf');
+  await one('Unbounded', 'assets/fonts/Unbounded.ttf');
   final root = Platform.environment['FLUTTER_ROOT'] ?? '/home/user/sdk/flutter';
   await one('MaterialIcons', '$root/bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf');
 }

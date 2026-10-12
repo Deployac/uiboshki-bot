@@ -15,6 +15,7 @@ import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
+import '../widgets/cheer.dart';
 import '../widgets/common.dart';
 import 'deadline_edit.dart';
 import 'homework.dart';
@@ -55,7 +56,8 @@ class _DeadlinesScreenState extends State<DeadlinesScreen> {
   }
 
   Future<void> _toggle(Deadline d, bool done) async {
-    await _run(() => widget.api.post('/deadlines/${d.id}/toggle', {'done': done}));
+    final ok = await _run(() => widget.api.post('/deadlines/${d.id}/toggle', {'done': done}));
+    if (ok && done && mounted) cheer(context);
   }
 
   Future<void> _submit(Deadline d, Future<void> Function() reload) async {

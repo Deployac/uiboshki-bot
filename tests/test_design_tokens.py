@@ -6,9 +6,11 @@ from tools import tokens
 
 def test_tokens_complete_and_css_fresh():
     t = tokens.load()
-    assert set(t["themes"]) == {"depth", "notebook"} and t["fonts"]["default"] in t["fonts"]
+    # «Кампус» и «Библиотека» — темы приложения из «Оформления» (5.79)
+    assert set(t["themes"]) == {"depth", "notebook", "campus", "library"} and t["fonts"]["default"] in t["fonts"]
     keys = set(t["themes"]["depth"])
-    assert keys == set(t["themes"]["notebook"]), "у тем один набор цветов"
+    for name, theme in t["themes"].items():
+        assert set(theme) == keys, f"у тем один набор цветов: {name}"
     for theme in t["themes"].values():
         for k, v in theme.items():
             if k != "label":
