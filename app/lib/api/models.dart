@@ -61,8 +61,10 @@ class Lesson {
 
 /// «Итоги дня» (поле `summary` в /day): что сдал и сколько баллов прибавилось.
 class DaySummary {
-  /// Названия сданных работ.
-  final List<String> done;
+  /// Сданные работы по частям: (работа, предмет) — «Практика 1», «Анализ данных».
+  /// Предмет бывает пустым (своё название без курса); у старого сервера есть
+  /// только `title` — тогда он целиком в работе.
+  final List<(String, String)> done;
 
   /// Прирост баллов по предметам: (предмет, изменение), бывает и минус.
   final List<(String, double)> grades;
@@ -75,7 +77,8 @@ class DaySummary {
   factory DaySummary.fromJson(Map<String, dynamic> j) => DaySummary(
     done: [
       for (final d in (j['done'] as List? ?? const []))
-        if (d is Map && '${d['title'] ?? ''}'.isNotEmpty) '${d['title']}',
+        if (d is Map && '${d['task'] ?? d['title'] ?? ''}'.isNotEmpty)
+          ('${d['task'] ?? d['title']}', '${d['course'] ?? ''}'),
     ],
     grades: [
       for (final g in (j['grades'] as List? ?? const []))

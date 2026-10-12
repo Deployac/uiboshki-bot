@@ -77,3 +77,40 @@ def pretty(title: str, course: str, subjects: list[str] | None = None) -> str:
     t = clean_event(title, c)
     kind = exam_kind(course)
     return (f"{t}{SEP}{c}" if c else t) + (f" ({kind})" if kind and c else "")
+
+
+
+_KIND_TAIL = re.compile(r"\s*\((?:Зач|Экз)\)$")
+
+
+def _looks_sdo(course: str) -> bool:
+    """Курс СДО в сыром виде: метка семестра, «_Зачет», «(часть 1/2)»."""
+    return bool(_SEM_TAG.search(course) or _PART.search(course) or _EXAM.search(course))
+
+
+def pretty_subject(subject: str) -> str:
+    """Готовое название дедлайна; сырое из СДО (записи до понятных названий,
+    запасной путь «Предстоящие») — понятным: «Практическое задание 1 - срок
+    сдачи (Моделирование бизнес-процессов_Зачет (часть 1/2) [I.26-27])» →
+    «Практика 1 · Моделирование бизнес-процессов (Зач)». Своё название без
+    курса СДО в скобках — как есть."""
+    s = (subject or "").strip()
+    if SEP in s:
+        return s
+    from sdo_parser import course_of
+    course = course_of(s)
+    at = s.rfind("(" + course) if course else -1
+    if at > 0 and _looks_sdo(course) and s[:at].strip():
+        return pretty(s[:at].strip(), course)
+    return s
+
+
+def split_subject(subject: str) -> tuple[str, str]:
+    """Название дедлайна → (работа, предмет без «(Зач)»), для показа по частям:
+    «Практика 2 · Анализ данных (Экз)» → («Практика 2», «Анализ данных»);
+    без предмета — (название, "")."""
+    s = pretty_subject(subject)
+    if SEP not in s:
+        return s, ""
+    task, course = s.rsplit(SEP, 1)
+    return task.strip(), _KIND_TAIL.sub("", course).strip()

@@ -11,6 +11,7 @@
 // Сроки сдачи тут не показываем — для них вкладка «Сдать» (владелец, 09.10).
 // Итоги дня (5.79, А+Г): на прошедших днях после пар — что сдал и сколько
 // баллов прибавилось; пустой день — без карточки. Только в новом дизайне.
+// Карточка — одной строкой, подробности — листом по нажатию (Никита 12.10).
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -721,7 +722,7 @@ class _DayBlock extends StatelessWidget {
           if (summary case final sum?)
             Padding(
               padding: const EdgeInsets.only(top: Space.s),
-              child: DaySummaryCard(summary: sum, lessons: lessons),
+              child: DaySummaryCard(summary: sum, lessons: lessons, date: date),
             ),
         ],
       ),
@@ -729,12 +730,15 @@ class _DayBlock extends StatelessWidget {
   }
 }
 
-/// «Сводка за день»: сколько было пар, что сдал и сколько баллов прибавилось —
-/// одинаково в ленте и по дням. Рамка и фон приглушённые: это итог, не пара.
+/// «Сводка за день» — одна строка итога (пары · сдано · баллы), одинаково в
+/// ленте и по дням. Рамка и фон приглушённые: это итог, не пара. Подробности —
+/// что сдал и баллы по предметам — по нажатию в листе (Никита 12.10: в неделе
+/// карточка должна быть компактной).
 class DaySummaryCard extends StatelessWidget {
   final DaySummary summary;
   final List<Lesson> lessons;
-  const DaySummaryCard({super.key, required this.summary, required this.lessons});
+  final DateTime date;
+  const DaySummaryCard({super.key, required this.summary, required this.lessons, required this.date});
 
   /// «6», «4,5», «−2» — без лишнего нуля, минус типографский.
   static String num1(double v) {
@@ -748,6 +752,45 @@ class DaySummaryCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
+    return Semantics(
+      container: true,
+      button: true,
+      child: Tile(
+        color: p.card.withValues(alpha: p.card.a * 0.5),
+        border: p.line,
+        padding: const EdgeInsets.fromLTRB(Space.l, Space.m, Space.m, Space.m),
+        onTap: () => showDaySummarySheet(context, summary: summary, lessons: lessons, date: date),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Сводка за день', style: s.body(13, color: p.muted)),
+                  const SizedBox(height: 2),
+                  _SummaryLine(summary: summary, lessons: lessons, size: 17),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: p.muted),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Строка итога: «3 пары · 2 сдано · +14,5 балла» — числа крупно, слова тише.
+class _SummaryLine extends StatelessWidget {
+  final DaySummary summary;
+  final List<Lesson> lessons;
+  final double size;
+  const _SummaryLine({required this.summary, required this.lessons, required this.size});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
     final pairs = lessons.fold<int>(0, (n, l) => n + l.pairs);
     final points = summary.points;
     final whole = points == points.roundToDouble();
@@ -755,58 +798,119 @@ class DaySummaryCard extends StatelessWidget {
       ('$pairs', plural(pairs, 'пара', 'пары', 'пар')),
       if (summary.done.isNotEmpty) ('${summary.done.length}', 'сдано'),
       if (summary.grades.isNotEmpty && points.abs() >= 0.05)
-        (signed(points), whole ? plural(points.abs().round(), 'балл', 'балла', 'баллов') : 'балла'),
+        (DaySummaryCard.signed(points), whole ? plural(points.abs().round(), 'балл', 'балла', 'баллов') : 'балла'),
     ];
-    Widget line(IconData icon, Color color, String text) => Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 1),
-            child: Icon(icon, size: 16, color: color),
-          ),
-          const SizedBox(width: Space.s),
-          Expanded(child: Text(text, style: s.body(14))),
-        ],
-      ),
-    );
-    return Semantics(
-      container: true,
-      child: Tile(
-        color: p.card.withValues(alpha: p.card.a * 0.5),
-        border: p.line,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Сводка за день', style: s.name(17)),
-            const SizedBox(height: Space.s),
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.end,
-              spacing: 6,
-              runSpacing: 4,
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.end,
+      spacing: 6,
+      runSpacing: 2,
+      children: [
+        for (var i = 0; i < parts.length; i++) ...[
+          if (i > 0) Text('·', style: s.body(15, color: p.muted)),
+          Text.rich(
+            TextSpan(
               children: [
-                for (var i = 0; i < parts.length; i++) ...[
-                  if (i > 0) Text('·', style: s.body(15, color: p.muted)),
-                  Text.rich(
-                    TextSpan(
-                      children: [
-                        TextSpan(text: parts[i].$1, style: s.number(22)),
-                        TextSpan(
-                          text: ' ${parts[i].$2}',
-                          style: s.body(13, color: p.muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                TextSpan(text: parts[i].$1, style: s.number(size)),
+                TextSpan(
+                  text: ' ${parts[i].$2}',
+                  style: s.body(13, color: p.muted),
+                ),
               ],
             ),
-            if (summary.done.isNotEmpty || summary.grades.isNotEmpty) const SizedBox(height: 4),
-            for (final d in summary.done) line(Icons.check_circle_rounded, p.ok, d),
-            for (final (name, delta) in summary.grades)
-              line(Icons.auto_awesome_rounded, p.accent, '$name: ${signed(delta)}'),
-          ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Лист «Сводка за день»: итог строкой, что сдал (работа и предмет) и баллы
+/// по предметам — как другие подробности в приложении (лист снизу).
+Future<void> showDaySummarySheet(
+  BuildContext context, {
+  required DaySummary summary,
+  required List<Lesson> lessons,
+  required DateTime date,
+}) {
+  final s = AppStyle.of(context);
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: s.p.cardSolid,
+    showDragHandle: true,
+    isScrollControlled: true,
+    builder: (_) => DaySummarySheet(summary: summary, lessons: lessons, date: date),
+  );
+}
+
+class DaySummarySheet extends StatelessWidget {
+  final DaySummary summary;
+  final List<Lesson> lessons;
+  final DateTime date;
+  const DaySummarySheet({super.key, required this.summary, required this.lessons, required this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    Widget head(String text) => Padding(
+      padding: const EdgeInsets.only(top: Space.xl, bottom: Space.xs),
+      child: Text(text, style: s.eyebrow()),
+    );
+    Widget row({required IconData icon, required Color color, required String title, String sub = '', Widget? end}) =>
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(icon, size: 18, color: color),
+              ),
+              const SizedBox(width: Space.m),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: s.body(15, weight: FontWeight.w600)),
+                    if (sub.isNotEmpty) Text(sub, style: s.body(13, color: p.muted)),
+                  ],
+                ),
+              ),
+              if (end != null) ...[const SizedBox(width: Space.m), end],
+            ],
+          ),
+        );
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.xl),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Сводка за день', style: s.eyebrow()),
+              const SizedBox(height: 4),
+              Text(dayTitle(date), style: s.name(20)),
+              const SizedBox(height: Space.m),
+              _SummaryLine(summary: summary, lessons: lessons, size: 22),
+              if (summary.done.isNotEmpty) ...[
+                head('Сдано'),
+                for (final (task, course) in summary.done)
+                  row(icon: Icons.check_circle_rounded, color: p.ok, title: task, sub: course),
+              ],
+              if (summary.grades.isNotEmpty) ...[
+                head('Баллы СДО'),
+                for (final (name, delta) in summary.grades)
+                  row(
+                    icon: Icons.auto_awesome_rounded,
+                    color: delta < 0 ? p.danger : p.accent,
+                    title: name,
+                    end: Text(DaySummaryCard.signed(delta), style: s.number(17, color: delta < 0 ? p.danger : p.text)),
+                  ),
+              ],
+            ],
+          ),
         ),
       ),
     );

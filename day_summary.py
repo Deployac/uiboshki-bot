@@ -2,6 +2,8 @@
 «Итоги дня» на прошедших днях недели (второй круг дизайна, варианты А+Г):
 что человек сдал в этот день (отметки deadline_done) и сколько баллов СДО
 прибавилось (история sdo_score_history). Пустой день — None: карточки нет.
+Названия — чистые для всех клиентов: работа и предмет без «_Зачет (часть
+1/2) [I.26-27]» (deadline_names), как во вкладке дедлайнов.
 """
 
 import json
@@ -9,6 +11,7 @@ from datetime import date, datetime, time, timedelta, timezone
 
 import aiosqlite
 
+from deadline_names import clean_course, pretty_subject, split_subject
 from utils import TZ
 
 NAMES_KEY = "sdo_course_names"   # общий словарь {курс: название} в settings
@@ -68,7 +71,10 @@ async def _done(user_id: int, d: date) -> list[dict]:
         m = mine.get(r["id"]) or {}
         if m.get("hidden"):          # убрал у себя — и в итогах нет
             continue
-        out.append({"title": m.get("subject") or r["subject"]})   # своя правка — как в /api/deadlines
+        # своя правка — как в /api/deadlines; сырое название СДО — понятным
+        title = pretty_subject(m.get("subject") or r["subject"])
+        task, course = split_subject(title)
+        out.append({"title": title, "task": task, "course": course})
     return out[:MAX_DONE]
 
 
@@ -89,12 +95,15 @@ async def _grades(user_id: int, d: date) -> list[dict]:
             continue
         if names is None:
             names = await _course_names()
-        out.append({"name": names.get(str(cid)) or "Предмет", "delta": round(score - prev, 1)})
+        name = clean_course(names.get(str(cid)) or "")     # без «_Зачет (часть 1/2) [I.26-27]»
+        out.append({"name": name or "Предмет", "delta": round(score - prev, 1)})
     return out
 
 
 async def summary(user_id: int, d: date) -> dict | None:
-    """{"done": [{"title"}], "grades": [{"name", "delta"}], "points"} или None."""
+    """{"done": [{"title", "task", "course"}], "grades": [{"name", "delta"}],
+    "points"} или None. title — целиком («Практика 1 · Анализ данных (Зач)»),
+    task и course — по частям для листа подробностей; name — чистое имя курса."""
     done = await _done(user_id, d)
     grades = await _grades(user_id, d)
     if not done and not grades:
