@@ -35,6 +35,33 @@ def _extract_groups(component) -> str:
     return ", ".join(parts)
 
 
+# Код группы МИРЭА: «УИБО-03-24», «КСБО-11-26» (подгруппа «1 п/г» — отдельно)
+GROUP_CODE_RE = re.compile(r"[А-ЯЁA-Z]{2,6}-\d{2}-\d{2}")
+
+
+def groups_at(ical_data: bytes, when: datetime) -> list[str]:
+    """Чьи пары идут в момент when по календарю аудитории или преподавателя:
+    коды групп из DESCRIPTION, по порядку и без повторов. Так экран пары
+    показывает, с кем она общая (поток на лекции), — в календаре своей
+    группы других групп нет."""
+    out: list[str] = []
+    for comp in _calendar_query(ical_data).at(when.astimezone(TZ).date()):
+        start, end = comp.get("DTSTART"), comp.get("DTEND")
+        if not start or not end or not isinstance(start.dt, datetime) or not isinstance(end.dt, datetime):
+            continue
+        s, e = start.dt, end.dt
+        if s.tzinfo is None:
+            s = s.replace(tzinfo=ZoneInfo("Europe/Moscow"))
+        if e.tzinfo is None:
+            e = e.replace(tzinfo=ZoneInfo("Europe/Moscow"))
+        if not s <= when < e:
+            continue
+        for code in GROUP_CODE_RE.findall(str(comp.get("DESCRIPTION", ""))):
+            if code not in out:
+                out.append(code)
+    return out
+
+
 # Разобранный календарь последних ical-байт: Calendar.from_ical + разворот
 # повторов — чистый CPU в event loop. get_group_subjects дёргал разбор 42 раза
 # подряд (1,6 с блокировки всего бота на каждый /solve и /upload), главная

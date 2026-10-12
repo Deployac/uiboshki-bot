@@ -341,3 +341,17 @@ def test_who_graded_and_when():
             '<tr><th>Оценено</th><td><img alt="Иванов И. И."/>Иванов Иван Иванович</td></tr></table></div>')
     p = sdo_grades.parse_assign_page(html)
     assert p["graded_by"] == "Иванов Иван Иванович" and p["graded_at"] == "пятница, 25 сентября 2026, 12:07"
+
+
+def test_final_mark_without_words_when_digit():
+    """Итог «2 (неудовлетворительно)» — просто «2» (Никита 12.10); без цифры —
+    как в журнале."""
+    sf = sdo_grades.short_final
+    assert sf("2 (неудовлетворительно)") == "2"
+    assert sf("3 (Удовлетворительно)") == "3"
+    assert sf("4,00 (хорошо)") == "4,00"
+    assert sf("отлично (5)") == "5"
+    assert sf("Не зачтено") == "Не зачтено" and sf("отлично") == "отлично" and sf("") == ""
+    assert sf("Зачтено (5)") == "Зачтено (5)"      # не оценка экзамена — не трогаем
+    rep = sdo_grades.parse_report(REPORT.replace(">Не зачтено<", ">2 (неудовлетворительно)<", 1))
+    assert sdo_grades.summarize(rep, "Анализ данных_Экзамен")["final"] == "2"
