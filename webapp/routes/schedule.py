@@ -356,7 +356,9 @@ async def api_lesson_groups(start: str, room: str = "", teacher: str = "", user:
     import config
     import groups as groups_mod
     try:
-        when = datetime.fromisoformat(start)
+        # «…Z» из приложения: fromisoformat до Python 3.11 его не понимает
+        start = start.strip()
+        when = datetime.fromisoformat(start[:-1] + "+00:00" if start[-1:] in ("Z", "z") else start)
     except ValueError:
         raise HTTPException(status_code=400, detail="start — время ISO")
     if when.tzinfo is None:
