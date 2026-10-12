@@ -2,6 +2,7 @@
 // сверху та же полоса дней, что и в ленте (владелец, 10.10), ниже — пары
 // выбранного дня карточками с номером пары. Открывается на сегодня (в другой
 // неделе — на первом дне с парами); свайп вбок листает недели, как и в ленте.
+// После пар прошедшего дня — итог дня (DaySummaryCard, новый дизайн).
 import 'package:flutter/material.dart';
 
 import '../api/models.dart';
@@ -10,7 +11,7 @@ import '../theme/tokens.dart';
 import '../widgets/capy.dart';
 import '../widgets/common.dart';
 import 'today.dart' show LessonCard;
-import 'week.dart' show DayCell, WeekData, dayHead, noLessonsText, noLessonsTitle;
+import 'week.dart' show DayCell, DaySummaryCard, WeekData, dayHead, noLessonsText, noLessonsTitle;
 
 class WeekDays extends StatefulWidget {
   final WeekData data;
@@ -58,6 +59,7 @@ class _WeekDaysState extends State<WeekDays> {
     final lessons = _lessons(_selected);
     final n = lessons.length;
     final day = dayHead(date, today: key == _today);
+    final summary = widget.data.summaryFor(context, date, t);
     final p = AppStyle.of(context).p;
     return Column(
       children: [
@@ -107,17 +109,24 @@ class _WeekDaysState extends State<WeekDays> {
                 },
                 child: KeyedSubtree(
                   key: ValueKey(key),
-                  child: lessons.isEmpty
-                      ? const Notice(title: noLessonsTitle, text: noLessonsText, pose: CapyPose.joy)
-                      : Column(
-                          children: [
-                            for (final l in lessons)
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-                                child: LessonCard(lesson: l, at: t, onTap: () => widget.onLesson(l)),
-                              ),
-                          ],
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (lessons.isEmpty)
+                        const Notice(title: noLessonsTitle, text: noLessonsText, pose: CapyPose.joy)
+                      else
+                        for (final l in lessons)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+                            child: LessonCard(lesson: l, at: t, onTap: () => widget.onLesson(l)),
+                          ),
+                      if (summary != null)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+                          child: DaySummaryCard(summary: summary, lessons: lessons),
                         ),
+                    ],
+                  ),
                 ),
               ),
             ],
