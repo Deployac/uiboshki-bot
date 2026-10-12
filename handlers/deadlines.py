@@ -363,6 +363,8 @@ async def cmd_sync_sdo(message: Message):
 
     wait = await message.answer("⏳ Синхронизирую дедлайны из СДО...")
     result = await sync_deadlines()
+    import sdo_check
+    await sdo_check.note_home(result)       # «СДО проверено в …» во вкладке «Сдать»
 
     if result.get("expired"):
         # «Не задана» и «протухла» раньше были одним сообщением — а это разные

@@ -40,18 +40,11 @@ def _change_line(oe: dict, ne: dict) -> str:
     return f"🔄 <b>{esc(ne['summary'])}</b>: {', '.join(parts)}"
 
 
-def diff_events(old: list[dict], new: list[dict]) -> list[str]:
-    """Сравнивает два списка событий одного дня, возвращает человекочитаемые
-    строки об изменениях (пусто, если ничего значимого не поменялось).
-
-    Один и тот же предмет может стоять в дне несколько раз (сдвоенная пара) —
-    поэтому группируем по названию СПИСКАМИ, а не словарём "название → пара"
-    (он молча оставлял только последнюю пару с таким названием: отмена одной
-    из двух одинаковых пар выдавалась за "перенос времени", а добавление
-    второй — вообще не замечалось). Внутри группы сначала снимаем полностью
-    совпавшие пары, остаток сопоставляем по порядку (изменение), лишнее —
-    добавлено/отменено."""
-    changes = []
+def pair_events(old: list[dict], new: list[dict]) -> list[tuple[str, dict | None, dict | None]]:
+    """Те же пары, что и в diff_events, структурой: ("change", старая, новая),
+    ("add", None, новая), ("cancel", старая, None). Для текста уведомления и
+    для отметок в приложении (кабинет изменён, пары не будет)."""
+    out: list[tuple[str, dict | None, dict | None]] = []
     old_groups: dict[str, list[dict]] = {}
     new_groups: dict[str, list[dict]] = {}
     for e in old:
@@ -68,22 +61,137 @@ def diff_events(old: list[dict], new: list[dict]) -> list[str]:
                     olds.remove(oe)
                     news.remove(ne)
                     break
-        for oe, ne in zip(olds, news):
+        out += [("change", oe, ne) for oe, ne in zip(olds, news)]
+        out += [("add", None, ne) for ne in news[len(olds):]]
+        out += [("cancel", oe, None) for oe in olds[len(news):]]
+    for key, olds in old_groups.items():
+        if key not in new_groups:
+            out += [("cancel", oe, None) for oe in olds]
+    return out
+
+
+def diff_events(old: list[dict], new: list[dict]) -> list[str]:
+    """Сравнивает два списка событий одного дня, возвращает человекочитаемые
+    строки об изменениях (пусто, если ничего значимого не поменялось).
+
+    Один и тот же предмет может стоять в дне несколько раз (сдвоенная пара) —
+    поэтому группируем по названию СПИСКАМИ, а не словарём "название → пара"
+    (он молча оставлял только последнюю пару с таким названием: отмена одной
+    из двух одинаковых пар выдавалась за "перенос времени", а добавление
+    второй — вообще не замечалось). Внутри группы сначала снимаем полностью
+    совпавшие пары, остаток сопоставляем по порядку (изменение), лишнее —
+    добавлено/отменено."""
+    changes = []
+    for kind, oe, ne in pair_events(old, new):
+        if kind == "change":
             changes.append(_change_line(oe, ne))
-        for ne in news[len(olds):]:
+        elif kind == "add":
             changes.append(
                 f"➕ Добавлена пара: <b>{esc(ne['summary'])}</b> в {ne['time']} "
                 f"({esc(ne['location']) or '—'})"
             )
-        for oe in olds[len(news):]:
+        else:
             changes.append(f"❌ Отменена пара: <b>{esc(oe['summary'])}</b> (была в {oe.get('time') or '—'})")
-
-    for key, olds in old_groups.items():
-        if key not in new_groups:
-            for oe in olds:
-                changes.append(f"❌ Отменена пара: <b>{esc(oe['summary'])}</b> (была в {oe.get('time') or '—'})")
-
     return changes
+
+
+# ── Отметки для приложения (дизайн 5.79, «Изменения в расписании», Никита
+# 12.10: старый кабинет зачёркнут и рамка, отменённая пара — серой и
+# зачёркнутой). Что заметила проверка — копится по дню в settings
+# «schedmarks:<дата>»: кабинет — самый первый (до всех переносов), отмена
+# снимается, если пара вернулась. Только своя группа: чужие не проверяются.
+
+MARKS_PREFIX = "schedmarks:"
+
+
+def _same(a: dict, b: dict) -> bool:
+    return _event_key(a) == _event_key(b) and a.get("time") == b.get("time")
+
+
+def merge_marks(marks: list[dict], old: list[dict], new: list[dict], at: str) -> list[dict]:
+    """Добавить к отметкам дня то, что поменялось между снимками old → new."""
+    marks = [dict(m) for m in marks]
+    for kind, oe, ne in pair_events(old, new):
+        if kind == "change" and (oe.get("location") or "") != (ne.get("location") or ""):
+            prev = next((m for m in marks if m.get("room_was") is not None and _same(m, oe)), None)
+            first = prev["room_was"] if prev else oe.get("location") or ""
+            if prev:
+                marks.remove(prev)
+            if first != (ne.get("location") or ""):     # вернули прежний кабинет — отметки нет
+                marks.append({"summary": ne["summary"], "time": ne.get("time"), "room_was": first, "at": at})
+        elif kind == "cancel":
+            marks = [m for m in marks if not _same(m, oe)]
+            marks.append({"summary": oe["summary"], "time": oe.get("time"), "location": oe.get("location") or "",
+                          "cancelled": True, "at": at})
+        elif kind == "add":
+            marks = [m for m in marks if not (m.get("cancelled") and _same(m, ne))]
+    return marks
+
+
+async def record_marks(d_str: str, old: list[dict], new: list[dict]):
+    import json
+    from database import get_setting, set_setting
+    raw = await get_setting(MARKS_PREFIX + d_str)
+    marks = json.loads(raw) if raw else []
+    at = datetime.now(ZoneInfo(TIMEZONE)).strftime("%H:%M")
+    fresh = merge_marks(marks, old, new, at)
+    if fresh != marks:
+        await set_setting(MARKS_PREFIX + d_str, json.dumps(fresh, ensure_ascii=False))
+
+
+async def marks_for(d_str: str) -> list[dict]:
+    import json
+    from database import get_setting
+    try:
+        raw = await get_setting(MARKS_PREFIX + d_str)
+        return json.loads(raw) if raw else []
+    except Exception:
+        return []
+
+
+def annotate(lessons: list[dict], marks: list[dict], hide: frozenset = frozenset()) -> list[dict]:
+    """Отметки — в пары дня (lessons_for_date): у пары с другим кабинетом
+    room_was и room_changed_at; возвращает отменённые пары (их в lessons нет)
+    в том же виде, что пары, без предметов по выбору, на которые не ходит."""
+    from schedule_format import _split_kind
+    if not marks:
+        return []
+
+    def start(m):
+        return (m.get("time") or "").split("–")[0]
+
+    for l in lessons:
+        for m in marks:
+            if m.get("room_was") is None:
+                continue
+            title = _split_kind(m["summary"])[0]
+            # у сдвоенной пары в lessons одна строка: подходит любая её пара
+            if title == l["title"] and l["start"] <= start(m) < (l["end"] or "99:99"):
+                l["room_was"], l["room_changed_at"] = m["room_was"], m.get("at") or ""
+                break
+    cancelled = []
+    for m in marks:
+        if not m.get("cancelled"):
+            continue
+        title, kind, _ = _split_kind(m["summary"])
+        if title in hide or any(l["title"] == title and l["start"] == start(m) for l in lessons):
+            continue
+        end = (m.get("time") or "").partition("–")[2]
+        cancelled.append({"start": start(m), "end": end, "title": title, "kind": kind,
+                          "room": m.get("location") or "", "cancelled_at": m.get("at") or ""})
+    return sorted(cancelled, key=lambda c: c["start"])
+
+
+async def day_changes(user_id: int, d, lessons: list[dict]) -> list[dict]:
+    """Для /api/today и /api/day: отметить пары дня d и вернуть отменённые.
+    Только своя группа (её расписание проверяет check_schedule_changes)."""
+    import groups
+    from database import get_user_group
+    from optional_subjects import HIDE
+    gid = await get_user_group(user_id)
+    if gid and gid != groups.home_id():
+        return []
+    return annotate(lessons, await marks_for(d.isoformat()), HIDE.get())
 
 
 def _to_serializable(events: list[dict]) -> list[dict]:
@@ -144,6 +252,10 @@ async def check_schedule_changes(bot):
 
         if old_events is None:
             continue  # первый раз видим этот день — не с чем сравнивать
+        try:
+            await record_marks(d_str, old_events, new_events)
+        except Exception as e:
+            logger.warning(f"check_schedule_changes: отметки для приложения не записались: {e}")
         if diff_events(old_events, new_events):
             changed_days.append((d, offset, old_events, new_events))
 

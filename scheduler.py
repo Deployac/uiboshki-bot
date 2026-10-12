@@ -307,8 +307,10 @@ _sdo_error_notified = False    # то же для сетевой недосту�
 
 
 async def _note_sync(result: dict):
-    """Чем кончился синк — для /status (health.py)."""
+    """Чем кончился синк — для /status (health.py) и вкладки «Сдать» (sdo_check.py)."""
     import health
+    import sdo_check
+    await sdo_check.note_home(result)
     if result.get("missing"):
         return
     if "error" in result:
@@ -381,6 +383,12 @@ async def sync_sdo_deadlines(bot: Bot):
         return
 
     _sdo_expired_notified = False  # сессия снова живая — сбрасываем флаг
+
+    try:            # время новых тестов (quiz_time.py) — для подписи в «Сдать»
+        import quiz_time
+        await quiz_time.learn_missing()
+    except Exception as e:
+        logger.warning(f"время тестов: не вышло узнать: {e}")
 
     if (result["added"] or result.get("updated") or result.get("gone")) and STAROSTA_ID:
         parts = []

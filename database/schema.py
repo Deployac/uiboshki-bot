@@ -547,4 +547,13 @@ async def init_db():
             await db.execute("ALTER TABLE users ADD COLUMN consent_asked TEXT")
         except Exception:
             pass  # уже есть
+        # Сколько длится тест СДО (quiz_time.py): ограничение по времени со
+        # страницы теста, одно на всех — по cmid. 0 — ограничения нет.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS quiz_limits (
+                cmid     INTEGER PRIMARY KEY,
+                minutes  INTEGER NOT NULL,
+                seen_at  TEXT DEFAULT (datetime('now'))
+            )
+        """)
         await db.commit()

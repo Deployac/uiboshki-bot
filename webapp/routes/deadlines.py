@@ -32,8 +32,13 @@ async def api_deadlines(include_done: bool = False, user: dict = CurrentUser):
         d["mine_changed"] = bool(d.get("mine_changed"))
         d["can_submit"] = can_submit(d)
         d["reminders"] = [{"at": at, "label": dl_label(at)} for at in reminders.get(d["id"], [])]
+    import quiz_time    # у тестов — ограничение по времени из СДО (минуты или None)
+    await quiz_time.attach(items)
     stats = await get_deadline_stats(user["id"])
-    return {"items": items, "stats": stats}
+    # последняя проверка СДО группы: «СДО проверено в 12:40» / «СДО не ответил»
+    import sdo_check
+    from database.groups import g_or_home
+    return {"items": items, "stats": stats, "sdo": await sdo_check.state(g_or_home(None))}
 
 
 class NewDeadline(BaseModel):

@@ -196,6 +196,9 @@ class _SdoBadge extends StatelessWidget {
 }
 
 /// Баллы не видны без своего входа — объясняем, что он даст, и ведём подключить.
+/// Новый дизайн (5.80, «Пусто и ошибка»): не подключено — это не ошибка, а
+/// что появится: капибара, «Подключи СДО», одна строка и «Подключить».
+/// Вход устарел — по-прежнему грустная карточка «подключи заново».
 class _ConnectCard extends StatelessWidget {
   final String problem;
   final VoidCallback onTap;
@@ -206,6 +209,7 @@ class _ConnectCard extends StatelessWidget {
     final s = AppStyle.of(context);
     final p = s.p;
     final expired = problem.contains('устарел');
+    if (s.design2 && !expired) return _ConnectBenefit(onTap: onTap);
     final title = problem.replaceFirst(RegExp(r':\s*вкладка.*$'), '');
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: Space.l),
@@ -258,6 +262,54 @@ class _ConnectCard extends StatelessWidget {
                   onTap();
                 },
                 child: Text(expired ? 'Подключить заново' : 'Подключить СДО'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConnectBenefit extends StatelessWidget {
+  final VoidCallback onTap;
+  const _ConnectBenefit({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: Space.l),
+      child: Tile(
+        radius: Radii.card,
+        child: Column(
+          children: [
+            const SizedBox(height: Space.s),
+            CapyImage(pose: CapyPose.joy, size: 96, color: p.accent),
+            const SizedBox(height: Space.m),
+            Text('Подключи СДО', textAlign: TextAlign.center, style: s.title(22)),
+            const SizedBox(height: Space.s),
+            Text(
+              'Баллы, посещения и сдача работ появятся здесь',
+              textAlign: TextAlign.center,
+              style: s.body(15, color: p.muted),
+            ),
+            const SizedBox(height: Space.l),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: p.accent,
+                  foregroundColor: p.onAccent,
+                  shape: const StadiumBorder(),
+                ),
+                onPressed: () {
+                  tick();
+                  onTap();
+                },
+                child: const Text('Подключить'),
               ),
             ),
           ],

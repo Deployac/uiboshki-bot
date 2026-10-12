@@ -230,6 +230,20 @@ def summarize(report: dict, course_name: str = "") -> dict:
 
 # ── страница задания: порог, статус, срок ────────────────────────────────────
 
+_TL = re.compile(r"Ограничение по времени\s*:?\s*((?:\d+(?:[.,]\d+)?\s*(?:дн|час|ч|мин|сек)\w*\.?\s*)+)", re.I)
+_TL_PART = re.compile(r"(\d+(?:[.,]\d+)?)\s*(дн|час|ч|мин|сек)", re.I)
+_TL_UNIT = {"дн": 1440, "час": 60, "ч": 60, "мин": 1, "сек": 1 / 60}
+
+
+def parse_time_limit(text: str) -> int | None:
+    """«Ограничение по времени: 1 час 30 мин.» → 90 (минуты); нет строки — None."""
+    m = _TL.search(text or "")
+    if not m:
+        return None
+    total = sum(float(n.replace(",", ".")) * _TL_UNIT[u.lower()] for n, u in _TL_PART.findall(m.group(1)))
+    return max(1, int(round(total))) if total > 0 else None
+
+
 def parse_assign_page(html: str) -> dict:
     """Строки таблицы статуса на странице задания/теста."""
     soup = BeautifulSoup(html, "html.parser")
@@ -261,11 +275,8 @@ def parse_assign_page(html: str) -> dict:
     closed = dates.get("закрыто", "")
     unavailable = "этот тест недоступен" in text.lower()      # тест ещё не открыт
     # «Ограничение по времени: 30 мин.» (у тестов) — показываем в списке работ
-    tl = re.search(r"Ограничение по времени\s*:?\s*(\d+(?:[.,]\d+)?)\s*(мин|час|ч)", text, re.I)
-    time_limit = None
-    if tl:
-        n = float(tl.group(1).replace(",", "."))
-        time_limit = int(round(n * (60 if tl.group(2).lower().startswith("ч") else 1)))
+    # и в «Сдать» (quiz_time.py); «1 час 30 мин.» — сумма частей
+    time_limit = parse_time_limit(text)
     low = status.lower()
     draft = "черновик" in low or "draft" in low
     # «Оценено» / «Оценено в» в блоке «Отзыв» — кто и когда поставил оценку
@@ -294,6 +305,9 @@ def parse_assign_page(html: str) -> dict:
         "remaining": next((v for k, v in rows.items() if k.startswith("оставшееся время")), ""),
         "due": due, "opens": opens, "closed": closed, "unavailable": unavailable,
         "time_limit": time_limit, "feedback": feedback[:3000],
+        # блок теста со сведениями (попытки, проходная, время) — без строки про
+        # время у такого теста ограничения нет (quiz_time.learned)
+        "quiz_info": bool(soup.find(class_="quizinfo")),
         "graded_by": graded_by, "graded_at": graded_at,
         "can_submit": bool(soup.find(attrs={"name": "action", "value": "editsubmission"})
                            or "action=editsubmission" in html),
@@ -525,6 +539,8 @@ async def course_detail(user_id: int, cookie: str, course_id: int) -> dict:
     for w, p in zip(s["works"], pages):
         if p is not None:
             _pages[(user_id, w["cmid"])] = (time.time(), p)
+    import quiz_time        # время тестов — одно на всех, видно в «Сдать»
+    await quiz_time.remember({w["cmid"]: p for w, p in zip(s["works"], pages) if w["module"] == "quiz"})
     s = recount(s, pages)
     works = []
     for w, p in zip(s["works"], pages):
@@ -633,6 +649,8 @@ async def task_detail(cookie: str, cmid: int, module: str = "assign") -> dict:
         page["maxfiles"] = 0
         if module == "quiz":
             page.update(parse_quiz_page(html), can_submit=False)
+            import quiz_time
+            await quiz_time.remember({cmid: page})
         if page["can_submit"]:
             try:
                 edit = sdo_submit.parse_edit_page((await get_checked(client, url + "&action=editsubmission")).text)

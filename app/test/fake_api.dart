@@ -1,5 +1,6 @@
 // Ответы API из записи стенда сайта (webapp/static/site/demo.json) —
 // те же, что видит демо на /about/demo; ничьих настоящих данных.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,16 +14,22 @@ Map<String, dynamic> demoFixtures() {
 }
 
 /// Api, который отвечает записанными ответами; requests — что спрашивали.
+/// offline — нет сети, slow — сервер не ответил вовремя, delay — сеть медленная.
 Api fakeApi({
   String? token = 'test-token',
   List<String>? requests,
   Map<String, Object?>? bodies,
   bool Function()? offline,
+  bool Function()? slow,
+  Duration Function()? delay,
   Map<String, Object?> overrides = const {},
 }) {
   final fx = demoFixtures();
   final client = MockClient((req) async {
     if (offline?.call() ?? false) throw http.ClientException('нет сети');
+    if (slow?.call() ?? false) throw TimeoutException('сервер не ответил'); // как .timeout() в Api.get
+    final wait = delay?.call();
+    if (wait != null && wait > Duration.zero) await Future<void>.delayed(wait);
     final path = req.url.path.replaceFirst('/api/v1/', '/api/');
     final q = req.url.query.isEmpty ? '' : '?${req.url.query}';
     var key = '${req.method} $path$q';

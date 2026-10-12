@@ -17,16 +17,32 @@ class DlExtra {
   final String editScope;
   final List<({String at, String label})> reminders;
 
+  /// Тест СДО с ограничением по времени — минуты (quiz_time.py), иначе null.
+  final int? timeLimit;
+
   DlExtra.fromJson(Map<String, dynamic> j)
     : description = (j['description'] as String? ?? '').trim(),
       personal = j['personal'] == true,
       mineChanged = j['mine_changed'] == true,
       canEdit = j['can_edit'] == true,
       editScope = j['edit_scope'] as String? ?? 'me',
-      reminders = [for (final r in (j['reminders'] as List? ?? [])) (at: '${r['at']}', label: '${r['label']}')];
+      reminders = [for (final r in (j['reminders'] as List? ?? [])) (at: '${r['at']}', label: '${r['label']}')],
+      timeLimit = (j['time_limit'] as num?)?.toInt();
 
   /// Описание-ссылка — это задание в СДО.
   bool get isLink => description.startsWith('http://') || description.startsWith('https://');
+
+  /// Пометки есть — с [time] считается и время теста (только в новом дизайне).
+  bool hasChips({bool time = false}) =>
+      personal || mineChanged || reminders.isNotEmpty || (time && quizTimeText(timeLimit) != null);
+}
+
+/// Время теста из СДО: «15 мин», «1 ч», «1 ч 30 мин»; без ограничения — null.
+String? quizTimeText(int? minutes) {
+  if (minutes == null || minutes <= 0) return null;
+  final h = minutes ~/ 60, m = minutes % 60;
+  if (h == 0) return '$m мин';
+  return m == 0 ? '$h ч' : '$h ч $m мин';
 }
 
 const _monthsShort = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -366,9 +382,9 @@ class _ActionsSheet extends StatelessWidget {
               const SizedBox(height: Space.s),
               Text(x.description, style: s.body(14, color: p.muted)),
             ],
-            if (x.personal || x.mineChanged || x.reminders.isNotEmpty) ...[
+            if (x.hasChips(time: s.design2 && !d.done)) ...[
               const SizedBox(height: Space.m),
-              DlChips(x: x),
+              DlChips(x: x, time: !d.done),
             ],
             const SizedBox(height: Space.s),
             if (d.canSubmit && !d.done) act(DlAction.submit, Icons.upload_rounded, 'Сдать файлом'),
@@ -394,10 +410,13 @@ class _ActionsSheet extends StatelessWidget {
   }
 }
 
-/// Пометки срока: личный, изменён у тебя, напоминания.
+/// Пометки срока: время теста (новый дизайн), личный, изменён у тебя, напоминания.
 class DlChips extends StatelessWidget {
   final DlExtra x;
-  const DlChips({super.key, required this.x});
+
+  /// Показать время теста — у сданного не нужно.
+  final bool time;
+  const DlChips({super.key, required this.x, this.time = true});
 
   @override
   Widget build(BuildContext context) {
@@ -422,6 +441,11 @@ class DlChips extends StatelessWidget {
       spacing: 6,
       runSpacing: 6,
       children: [
+        if (time && s.design2 && quizTimeText(x.timeLimit) != null)
+          KeyedSubtree(
+            key: const ValueKey('quiz-time'),
+            child: chip(Icons.timer_outlined, quizTimeText(x.timeLimit)!, p.muted),
+          ),
         if (x.personal) chip(Icons.person_outline_rounded, 'личный', p.muted),
         if (x.mineChanged) chip(Icons.edit_outlined, 'изменён у тебя', p.accent),
         for (final r in x.reminders) chip(Icons.notifications_none_rounded, r.label, p.warn),
