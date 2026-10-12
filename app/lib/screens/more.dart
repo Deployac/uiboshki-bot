@@ -9,9 +9,11 @@ import '../api/api.dart';
 import '../api/links.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
+import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/common.dart';
 import '../widgets/goal_card.dart';
+import 'look_screen.dart';
 import 'notify.dart';
 import 'sdo_connect.dart';
 import 'security.dart';
@@ -23,6 +25,9 @@ class MoreScreen extends StatelessWidget {
 
   /// Тема: как в телефоне, светлая или тёмная (main.dart запоминает).
   final ValueChanged<ThemeChoice>? onTheme;
+
+  /// «Оформление» (5.79) — темы, бумага, вид пар и прочее (main.dart запоминает).
+  final ValueChanged<Look>? onLook;
   final VoidCallback onLogout;
   final VoidCallback? onUnauthorized;
 
@@ -43,6 +48,7 @@ class MoreScreen extends StatelessWidget {
     required this.api,
     required this.onFont,
     this.onTheme,
+    this.onLook,
     required this.onLogout,
     this.onUnauthorized,
     this.onGroup,
@@ -86,7 +92,7 @@ class MoreScreen extends StatelessWidget {
                     _TileItem(
                       key: const Key('more:theme'),
                       icon: Icons.palette_outlined,
-                      title: 'Тема и шрифт',
+                      title: s.design2 ? 'Оформление' : 'Тема и шрифт',
                       onTap: () => _themeSheet(context),
                     ),
                     _TileItem(
@@ -211,8 +217,14 @@ class MoreScreen extends StatelessWidget {
   static String _url(String v) => v.startsWith('@') ? 'https://t.me/${v.substring(1)}' : v;
 
   /// «Тема и шрифт» — лист: шрифт и тема (как в телефоне, светлая, тёмная).
-  Future<void> _themeSheet(BuildContext context) =>
-      appSheet<void>(context, (_) => _ThemeSheet(onFont: onFont, onTheme: onTheme));
+  /// С новым дизайном (5.79) — экран «Оформление»; сервер выключил — старый лист.
+  Future<void> _themeSheet(BuildContext context) => AppStyle.of(context).design2
+      ? Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => LookScreen(onFont: onFont, onTheme: onTheme, onLook: onLook),
+          ),
+        )
+      : appSheet<void>(context, (_) => _ThemeSheet(onFont: onFont, onTheme: onTheme));
 
   /// Адрес сервера для ссылок наружу (на стенде base пустой — тот же сайт).
   static String get _origin => Api.base.isEmpty ? Uri.base.origin : Api.base;
@@ -250,7 +262,11 @@ class MoreScreen extends StatelessWidget {
       path = '${(await api.get('/calendar/link'))['ics_path'] ?? ''}';
       if (path.isEmpty) throw ApiError('нет ссылки');
     } catch (e) {
-      toastOn(toast, e is ApiError && e.message == 'нет ссылки' ? 'Не получилось взять ссылку — попробуй позже' : errorText(e), kind: ToastKind.error);
+      toastOn(
+        toast,
+        e is ApiError && e.message == 'нет ссылки' ? 'Не получилось взять ссылку — попробуй позже' : errorText(e),
+        kind: ToastKind.error,
+      );
       return;
     }
     final https = '$_origin$path';
@@ -755,8 +771,8 @@ class _ThemeSheet extends StatelessWidget {
             const SizedBox(height: Space.m),
             Row(
               children: [
-                for (final f in FontChoice.values) ...[
-                  if (f != FontChoice.values.first) const SizedBox(width: Space.s),
+                for (final f in const [FontChoice.book, FontChoice.strict]) ...[
+                  if (f != FontChoice.book) const SizedBox(width: Space.s),
                   Expanded(
                     child: _FontCard(choice: f, selected: s.font == f, onTap: () => onFont(f)),
                   ),
@@ -768,8 +784,8 @@ class _ThemeSheet extends StatelessWidget {
               padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  for (final t in ThemeChoice.values) ...[
-                    if (t != ThemeChoice.values.first) Divider(height: 1, color: p.line),
+                  for (final t in const [ThemeChoice.system, ThemeChoice.light, ThemeChoice.dark]) ...[
+                    if (t != ThemeChoice.system) Divider(height: 1, color: p.line),
                     _ThemeRow(choice: t, selected: s.theme == t, onTap: onTheme == null ? null : () => onTheme!(t)),
                   ],
                 ],
@@ -979,6 +995,7 @@ class _ThemeRow extends StatelessWidget {
         'Как в телефоне',
         p.dark ? 'сейчас тёмная «Глубина»' : 'сейчас светлая «Тетрадь»',
       ),
+      ThemeChoice.sunset => (Icons.wb_twilight_outlined, 'По закату', 'тёмная с заката до восхода'),
       ThemeChoice.light => (Icons.light_mode_outlined, 'Светлая', '«Тетрадь»'),
       ThemeChoice.dark => (Icons.dark_mode_outlined, 'Тёмная', '«Глубина»'),
     };

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
+import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/capsule_tabbar.dart';
 import '../widgets/common.dart';
@@ -40,6 +41,9 @@ class Shell extends StatefulWidget {
   final Api api;
   final ValueChanged<FontChoice> onFont;
   final ValueChanged<ThemeChoice>? onTheme;
+
+  /// «Оформление» (5.79): main.dart запоминает выбор.
+  final ValueChanged<Look>? onLook;
   final VoidCallback onLogout, onUnauthorized;
   final int initialTab;
   const Shell({
@@ -47,6 +51,7 @@ class Shell extends StatefulWidget {
     required this.api,
     required this.onFont,
     this.onTheme,
+    this.onLook,
     required this.onLogout,
     required this.onUnauthorized,
     this.initialTab = 0,
@@ -112,7 +117,9 @@ class _ShellState extends State<Shell> {
     if (me['consent_needed'] == true) {
       final blocked = me['consent_blocked'] == true;
       final ok = await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => ConsentScreen(api: widget.api, required: blocked)),
+        MaterialPageRoute(
+          builder: (_) => ConsentScreen(api: widget.api, required: blocked),
+        ),
       );
       // отказался — данные удалены, ко входу; кто был до согласий может «Не сейчас»
       if (ok == false || (blocked && ok != true)) return widget.onLogout();
@@ -171,6 +178,7 @@ class _ShellState extends State<Shell> {
         api: api,
         onFont: widget.onFont,
         onTheme: widget.onTheme,
+        onLook: widget.onLook,
         onLogout: widget.onLogout,
         onUnauthorized: un,
         onGroup: () => pickGroup(),

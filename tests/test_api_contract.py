@@ -30,3 +30,14 @@ def test_v1_prefix_and_meta(db, monkeypatch):
     assert c.get("/api/v1/me").status_code == 401                              # вход — как у /api
     monkeypatch.setenv("APP_MIN_IOS", "1.2.0")
     assert c.get("/api/meta").json()["min_client"]["ios"] == "1.2.0"
+
+
+def test_meta_design2_switch(monkeypatch):
+    """Новый дизайн приложения (5.79) выключается переменной DESIGN2=0 — откат
+    без нового выпуска; по умолчанию включён."""
+    import webapp.server as server
+    c = TestClient(server.app)
+    monkeypatch.delenv("DESIGN2", raising=False)
+    assert c.get("/api/v1/meta").json()["features"]["design2"] is True
+    monkeypatch.setenv("DESIGN2", "0")
+    assert c.get("/api/v1/meta").json()["features"]["design2"] is False

@@ -141,8 +141,11 @@ async function scenario(name, opts, fn) {
       check(await L.has(p, want), `${t} открывается`);
       await L.back(p);
     }
-    await L.tap(p, 'Тема и шрифт', { wait: 1500 });
-    await L.tap(p, /^Аа 73 ⏎?\n?Строгий|Строгий/, { wait: 1000, optional: true });
+    // «Оформление» (5.79): живой пример сверху, выборы ниже
+    await L.tap(p, 'Оформление', { wait: 1800 });
+    check(await L.has(p, 'Идёт первая пара'), '«Оформление» с живым примером');
+    await L.shot(p, 'robot-look-1');
+    await L.tap(p, 'Строгий', { wait: 1000, optional: true });
     await L.back(p);
   });
 

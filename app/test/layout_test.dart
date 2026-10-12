@@ -21,6 +21,7 @@ import 'package:uiboshki/screens/group_pick.dart';
 import 'package:uiboshki/screens/homework.dart';
 import 'package:uiboshki/screens/lesson.dart';
 import 'package:uiboshki/screens/login.dart';
+import 'package:uiboshki/screens/look_screen.dart';
 import 'package:uiboshki/screens/notify.dart';
 import 'package:uiboshki/screens/sdo_connect.dart';
 import 'package:uiboshki/screens/search.dart';
@@ -31,6 +32,7 @@ import 'package:uiboshki/screens/task.dart';
 import 'package:uiboshki/screens/today.dart';
 import 'package:uiboshki/screens/week.dart';
 import 'package:uiboshki/theme/app_theme.dart';
+import 'package:uiboshki/theme/look.dart';
 import 'package:uiboshki/widgets/capsule_tabbar.dart';
 
 import 'fake_api.dart';
@@ -576,4 +578,49 @@ void main() {
     }
     expect(find.text('Что где'), findsNothing);
   });
+
+  // «Оформление» (5.79): экран и «Сегодня» в новых видах (полоска, строками,
+  // «Кампус», «Библиотека», бумага) — без переполнений на всех экранах.
+  Widget look(Palette p, FontChoice f, Look l, Widget child) => AppStyle(
+    p: p,
+    font: f,
+    look: l,
+    design2: true,
+    child: MaterialApp(theme: materialTheme(p), home: child),
+  );
+  const looks = {
+    'полоска, клетка': Look(card: CardStyle.stripe, paper: Paper.cell),
+    'строками, миллиметровка': Look(day: DayView.rows, paper: Paper.grid),
+  };
+  for (final d in devices) {
+    for (final p in [Palette.library, Palette.campus]) {
+      for (final f in FontChoice.values) {
+        final tag = '${d.name} · ${p.dark ? 'библиотека' : 'кампус'} · ${f.name}';
+        testWidgets('оформление: $tag', (t) async {
+          useDevice(t, d);
+          await t.pumpWidget(look(p, f, const Look(), LookScreen(onFont: (_) {})));
+          await settle(t);
+          _belowNotch(t, d);
+          await scrollThrough(t);
+        });
+        for (final e in looks.entries) {
+          testWidgets('сегодня, ${e.key}: $tag', (t) async {
+            useDevice(t, d);
+            await t.pumpWidget(
+              look(
+                p,
+                f,
+                e.value,
+                Scaffold(
+                  body: SafeArea(child: TodayScreen(api: longApi(firstAt: -10))),
+                ),
+              ),
+            );
+            await settle(t);
+            await scrollThrough(t);
+          });
+        }
+      }
+    }
+  }
 }

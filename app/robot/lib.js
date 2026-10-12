@@ -110,6 +110,8 @@ async function open(opts = {}) {
     if (state.mode === 'offline') return route.abort('internetdisconnected');
     let res = key in state.overrides ? state.overrides[key] : (demo[key] ?? extra[key] ?? extra[`${r.method()} ${p}`]);
     if (res === undefined) res = fallback(r.method(), p);
+    // новый дизайн (5.79, «Оформление») робот проверяет включённым, как на сервере
+    if (p === '/api/meta' && res?.features) res = { ...res, features: { design2: true, ...res.features } };
     if (res === undefined || res === null) {
       if (r.method() === 'GET') log.unknown.add(key);
       res = { ok: true };

@@ -35,16 +35,41 @@ class ThemeNotebook {
   static const tabbar = Color(0xDBF3EEE5);
 }
 
-const subjectColors = <Color>[
-  Color(0xFF8B7CF6),
-  Color(0xFFF5A524),
-  Color(0xFF2EC4B6),
-  Color(0xFFFF6B6B),
-  Color(0xFF4F8CFF),
-  Color(0xFFE86FB0),
-  Color(0xFF7BC67E),
-  Color(0xFFF2994A),
-];
+class ThemeCampus {
+  static const bg = Color(0xFFF6F7FA);
+  static const bgGlow1 = Color(0xFFEEF1FA);
+  static const bgGlow2 = Color(0xFFF1F3F8);
+  static const card = Color(0xFFFFFFFF);
+  static const cardSolid = Color(0xFFFFFFFF);
+  static const line = Color(0xFFE3E6EE);
+  static const text = Color(0xFF202631);
+  static const muted = Color(0xFF6B7385);
+  static const accent = Color(0xFF4355DB);
+  static const onAccent = Color(0xFFFFFFFF);
+  static const ok = Color(0xFF2E9A5E);
+  static const warn = Color(0xFFC98A1B);
+  static const danger = Color(0xFFD0453A);
+  static const tabbar = Color(0xE6FFFFFF);
+}
+
+class ThemeLibrary {
+  static const bg = Color(0xFF111715);
+  static const bgGlow1 = Color(0xFF1E3329);
+  static const bgGlow2 = Color(0xFF2A2E1C);
+  static const card = Color(0x12FFFFFF);
+  static const cardSolid = Color(0xFF1C2521);
+  static const line = Color(0x1AFFFFFF);
+  static const text = Color(0xFFEDF0E8);
+  static const muted = Color(0xFF9AA79D);
+  static const accent = Color(0xFFB9DCA3);
+  static const onAccent = Color(0xFF111715);
+  static const ok = Color(0xFF5FD08A);
+  static const warn = Color(0xFFF0B44C);
+  static const danger = Color(0xFFFF7B6B);
+  static const tabbar = Color(0xCC1C2521);
+}
+
+const subjectColors = <Color>[Color(0xFF8B7CF6), Color(0xFFF5A524), Color(0xFF2EC4B6), Color(0xFFFF6B6B), Color(0xFF4F8CFF), Color(0xFFE86FB0), Color(0xFF7BC67E), Color(0xFFF2994A)];
 
 class Radii {
   static const double card = 26;
