@@ -1,5 +1,6 @@
 // Общие кирпичики экранов: фон с подсветкой, карточка, заголовок экрана,
 // плашка-сообщение и листы-вопросы.
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -411,6 +412,12 @@ class _LoaderState<T> extends State<Loader<T>> {
   T? _data;
   Object? _error;
 
+  /// Сеть уже ответила (или не смогла) хоть раз.
+  bool _netDone = false;
+
+  /// Показан запас и ждём сеть — ключ в [Api.refreshing] (строка «Обновляю»).
+  Object? _wait;
+
   @override
   void initState() {
     super.initState();
@@ -418,10 +425,28 @@ class _LoaderState<T> extends State<Loader<T>> {
     _reload();
   }
 
+  @override
+  void dispose() {
+    // не посреди сборки дерева: строку наверху перерисуем после кадра
+    final k = _wait;
+    if (k != null) scheduleMicrotask(() => Api.refreshDone(k));
+    super.dispose();
+  }
+
   /// Пока идёт сеть — прошлые данные из запаса телефона, без крутилки.
   Future<void> _fromCache() async {
-    final d = await Api.fromCache(widget.load);
-    if (d != null && mounted && _data == null) setState(() => _data = d);
+    final c = await Api.fromCacheAt(widget.load);
+    if (c != null && mounted && _data == null) {
+      setState(() => _data = c.value);
+      final at = c.at;
+      if (!_netDone && at != null) _wait = Api.refreshStart(at);
+    }
+  }
+
+  void _fresh() {
+    _netDone = true;
+    Api.refreshDone(_wait);
+    _wait = null;
   }
 
   Future<void> _reload() async {
@@ -439,6 +464,8 @@ class _LoaderState<T> extends State<Loader<T>> {
         return;
       }
       if (mounted) setState(() => _error = e);
+    } finally {
+      if (mounted) _fresh();
     }
   }
 

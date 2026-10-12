@@ -106,25 +106,63 @@ class Api {
   /// Без сети — ответы GET из последней удачной загрузки (как sw.js у PWA).
   /// Время той загрузки — здесь; null — данные свежие.
   final offlineSince = ValueNotifier<DateTime?>(null);
+
+  /// Почему из запаса: сервер не ответил вовремя (true) или сети нет вовсе
+  /// (false). Плашка нового дизайна пишет «Сервер не отвечает» / «Нет сети».
+  final offlineSlow = ValueNotifier<bool>(false);
   static const _cachePrefix = 'uib_cache:';
   static const timeout = Duration(seconds: 8);
 
-  /// Внутри [fromCache] get берёт только запомненное и в сеть не ходит.
+  /// Внутри [fromCache] get берёт только запомненное и в сеть не ходит;
+  /// значение зоны — [_CacheRead], куда get пишет время запомненного.
   static const _cacheOnly = #uibCacheOnly;
 
   /// Идёт загрузка «из запаса» ([fromCache]): экран может отказаться от старого ответа.
-  static bool get cacheOnly => Zone.current[_cacheOnly] == true;
+  static bool get cacheOnly => Zone.current[_cacheOnly] is _CacheRead;
 
   /// Загрузка экрана из запаса телефона, без сети: экран показывает прошлые
   /// данные сразу, свежие догружаются следом (владелец, 09.10: «долго грузит»).
   /// null — чего-то в запасе нет.
-  static Future<T?> fromCache<T>(Future<T> Function() load) =>
-      runZoned(() => load().then<T?>((v) => v).catchError((_) => null), zoneValues: {_cacheOnly: true});
+  static Future<T?> fromCache<T>(Future<T> Function() load) => fromCacheAt(load).then((r) => r?.value);
+
+  /// То же и время запомненного (самого старого из ответов, что пошли в
+  /// экран) — для строки «Обновляю · данные от 09:41».
+  static Future<({T value, DateTime? at})?> fromCacheAt<T>(Future<T> Function() load) {
+    final read = _CacheRead();
+    return runZoned(
+      () => load().then<({T value, DateTime? at})?>((v) => (value: v, at: read.at)).catchError((_) => null),
+      zoneValues: {_cacheOnly: read},
+    );
+  }
+
+  /// Экраны, что показывают запас и ждут свежий ответ: самое старое время
+  /// их данных; null — никто не ждёт. Ключ — у каждого экрана свой.
+  static final refreshing = ValueNotifier<DateTime?>(null);
+  static final _waiting = <Object, DateTime>{};
+
+  /// Экран показал запас от [at] и ждёт сеть; вернуть ключ в [refreshDone].
+  static Object refreshStart(DateTime at) {
+    final key = Object();
+    _waiting[key] = at;
+    _updateRefreshing();
+    return key;
+  }
+
+  static void refreshDone(Object? key) {
+    if (key == null || _waiting.remove(key) == null) return;
+    _updateRefreshing();
+  }
+
+  static void _updateRefreshing() {
+    refreshing.value = _waiting.isEmpty ? null : _waiting.values.reduce((a, b) => a.isBefore(b) ? a : b);
+  }
 
   Future<dynamic> get(String path) async {
-    if (Zone.current[_cacheOnly] == true) {
+    final read = Zone.current[_cacheOnly];
+    if (read is _CacheRead) {
       final cached = await _cached(path);
       if (cached == null) throw StateError('нет в запасе');
+      read.saw(cached.at);
       return cached.body;
     }
     final http.Response r;
@@ -133,6 +171,7 @@ class Api {
     } catch (e) {
       final cached = await _cached(path).catchError((_) => null);
       if (cached == null) rethrow;
+      offlineSlow.value = e is TimeoutException;
       offlineSince.value = cached.at;
       return cached.body;
     }
@@ -161,7 +200,7 @@ class Api {
 
   /// Запись из загрузки «из запаса» — нельзя: бросаем, экран ждёт сеть.
   Never? _noCacheZone() {
-    if (Zone.current[_cacheOnly] == true) throw StateError('запись без сети');
+    if (cacheOnly) throw StateError('запись без сети');
     return null;
   }
 
@@ -234,5 +273,13 @@ class Api {
     } catch (_) {}
     await saveToken(null);
     await clearCache();
+  }
+}
+
+/// Что прочла загрузка из запаса: самое старое время ответов.
+class _CacheRead {
+  DateTime? at;
+  void saw(DateTime t) {
+    if (at == null || t.isBefore(at!)) at = t;
   }
 }

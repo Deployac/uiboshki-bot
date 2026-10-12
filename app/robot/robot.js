@@ -159,7 +159,7 @@ async function scenario(name, opts, fn) {
     await L.tap(p, 'Неделя', { wait: 1500 });
     s.state.mode = 'offline';
     await p.reload(); await p.waitForTimeout(3500); await p.evaluate(() => document.querySelector('flt-semantics-placeholder')?.click()); await p.waitForTimeout(800);
-    check(await L.has(p, 'Без сети · данные от'), 'плашка «Без сети» и прошлые данные');
+    check(await L.has(p, 'Нет сети · данные от'), 'плашка «Нет сети» (новый дизайн) и прошлые данные');
     check(await L.has(p, 'сегодня · 5 пар'), 'расписание видно без сети');
   });
 
