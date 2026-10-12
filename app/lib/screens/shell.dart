@@ -93,7 +93,50 @@ class _ShellState extends State<Shell> {
   void _open(int i) => setState(() {
     if (_stale.remove(i)) _gen[i]++;
     _index = i;
+    _barHidden = false; // сменил вкладку — меню на месте
+    _drift = 0;
   });
+
+  // Меню при прокрутке (новый дизайн, Никита 12.10, вариант Г): капсула
+  // уезжает вниз только в длинном списке («Неделя», «Сдано»), пока человек
+  // пальцем листает дальше, и возвращается, когда чуть листнул назад, дошёл
+  // до конца или начала, сменил вкладку или список короткий. Прыжки списка
+  // из кода (нажатие на день, тесты) меню не прячут.
+  bool _barHidden = false;
+
+  /// Сколько палец увёл список в одну сторону (больше нуля — дальше по списку).
+  double _drift = 0;
+  static const _hideAfter = 32.0, _showAfter = 24.0;
+
+  /// Длинный список: прокрутки больше полутора экранов.
+  static bool _long(ScrollMetrics m) => m.maxScrollExtent - m.minScrollExtent > 1.5 * m.viewportDimension;
+
+  void _setBar(bool hidden) {
+    if (hidden != _barHidden) setState(() => _barHidden = hidden);
+  }
+
+  bool _onScroll(int tab, Notification n) {
+    if (tab != _index || !AppStyle.of(context).design2) return false;
+    final (depth, m) = switch (n) {
+      ScrollNotification() => (n.depth, n.metrics),
+      ScrollMetricsNotification() => (n.depth, n.metrics),
+      _ => (-1, null),
+    };
+    // только главный список вкладки, вложенные и горизонтальные — мимо
+    if (depth != 0 || m == null || m.axisDirection != AxisDirection.down || !m.hasContentDimensions) return false;
+    if (!_long(m) || m.pixels <= m.minScrollExtent || m.pixels >= m.maxScrollExtent - 1) {
+      _drift = 0;
+      _setBar(false);
+      return false;
+    }
+    final delta = n is ScrollUpdateNotification && n.dragDetails != null ? n.scrollDelta ?? 0 : 0.0;
+    if (delta == 0) return false;
+    if ((delta > 0) != (_drift > 0)) _drift = 0;
+    _drift += delta;
+    if (_drift > _hideAfter) _setBar(true);
+    if (_drift < -_showAfter) _setBar(false);
+    return false;
+  }
 
   @override
   void initState() {
@@ -196,13 +239,26 @@ class _ShellState extends State<Shell> {
             children: [
               OfflineBanner(since: widget.api.offlineSince),
               Expanded(
-                child: IndexedStack(index: _index, children: pages),
+                child: IndexedStack(
+                  index: _index,
+                  children: [
+                    for (final (i, page) in pages.indexed)
+                      NotificationListener<Notification>(onNotification: (n) => _onScroll(i, n), child: page),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
-      bottomNavigationBar: CapsuleTabBar(key: _bar, items: tabs, index: _index, onTap: _open),
+      bottomNavigationBar: CapsuleTabBar(
+        key: _bar,
+        items: tabs,
+        index: _index,
+        onTap: _open,
+        // с экранным диктором меню не прячем — до вкладок всегда дойти
+        hidden: _barHidden && AppStyle.of(context).design2 && !MediaQuery.accessibleNavigationOf(context),
+      ),
     );
   }
 }

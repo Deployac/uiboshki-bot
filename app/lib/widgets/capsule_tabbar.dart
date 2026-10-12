@@ -1,5 +1,7 @@
 // Нижнее меню «капсула»: выбранная вкладка — пилюля с подписью, остальные —
 // только значки. Пилюля плавно перетекает, касание — лёгкий отклик.
+// В длинном списке (новый дизайн) капсула уезжает вниз, пока читаешь дальше
+// ([hidden], решает shell.dart).
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -18,10 +20,27 @@ class CapsuleTabBar extends StatelessWidget {
   final List<TabItem> items;
   final int index;
   final ValueChanged<int> onTap;
-  const CapsuleTabBar({super.key, required this.items, required this.index, required this.onTap});
+
+  /// Спрятана под край экрана. Место под ней в вёрстке остаётся: конец
+  /// списка и плашки не прыгают.
+  final bool hidden;
+  const CapsuleTabBar({super.key, required this.items, required this.index, required this.onTap, this.hidden = false});
+
+  /// Сколько едет капсула: motion.sheet_ms из design/tokens.json.
+  static const slide = Duration(milliseconds: 280);
 
   @override
   Widget build(BuildContext context) {
+    final still = MediaQuery.disableAnimationsOf(context);
+    return AnimatedSlide(
+      offset: hidden ? const Offset(0, 1) : Offset.zero,
+      duration: still ? Duration.zero : slide,
+      curve: hidden ? Curves.easeInCubic : Curves.easeOutCubic,
+      child: _bar(context),
+    );
+  }
+
+  Widget _bar(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
     return SafeArea(
