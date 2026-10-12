@@ -369,4 +369,60 @@ void main() {
     expect(t.widget<DayCell>(find.byKey(today)).selected, isTrue);
     expect(asked.last, isNot(contains('start=${iso(mondayOf(now()).add(const Duration(days: 21)))}')));
   });
+
+  testWidgets('пар нет или кончились — ниже пары на завтра (владелец, 11.10: «пустовато»)', (t) async {
+    phone(t);
+    final tm = now().add(const Duration(days: 1));
+    final at9 = DateTime(tm.year, tm.month, tm.day, 9);
+    final tomorrow = [
+      _lesson(at9, 1, 'Производственная практика', 'А-17 (В-78)'),
+      _lesson(at9.add(const Duration(minutes: 100)), 2, 'Архитектура предприятия', 'А-18 (В-78)'),
+      _lesson(at9.add(const Duration(minutes: 220)), 3, 'Анализ данных', 'Г-226 (В-78)'),
+    ];
+    Map<String, Object?> answers(List<Map<String, Object?>> today, {bool withDay = true}) {
+      final a = _answers(today);
+      (a['GET /api/today'] as Map)['tomorrow_first'] = tomorrow.first;
+      return {...a, 'GET /api/day?date=${iso(tm)}': withDay ? {'lessons': tomorrow} : 'нет ответа'};
+    }
+
+    // сегодня пар нет — плашка коротко и все пары завтра карточками
+    await t.pumpWidget(_wrap(TodayScreen(key: UniqueKey(), api: fakeApi(overrides: answers([])))));
+    await settle(t);
+    expect(find.text('Сегодня пар нет'), findsOneWidget);
+    expect(find.text('Завтра первая — в 09:00.'), findsOneWidget);
+    expect(find.text('завтра · 3 пары'), findsOneWidget);
+    expect(find.byType(LessonCard), findsNWidgets(3));
+    expect(find.text('Открытых сроков нет'), findsOneWidget); // пустовато не будет и без сроков
+
+    // срок не скоро — блок «сдать», а не «горит»
+    final far = answers([]);
+    final due = iso(now().add(const Duration(days: 10)));
+    (far['GET /api/today'] as Map)['deadlines'] = {
+      'active': 1,
+      'soon': [
+        {'id': 7, 'subject': 'Курсовая · Анализ данных', 'due_date': due, 'due_time': '23:59', 'days': 10},
+      ],
+    };
+    await t.pumpWidget(_wrap(TodayScreen(key: UniqueKey(), api: fakeApi(overrides: far))));
+    await settle(t);
+    expect(find.text('сдать'), findsOneWidget);
+    expect(find.text('горит'), findsNothing);
+    expect(find.text('Курсовая · Анализ данных'), findsOneWidget);
+
+    // пары кончились — первая завтрашняя крупно, остальные ниже
+    final ago = now().subtract(const Duration(hours: 4));
+    await t.pumpWidget(
+      _wrap(TodayScreen(key: UniqueKey(), api: fakeApi(overrides: answers([_lesson(ago, 1, 'Философия', 'А-1')])))),
+    );
+    await settle(t);
+    expect(find.text('завтра первая пара в'), findsOneWidget);
+    expect(find.text('завтра · ещё 2 пары'), findsOneWidget);
+    expect(find.byType(LessonCard), findsNWidgets(3)); // сегодняшняя и две завтрашние
+
+    // завтрашний день не пришёл — как раньше, одна строка
+    await t.pumpWidget(_wrap(TodayScreen(key: UniqueKey(), api: fakeApi(overrides: answers([], withDay: false)))));
+    await settle(t);
+    expect(find.text('Завтра первая — 09:00, Производственная практика.'), findsOneWidget);
+    expect(find.textContaining('завтра ·'), findsNothing);
+  });
 }
