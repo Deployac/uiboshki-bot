@@ -12,7 +12,7 @@ import re
 logger = logging.getLogger(__name__)
 
 TITLES = {"morning": "Доброе утро", "lesson": "Скоро пара", "deadlines": "Дедлайны",
-          "new_tasks": "Новое в СДО", "weekly": "Неделя", "grades": "Новые баллы"}
+          "new_tasks": "Новое в СДО", "weekly": "Неделя", "grades": "Новые баллы", "evening": "Завтра"}
 
 
 def plain(html: str, limit: int = 180) -> str:
@@ -23,14 +23,24 @@ def plain(html: str, limit: int = 180) -> str:
     return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
-async def push(user_id: int, kind: str, html: str, tab: str | None = None) -> int:
-    """Веб-пуш на все устройства человека. → сколько ушло."""
+def _body(html: str, title: str | None) -> str:
+    """Текст пуша; со своим заголовком — без первой строки, где он уже есть."""
+    text = plain(html, 10_000)
+    head, _, rest = text.partition("\n")
+    if title and title in head and rest.strip():
+        text = rest.strip()
+    return plain(text)
+
+
+async def push(user_id: int, kind: str, html: str, tab: str | None = None, title: str | None = None) -> int:
+    """Веб-пуш на все устройства человека. → сколько ушло. title — свой
+    заголовок вместо общего по kind (вечерняя сводка: «Завтра: 3 пары с 09:00»)."""
     import webpush
     from database.push import delete_push_sub, get_push_subs
     subs = await get_push_subs(user_id)
     if not subs:
         return 0
-    data = {"title": TITLES.get(kind, "УИБО-бот"), "body": plain(html),
+    data = {"title": title or TITLES.get(kind, "УИБО-бот"), "body": _body(html, title),
             "url": "/app" + (f"?tab={tab}" if tab else ""), "tag": kind}
     sent = 0
     for sub in subs:
@@ -49,7 +59,7 @@ async def push(user_id: int, kind: str, html: str, tab: str | None = None) -> in
 
 
 async def deliver(bot, user_id: int, html: str, *, kind: str, tab: str | None = None, reply_markup=None,
-                  parse_mode: str = "HTML"):
+                  parse_mode: str = "HTML", title: str | None = None):
     """Сообщение человеку: Telegram (как раньше) + пуш на его устройства.
     Ошибка Telegram пробрасывается (рассылки её логируют), пуш — молча.
     До согласия на обработку данных (privacy.blocked) — ничего."""
@@ -57,7 +67,7 @@ async def deliver(bot, user_id: int, html: str, *, kind: str, tab: str | None = 
     if await privacy.blocked(user_id):
         return None
     try:
-        await push(user_id, kind, html, tab)
+        await push(user_id, kind, html, tab, **({"title": title} if title else {}))
     except Exception as e:
         logger.info(f"доставка {user_id}: пуш не ушёл: {e}")
     from database.identities import is_local

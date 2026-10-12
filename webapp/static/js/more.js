@@ -630,6 +630,27 @@ function saveRemindCustom(key, max) {
   setRemind(key, n);
 }
 
+// Вечерняя сводка на завтра (evening_digest.py, Никита 12.10): пары, погода,
+// сроки — в выбранное время. Сервер отдаёт ключ только при новом дизайне
+// (DESIGN2=0 — пункта нет).
+const EVENING_TIMES = ["19:00", "20:00", "21:00", "22:00"];
+
+function ntEvening(p) {
+  if (!("evening" in p)) return "";
+  const t = p.evening_time || "20:00";
+  const times = EVENING_TIMES.includes(t) ? EVENING_TIMES : EVENING_TIMES.concat([t]).sort();
+  return '<div class="nt-card' + (p.evening ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("moon") + '</span>' +
+    '<div><b>Вечерняя сводка</b><p>Пары и сроки на завтра · ' + escapeHtml(t) + '</p></div>' +
+    ntSwitch(p.evening, "toggleNotify('evening')") + '</div>' +
+    (p.evening ? '<div class="nt-mins">' + times.map(x =>
+      '<button class="' + (x === t ? "on" : "") + '" onclick="setEveningTime(\'' + x + '\')">' + x + '</button>').join("") + '</div>' : "") +
+    '</div>';
+}
+
+function setEveningTime(t) {
+  saveNotify({ prefs: { evening_time: t } });
+}
+
 function renderNotify() {
   const s = notifyState, p = s.prefs;
   const box = document.getElementById("notify-body");
@@ -656,7 +677,8 @@ function renderNotify() {
         ntSwitch(p.grades, "toggleNotify('grades')") + '</div></div>' +
       '<div class="nt-card' + (p.new_tasks ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("deadlines") + '</span>' +
         '<div><b>Новые задания</b><p>напишу, когда в СДО появится задание или перенесут срок</p></div>' +
-        ntSwitch(p.new_tasks, "toggleNotify('new_tasks')") + '</div></div>';
+        ntSwitch(p.new_tasks, "toggleNotify('new_tasks')") + '</div></div>' +
+      ntEvening(p);
   }
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';
   renderPushRow();

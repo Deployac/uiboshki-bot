@@ -26,6 +26,11 @@ REMIND = {
 }
 SHORT_BREAK_MAX = 20   # минут между парами: до стольки — «короткая перемена»
 
+# Вечерняя сводка на завтра (evening_digest.py, Никита 12.10): время — с 17:00
+# до 23:30 через полчаса (задача проверяет раз в 30 минут). Выключена у всех,
+# пока человек сам не включит; при DESIGN2=0 её нет совсем.
+EVENING_TIMES = [f"{h:02d}:{m:02d}" for h in range(17, 24) for m in (0, 30)]
+
 DEFAULTS = {
     "morning": True, "morning_days": ALL_DAYS, "weather": True, "campus": True, "skip_empty": False,
     "lessons": True, "lesson_days": ALL_DAYS,
@@ -34,6 +39,8 @@ DEFAULTS = {
     "weekly": True,          # обзор недели в воскресенье вечером (weekly_digest.py)
     "grades": True,          # новые баллы в СДО (grade_alerts.py)
     "new_tasks": True,       # новые задания из СДО после синка (new_tasks.py)
+    "evening": False,        # вечерняя сводка на завтра (evening_digest.py)
+    "evening_time": "20:00",
 }
 DAYS_KEY = {"morning": "morning_days", "lessons": "lesson_days", "deadlines": "deadline_days"}
 _BOOLS = [k for k, v in DEFAULTS.items() if isinstance(v, bool)]
@@ -56,6 +63,8 @@ def merge(raw: str | dict | None) -> dict:
         v = raw.get(k)
         if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= spec["max"]:
             out[k] = v
+    if raw.get("evening_time") in EVENING_TIMES:
+        out["evening_time"] = raw["evening_time"]
     for k in _DAYS:
         v = raw.get(k)
         if isinstance(v, list):
