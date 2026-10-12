@@ -88,6 +88,11 @@ jobs:
           flutter build ios --release --no-codesign --build-number=${{ github.run_number }}
           mkdir -p Payload
           cp -R build/ios/iphoneos/Runner.app Payload/
+          # --no-codesign не вшивает entitlements: без них AltStore не создаёт
+          # App Group, и виджет не видит данных приложения. Подпись ad-hoc — только
+          # чтобы entitlements попали в бинарники (AltStore всё равно переподписывает).
+          codesign --force --sign - --entitlements ios/KapibaraWidget/KapibaraWidget.entitlements Payload/Runner.app/PlugIns/KapibaraWidget.appex
+          codesign --force --sign - --entitlements ios/Runner/Runner.entitlements Payload/Runner.app
           zip -qr kapibara-${{ github.run_number }}.ipa Payload
 
       - uses: actions/upload-artifact@v4
