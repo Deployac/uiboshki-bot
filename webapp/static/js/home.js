@@ -530,6 +530,93 @@ function hideHomeAdd() {
   try { localStorage.setItem(HOME_ADD_KEY, "1"); } catch (e) {}
 }
 
+// PWA вне Telegram (5.81, Никита 12.10): сверху «Сегодня» — подсказка, по
+// одному шагу. Открыто во вкладке браузера на телефоне — как поставить на
+// экран «Домой» (на iPhone пуши работают только оттуда); открыто с экрана —
+// включить уведомления, если ещё не включены. ✕ прячет шаг на этом
+// устройстве; те же пути остаются в «Ещё» («Установить», «Уведомления»).
+const PWA_HINT_KEY = "pwaHint.hidden.";        // + install | push
+const PWA_STANDALONE = !!(navigator.standalone ||
+  (window.matchMedia && matchMedia("(display-mode: standalone)").matches));
+// iPadOS представляется Mac'ом — отличаем по сенсорному экрану
+const PWA_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+  (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const PWA_MOBILE = PWA_IOS || /Android/.test(navigator.userAgent);
+
+function pwaHintHidden(step) {
+  try { return !!localStorage.getItem(PWA_HINT_KEY + step); } catch (e) { return false; }
+}
+
+async function initPwaHint() {
+  const box = document.getElementById("pwa-hint");
+  if (IN_TG || NEED_LOGIN || !box) return;
+  let html = "";
+  if (PWA_MOBILE && !PWA_STANDALONE && !pwaHintHidden("install")) {
+    html = pwaInstallHint();
+  } else if ((PWA_STANDALONE || pwaHintHidden("install") || !PWA_MOBILE) && !pwaHintHidden("push") && pushSupported()) {
+    html = await pwaPushHint();
+  }
+  box.innerHTML = html;
+  box.style.display = html ? "block" : "none";
+}
+
+function pwaHintHead(ic, title, text, step) {
+  return '<div class="head">' + icon(ic) + '<div class="txt"><b>' + title + '</b>' + text + '</div>' +
+    '<button class="x" onclick="hidePwaHint(\'' + step + '\')" aria-label="Скрыть">' + icon("cross") + '</button></div>';
+}
+
+function pwaInstallHint() {
+  const head = pwaHintHead("phone", "Капибара на экране «Домой»",
+    "Откроется как обычное приложение, без адресной строки" + (PWA_IOS ? ", и сможет присылать уведомления." : "."), "install");
+  if (!PWA_IOS && installPrompt) return head + '<button class="go" onclick="addToHome()">Установить</button>';
+  const steps = PWA_IOS
+    ? [["share", "Нажми «Поделиться»" + (/CriOS|FxiOS|YaBrowser/.test(navigator.userAgent) ? " в адресной строке" : " внизу Safari")],
+       ["addSquare", "Выбери «На экран „Домой“»"],
+       ["capy", "Открой Капибару с экрана «Домой»"]]
+    : [["dots", "Открой меню браузера"],
+       ["addSquare", "«Установить приложение» или «Добавить на главный экран»"],
+       ["capy", "Открой Капибару с экрана телефона"]];
+  return head + '<ol>' + steps.map(([ic, t]) => '<li>' + icon(ic) + '<span>' + t + '</span></li>').join("") + '</ol>';
+}
+
+async function pwaPushHint() {
+  if (Notification.permission === "denied") {
+    return pwaHintHead("bell", "Уведомления запрещены",
+      PWA_IOS ? "Включить: Настройки iPhone → Уведомления → Капибара."
+              : "Включить: значок слева от адреса или настройки сайта → Уведомления.", "push");
+  }
+  try {
+    // без работника (не https) ready не наступит — тогда без подсказки
+    const reg = await Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(r, 4000))]);
+    if (!reg || (Notification.permission === "granted" && await reg.pushManager.getSubscription())) return "";
+  } catch (e) { return ""; }
+  return pwaHintHead("bell", "Включи уведомления",
+    "Утро, пары, сроки и новые баллы — пушем, как у обычного приложения. Что присылать — «Ещё → Уведомления».", "push") +
+    '<button class="go" onclick="pwaEnablePush()">Включить</button>';
+}
+
+async function pwaEnablePush() {
+  haptic();
+  if (await enablePush()) {
+    haptic("success");
+    showToast("Готово — уведомления будут приходить сюда");
+  }
+  initPwaHint();
+}
+
+function hidePwaHint(step) {
+  haptic();
+  try { localStorage.setItem(PWA_HINT_KEY + step, "1"); } catch (e) {}
+  initPwaHint();
+}
+
+// Android: «Установить» появляется, когда браузер готов; поставили — шаг про пуши
+window.addEventListener("beforeinstallprompt", () => setTimeout(initPwaHint, 0));
+window.addEventListener("appinstalled", () => {
+  try { localStorage.setItem(PWA_HINT_KEY + "install", "1"); } catch (e) {}
+  initPwaHint();
+});
+
 
 // Предметы по выбору (военная кафедра): пары скрыты, пока человек не
 // скажет «хожу». Спрашиваем карточкой на главной — кто ходит, сразу видит,

@@ -552,17 +552,28 @@ async function togglePush(on) {
     if (on) {
       if (sub) { await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: sub.endpoint }) }); await sub.unsubscribe(); }
       showToast("Пуши на этом устройстве выключены");
-    } else {
-      if (await Notification.requestPermission() !== "granted") { showToast("Разреши уведомления в настройках браузера"); return; }
-      const { key } = await api("/api/push/key");
-      const pad = "=".repeat((4 - key.length % 4) % 4);
-      const raw = Uint8Array.from(atob((key + pad).replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
-      const fresh = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw });
-      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(fresh.toJSON()) });
+    } else if (await enablePush()) {
       showToast("Готово — пуши будут приходить сюда");
     }
   } catch (e) { showToast("Не получилось: " + e.message); }
   openNotify();
+  if (typeof initPwaHint === "function") initPwaHint();
+}
+
+// Спросить разрешение и подписать устройство на пуши — из «Уведомлений» и из
+// подсказки на «Сегодня» (home.js). Звать по нажатию: иначе iPhone не спросит.
+async function enablePush() {
+  try {
+    if (await Notification.requestPermission() !== "granted") { showToast("Разреши уведомления в настройках браузера"); return false; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    const { key } = await api("/api/push/key");
+    const pad = "=".repeat((4 - key.length % 4) % 4);
+    const raw = Uint8Array.from(atob((key + pad).replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0));
+    const fresh = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw });
+    await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(fresh.toJSON()) });
+    return true;
+  } catch (e) { showToast("Не получилось: " + e.message); return false; }
 }
 
 function ntSwitch(on, action) {
