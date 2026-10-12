@@ -164,6 +164,19 @@ def parse_report(html: str) -> dict:
     return {"items": items, "categories": categories}
 
 
+_MARK_WORD_RE = re.compile(r"\(?\s*(?:не)?удовлетворительно\s*\)?|\(?\s*хорошо\s*\)?|\(?\s*отлично\s*\)?", re.I)
+
+
+def short_final(text: str) -> str:
+    """«2 (неудовлетворительно)» → «2»: при цифре слово не нужно (Никита
+    12.10). Без цифры («Не зачтено», «отлично») — как есть."""
+    t = (text or "").strip()
+    if not re.search(r"\d", t) or not _MARK_WORD_RE.search(t):
+        return t
+    rest = _MARK_WORD_RE.sub(" ", t).strip(" -—–,;:()")
+    return re.sub(r"\s+", " ", rest) if re.fullmatch(r"[\d.,\s]+", rest) else t
+
+
 def summarize(report: dict, course_name: str = "") -> dict:
     """Сводка курса для экрана «Баллы»: сумма, категории БРС, итог, работы
     текущего контроля и сколько из них зачтено."""
@@ -186,7 +199,7 @@ def summarize(report: dict, course_name: str = "") -> dict:
     score = (total or {}).get("grade")
     if score is None:
         score = sum(c["grade"] or 0 for c in cats)
-    final_text = (final or {}).get("text", "")
+    final_text = short_final((final or {}).get("text", ""))
     lower = (course_name + " " + ((final or {}).get("text") or "")).lower()
     # «Дифференцированный зачёт» — по нему ставят 3/4/5, это не простой зачёт
     credit = "зач" in lower and "экзам" not in course_name.lower() and "диф" not in lower
