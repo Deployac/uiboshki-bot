@@ -235,6 +235,15 @@ class LookScreen extends StatelessWidget {
                   ),
                 ),
               ],
+
+              // виджеты рабочего стола — одной строкой, без отдельного экрана
+              if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+                const SizedBox(height: Space.l),
+                const _Hint('Виджеты: долгое нажатие на рабочем столе → Виджеты → Капибара'),
+              ] else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) ...[
+                const SizedBox(height: Space.l),
+                const _Hint('Виджеты: долгое нажатие на рабочем столе → «+» → Капибара'),
+              ],
             ],
           ),
         ),

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="w_lesson_name">Пара</string>
+    <string name="w_lesson_desc">Через сколько следующая пара и в каком кабинете, во время пары — сколько до конца</string>
+    <string name="w_day_name">Весь день</string>
+    <string name="w_day_desc">Пары на день и горящий срок</string>
+</resources>

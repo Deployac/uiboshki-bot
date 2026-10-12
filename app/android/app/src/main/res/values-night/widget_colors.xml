@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Виджеты: тёмные — как карточки «Глубины» (design/tokens.json, depth) -->
+<resources>
+    <color name="w_bg">#1F2331</color>
+    <color name="w_text">#FFFFFF</color>
+    <color name="w_muted">#9AA0B2</color>
+    <color name="w_accent">#9FA6FF</color>
+    <color name="w_ok">#2FBF71</color>
+    <color name="w_danger">#FF6B6B</color>
+</resources>

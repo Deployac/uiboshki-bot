@@ -17,6 +17,11 @@ import UIKit
     if let registrar = registrar {
       AppIconPlugin.register(with: registrar)
     }
+    // виджеты рабочего стола (WidgetBridge.swift)
+    let widgets: FlutterPluginRegistrar? = engineBridge.pluginRegistry.registrar(forPlugin: "WidgetBridge")
+    if let widgets = widgets {
+      WidgetBridge.register(with: widgets)
+    }
   }
 }
 

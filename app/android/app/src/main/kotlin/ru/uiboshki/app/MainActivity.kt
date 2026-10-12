@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import ru.uiboshki.app.widget.WidgetBridge
 
 class MainActivity : FlutterActivity() {
     // Иконка на выбор (5.79): у каждой — свой activity-alias в AndroidManifest.xml
@@ -44,6 +45,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // виджеты рабочего стола: снимок дня из приложения (widget/WidgetBridge.kt)
+        WidgetBridge.attach(this, flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "uiboshki/icon").setMethodCallHandler { call, result ->
             when (call.method) {
                 "supported" -> result.success(true)

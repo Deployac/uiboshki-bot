@@ -13,6 +13,7 @@ import 'screens/shell.dart';
 import 'theme/app_icon.dart';
 import 'theme/app_theme.dart';
 import 'theme/look.dart';
+import 'widget_data.dart';
 import 'widgets/capy.dart';
 import 'widgets/common.dart';
 
@@ -74,6 +75,7 @@ class _UiboAppState extends State<UiboApp> {
     super.initState();
     // сервер мог выключить новый дизайн (откат) — узнаём при запуске
     refreshDesign2(widget.api.get).then((on) {
+      if (on == false) HomeWidgets.clear(); // откат дизайна — виджеты без данных
       if (on != null && on != _design2 && mounted) setState(() => _design2 = on);
       // иконка на телефоне — по выбору, а без нового дизайна — обычная
       // (откат DESIGN2=0 убирает и её; включат снова — выбор вернётся)
@@ -123,6 +125,7 @@ class _UiboAppState extends State<UiboApp> {
 
   Future<void> _logout() async {
     await widget.api.logout();
+    unawaited(HomeWidgets.clear()); // чужому телефону — без расписания на экране
     if (mounted) setState(() => _loggedIn = false);
   }
 

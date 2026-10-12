@@ -14,6 +14,7 @@ import '../theme/app_theme.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/capy.dart';
+import '../widget_data.dart';
 import '../widgets/common.dart';
 import 'lesson.dart';
 import 'week.dart' show mondayOf;
@@ -207,7 +208,7 @@ class _TodayScreenState extends State<TodayScreen> {
     final group = me['group'] is Map ? '${me['group']['name'] ?? ''}' : '';
     final week = res[2] is Map ? res[2]['week'] : null;
     final days = res[2] is Map && res[2]['days'] is List ? res[2]['days'] as List : null;
-    return TodayData(
+    final data = TodayData(
       lessons,
       tf == null ? null : Lesson.fromJson(tf),
       soon,
@@ -220,6 +221,9 @@ class _TodayScreenState extends State<TodayScreen> {
           ? null
           : days.any((d) => d is Map && '${d['date']}'.compareTo(today) > 0 && (d['dots'] as List? ?? []).isNotEmpty),
     );
+    // виджеты рабочего стола — свежим днём, не запасом (запас догонит сеть)
+    if (!Api.cacheOnly) unawaited(HomeWidgets.fromToday(api, stale ? today : '${j['date'] ?? today}', data));
+    return data;
   }
 
   @override
