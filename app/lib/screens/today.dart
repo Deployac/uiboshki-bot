@@ -25,6 +25,10 @@ class TodayData {
   final List<Deadline> soon;
   final String weather;
 
+  /// Все пары завтра — когда сегодня пар нет или они кончились, экран
+  /// показывает их ниже (владелец, 11.10: «пустовато»). Не пришли — пусто.
+  final List<Lesson> tomorrow;
+
   /// Имя, группа и номер учебной недели — для шапки. Без сети и запаса их
   /// может не быть: экран всё равно показывается, просто без них.
   final String name, group;
@@ -47,6 +51,7 @@ class TodayData {
     this.week,
     this.moreThisWeek,
     this.cancelled = const [],
+    this.tomorrow = const [],
   });
 }
 
@@ -173,13 +178,19 @@ class _TodayScreenState extends State<TodayScreen> {
     final api = widget.api;
     // имя, группа и неделя — только для шапки: не пришли — экран всё равно есть
     Future<dynamic> extra(String path) => api.get(path).then<dynamic>((v) => v, onError: (_) => null);
-    final res = await Future.wait([api.get('/today'), extra('/me'), extra('/week?start=${iso(mondayOf(now()))}')]);
+    final res = await Future.wait([
+      api.get('/today'),
+      extra('/me'),
+      extra('/week?start=${iso(mondayOf(now()))}'),
+      extra('/day?date=${iso(now().add(const Duration(days: 1)))}'),
+    ]);
     final j = res[0];
     final today = iso(now());
     var lessonsJson = j['lessons'] as List;
     var cancelledJson = j['cancelled'] as List? ?? const [];
     var tf = j['tomorrow_first'];
     var weather = '${j['weather'] ?? ''}';
+    var tomorrowJson = res[3] is Map && res[3]['lessons'] is List ? res[3]['lessons'] as List : const [];
     var stale = false;
     // Б1: утром из памяти телефона приходит вчерашний «Сегодня». Из запаса —
     // не показываем (экран ждёт сеть); без сети — пары на сегодня из
@@ -193,9 +204,8 @@ class _TodayScreenState extends State<TodayScreen> {
       final next = await Api.fromCache(() => api.get('/day?date=${iso(now().add(const Duration(days: 1)))}'));
       lessonsJson = day['lessons'] as List;
       cancelledJson = day['cancelled'] as List? ?? const [];
-      tf = next is Map && next['lessons'] is List && (next['lessons'] as List).isNotEmpty
-          ? (next['lessons'] as List).first
-          : null;
+      tomorrowJson = next is Map && next['lessons'] is List ? next['lessons'] as List : const [];
+      tf = tomorrowJson.isNotEmpty ? tomorrowJson.first : null;
       weather = ''; // вчерашняя погода не нужна
       stale = true;
     }
@@ -220,6 +230,7 @@ class _TodayScreenState extends State<TodayScreen> {
       moreThisWeek: days == null || days.isEmpty
           ? null
           : days.any((d) => d is Map && '${d['date']}'.compareTo(today) > 0 && (d['dots'] as List? ?? []).isNotEmpty),
+      tomorrow: [for (final l in tomorrowJson) Lesson.fromJson(l)],
     );
     // виджеты рабочего стола — свежим днём, не запасом (запас догонит сеть)
     if (!Api.cacheOnly) unawaited(HomeWidgets.fromToday(api, stale ? today : '${j['date'] ?? today}', data));
@@ -503,7 +514,11 @@ class _MainView extends StatelessWidget {
       final tf = data.tomorrowFirst;
       notice = Notice(
         title: 'Сегодня пар нет',
-        text: tf == null ? 'Завтра тоже свободно.' : 'Завтра первая — ${tf.start}, ${tf.title}.',
+        text: tf == null
+            ? 'Завтра тоже свободно.'
+            : data.tomorrow.isEmpty
+            ? 'Завтра первая — ${tf.start}, ${tf.title}.'
+            : 'Завтра первая — в ${tf.start}.',
         pose: CapyPose.joy,
       );
     } else if (current != null) {
@@ -530,6 +545,15 @@ class _MainView extends StatelessWidget {
       }
     }
 
+    // сегодня пар нет или они кончились — ниже пары на завтра; первая из них
+    // уже крупно в фокусе, если пары сегодня были
+    final free = lessons.isEmpty || (current == null && next == null);
+    final rest = lessons.isEmpty
+        ? data.tomorrow
+        : current == null && next == null && data.tomorrow.length > 1
+        ? data.tomorrow.sublist(1)
+        : const <Lesson>[];
+    final n = rest.length;
     return ListView(
       padding: const EdgeInsets.only(bottom: 120),
       children: [
@@ -565,11 +589,35 @@ class _MainView extends StatelessWidget {
                 child: LessonCard(lesson: l, at: t, onTap: l.cancelled ? null : () => open(l)),
               ),
         ],
+        if (rest.isNotEmpty) ...[
+          Section('завтра · ${lessons.isEmpty ? '' : 'ещё '}$n ${plural(n, 'пара', 'пары', 'пар')}'),
+          for (final l in rest)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
+              child: LessonCard(lesson: l, at: t, onTap: () => open(l)),
+            ),
+        ],
+        // ближайшие три срока; «горит» — только если есть срок в ближайшие
+        // три дня, иначе просто «сдать» (владелец, 11.10: «Завтра и сроки»)
         if (data.soon.isNotEmpty) ...[
-          const Section('горит'),
+          Section(data.soon.any((d) => d.due.difference(t).inDays < 3) ? 'горит' : 'сдать'),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
             child: _SoonList(data.soon, at: t),
+          ),
+        ] else if (free) ...[
+          const Section('сдать'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Space.l),
+            child: Tile(
+              child: Row(
+                children: [
+                  Icon(Icons.task_alt_rounded, size: 17, color: s.p.ok),
+                  const SizedBox(width: Space.s),
+                  Expanded(child: Text('Открытых сроков нет', style: s.body(14, color: s.p.muted))),
+                ],
+              ),
+            ),
           ),
         ],
       ],

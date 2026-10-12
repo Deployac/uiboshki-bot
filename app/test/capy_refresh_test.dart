@@ -128,7 +128,10 @@ void main() {
     await t.pump();
     expect(find.byType(CircularProgressIndicator), findsNothing);
     expect(find.byType(CapyLoading), findsOneWidget);
-    expect(find.text('печатаю…'), findsOneWidget);
+    // без часа Loader берёт часы телефона: с 23 до 5 капибара спит — тест
+    // не падает ночью (раньше CI краснел с 23:00 по UTC)
+    final h = now().hour;
+    expect(find.text(h >= 23 || h < 5 ? 'сплю, но обновляю…' : 'печатаю…'), findsOneWidget);
     done.complete('пары');
     await settle(t);
     expect(find.byType(CapyLoading), findsNothing);
