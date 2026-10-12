@@ -4,6 +4,10 @@
 // документа (file_text с сервера) помнится в вопросе — следующие вопросы знают
 // файл. Чаты — на телефоне (до 20, в каждом последние 40 сообщений), «Прошлые
 // чаты» — листом, «Новый чат» — с нуля, старый остаётся в списке.
+// Клавиатура — как в приложении Claude: переписка листается с открытой
+// клавиатурой, убирает её палец, доведённый до поля ввода, смахивание поля
+// вниз или нажатие на переписку; низ переписки при этом не уезжает.
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
@@ -170,12 +174,13 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   /// Открытый разговор. Новый список при каждой смене чата: ответ на вопрос из
   /// прошлого чата сверяется с ним и уходит в свой чат, а не в открытый.
   var _log = <ChatMsg>[];
   final _input = TextEditingController();
   final _scroll = ScrollController();
+  final _bar = GlobalKey();
   String _subject = '';
   List<String> _subjects = [];
   bool _waiting = false;
@@ -199,6 +204,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ready;
     widget.api
         .get('/subjects')
@@ -218,9 +224,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _input.dispose();
     _scroll.dispose();
     super.dispose();
+  }
+
+  /// Клавиатура выезжает или уходит — окно меняет высоту. Были внизу
+  /// переписки — остаёмся внизу, последний ответ не прячется за клавиатуру.
+  @override
+  void didChangeMetrics() {
+    if (!_scroll.hasClients) return;
+    final pos = _scroll.position;
+    if (pos.pixels < pos.maxScrollExtent - 48) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    });
   }
 
   Future<void> _restore() async {
@@ -583,55 +602,61 @@ class _ChatScreenState extends State<ChatScreen> {
                 ],
               ),
               Expanded(
-                child: ListView(
-                  controller: _scroll,
-                  padding: const EdgeInsets.only(bottom: Space.l),
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  children: [
-                    const ScreenTitle(title: 'Помощник'),
-                    if (_log.isEmpty) _Intro(left: _left),
-                    if (_log.isEmpty)
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Space.xl),
-                        child: Wrap(
-                          spacing: Space.s,
-                          runSpacing: Space.s,
-                          children: [
-                            for (final q in const [
-                              'Чем метрика отличается от KPI?',
-                              'Объясни 3 лекцию',
-                              'Что сдать на этой неделе?',
-                            ])
-                              ActionChip(
-                                backgroundColor: p.card,
-                                side: BorderSide(color: p.line),
-                                shape: const StadiumBorder(),
-                                // у чипа текст в одну строку и обрезается молча — переносим
-                                label: Text(q, softWrap: true, maxLines: 3, style: s.body(13)),
-                                onPressed: () {
-                                  _input.text = q;
-                                  _send();
-                                },
-                              ),
-                          ],
-                        ),
-                      ),
-                    for (final m in _log)
-                      _Bubble(
-                        m: m,
-                        api: widget.api,
-                        onChoose: (subj) {
-                          setState(() => _subject = subj);
-                          final lastQ = _log.lastWhere((x) => x.role == 'user');
-                          _send(again: lastQ.content, againAtt: _chooseAtt);
-                        },
-                      ),
-                    if (_waiting)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(Space.xl, Space.s, Space.xl, 0),
-                        child: Text('Думаю…', style: s.eyebrow()),
-                      ),
-                  ],
+                child: KeyboardDragDismiss(
+                  barKey: _bar,
+                  child: GestureDetector(
+                    // нажатие на переписку (не на кнопку в ней) убирает клавиатуру
+                    onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                    child: ListView(
+                      controller: _scroll,
+                      padding: const EdgeInsets.only(bottom: Space.l),
+                      children: [
+                        const ScreenTitle(title: 'Помощник'),
+                        if (_log.isEmpty) _Intro(left: _left),
+                        if (_log.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: Space.xl),
+                            child: Wrap(
+                              spacing: Space.s,
+                              runSpacing: Space.s,
+                              children: [
+                                for (final q in const [
+                                  'Чем метрика отличается от KPI?',
+                                  'Объясни 3 лекцию',
+                                  'Что сдать на этой неделе?',
+                                ])
+                                  ActionChip(
+                                    backgroundColor: p.card,
+                                    side: BorderSide(color: p.line),
+                                    shape: const StadiumBorder(),
+                                    // у чипа текст в одну строку и обрезается молча — переносим
+                                    label: Text(q, softWrap: true, maxLines: 3, style: s.body(13)),
+                                    onPressed: () {
+                                      _input.text = q;
+                                      _send();
+                                    },
+                                  ),
+                              ],
+                            ),
+                          ),
+                        for (final m in _log)
+                          _Bubble(
+                            m: m,
+                            api: widget.api,
+                            onChoose: (subj) {
+                              setState(() => _subject = subj);
+                              final lastQ = _log.lastWhere((x) => x.role == 'user');
+                              _send(again: lastQ.content, againAtt: _chooseAtt);
+                            },
+                          ),
+                        if (_waiting)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(Space.xl, Space.s, Space.xl, 0),
+                            child: Text('Думаю…', style: s.eyebrow()),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
               if (_att != null || _attNote != null)
@@ -643,7 +668,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     _attNote = null;
                   }),
                 ),
-              _InputBar(controller: _input, busy: _waiting, onSend: _send, onAttach: _attach),
+              KeyboardDragDismiss(
+                barKey: _bar,
+                child: _InputBar(key: _bar, controller: _input, busy: _waiting, onSend: _send, onAttach: _attach),
+              ),
             ],
           ),
         ),
@@ -1105,11 +1133,79 @@ class _Intro extends StatelessWidget {
   }
 }
 
+/// Убирает клавиатуру жестом, как UIScrollView с keyboardDismissMode
+/// .interactive в приложении Claude: палец, который вёл переписку, дошёл до
+/// поля ввода [barKey] (дальше — клавиатура), или поле смахнули вниз.
+/// Просто листать переписку можно — клавиатура остаётся. Слушает сырые
+/// касания и не спорит с прокруткой и кнопками за жест.
+class KeyboardDragDismiss extends StatefulWidget {
+  final GlobalKey barKey;
+  final Widget child;
+  const KeyboardDragDismiss({super.key, required this.barKey, required this.child});
+
+  /// Насколько смахнуть поле ввода вниз, чтобы клавиатура ушла.
+  static const barSwipe = 24.0;
+
+  @override
+  State<KeyboardDragDismiss> createState() => _KeyboardDragDismissState();
+}
+
+class _KeyboardDragDismissState extends State<KeyboardDragDismiss> {
+  double? _start;
+  bool _fromBar = false, _done = false;
+
+  double? _barTop() {
+    final box = widget.barKey.currentContext?.findRenderObject();
+    return box is RenderBox && box.hasSize ? box.localToGlobal(Offset.zero).dy : null;
+  }
+
+  void _hide() => FocusManager.instance.primaryFocus?.unfocus();
+
+  void _move(PointerMoveEvent e) {
+    final start = _start, top = _barTop();
+    if (start == null || top == null || _done) return;
+    final y = e.position.dy;
+    final down = y - start;
+    if (_fromBar ? down > KeyboardDragDismiss.barSwipe : (down > 0 && y >= top)) {
+      _done = true;
+      _hide();
+    }
+  }
+
+  void _end() {
+    // поле ввода берёт фокус по отпусканию пальца уже после нас (жесты
+    // разбираются в конце события) — убираем ещё раз следом
+    if (_done) scheduleMicrotask(_hide);
+    _start = null;
+    _done = false;
+  }
+
+  @override
+  Widget build(BuildContext context) => Listener(
+    onPointerDown: (e) {
+      _start = e.position.dy;
+      _done = false;
+      final top = _barTop();
+      _fromBar = top != null && e.position.dy >= top;
+    },
+    onPointerMove: _move,
+    onPointerUp: (_) => _end(),
+    onPointerCancel: (_) => _end(),
+    child: widget.child,
+  );
+}
+
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
   final bool busy;
   final VoidCallback onSend, onAttach;
-  const _InputBar({required this.controller, required this.busy, required this.onSend, required this.onAttach});
+  const _InputBar({
+    super.key,
+    required this.controller,
+    required this.busy,
+    required this.onSend,
+    required this.onAttach,
+  });
 
   @override
   Widget build(BuildContext context) {
