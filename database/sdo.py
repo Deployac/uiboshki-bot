@@ -191,3 +191,60 @@ async def get_quiz_deadline_links(since: str) -> list[str]:
             "SELECT description FROM deadlines WHERE group_id IS NULL AND due_date >= ? "
             "AND description LIKE '%/mod/quiz/view.php%'", (since,))).fetchall()
         return [r[0] for r in rows]
+
+
+# ── Тесты СДО в уведомлениях (quiz_alerts.py) ────────────────────────────────
+
+async def get_quiz_opens(cmids=None) -> dict[int, str]:
+    """{cmid: «ГГГГ-ММ-ДД ЧЧ:ММ» МСК или '' — открыт, когда — не знаем}."""
+    async with connect() as db:
+        if cmids is None:
+            rows = await (await db.execute("SELECT cmid, open_at FROM quiz_opens")).fetchall()
+        else:
+            cmids = sorted({int(c) for c in cmids if c})
+            if not cmids:
+                return {}
+            rows = await (await db.execute(
+                f"SELECT cmid, open_at FROM quiz_opens WHERE cmid IN ({','.join('?' * len(cmids))})",
+                cmids)).fetchall()
+        return {c: a for c, a in rows}
+
+
+async def save_quiz_opens(opens: dict[int, str]):
+    if not opens:
+        return
+    async with connect() as db:
+        await db.executemany(
+            "INSERT INTO quiz_opens (cmid, open_at) VALUES (?, ?) "
+            "ON CONFLICT(cmid) DO UPDATE SET open_at=excluded.open_at, seen_at=datetime('now')",
+            list(opens.items()))
+        await db.commit()
+
+
+async def get_quiz_deadlines(since: str) -> list[dict]:
+    """Тесты СДО (ссылка на mod/quiz) всех групп со сроком не раньше since."""
+    async with connect() as db:
+        db.row_factory = aiosqlite.Row
+        rows = await (await db.execute(
+            "SELECT id, subject, description, due_date, due_time, group_id FROM deadlines "
+            "WHERE external_id LIKE 'sdo:%' AND due_date >= ? AND description LIKE '%/mod/quiz/view.php%' "
+            "ORDER BY due_date, due_time", (since,))).fetchall()
+        return [dict(r) for r in rows]
+
+
+async def mark_quiz_alert(user_id: int, deadline_id: int, kind: str, at: str) -> bool:
+    """Отметить «ушло»; True — только в первый раз (проверка и отметка разом:
+    напоминание и рассылка после синка не пришлют одно и то же дважды)."""
+    async with connect() as db:
+        cur = await db.execute("INSERT OR IGNORE INTO quiz_alerts (user_id, deadline_id, kind, at) VALUES (?, ?, ?, ?)",
+                               (user_id, deadline_id, kind, at))
+        await db.commit()
+        return cur.rowcount == 1
+
+
+async def purge_quiz_alerts():
+    """Отметки старше месяца и о дедлайнах, которых уже нет."""
+    async with connect() as db:
+        await db.execute("DELETE FROM quiz_alerts WHERE sent_at < datetime('now', '-30 days') "
+                         "OR deadline_id NOT IN (SELECT id FROM deadlines)")
+        await db.commit()

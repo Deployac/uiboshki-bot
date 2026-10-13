@@ -123,7 +123,7 @@ class _WeekDaysState extends State<WeekDays> {
                       if (summary != null)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(Space.l, 0, Space.l, Space.s),
-                          child: DaySummaryCard(summary: summary, lessons: lessons),
+                          child: DaySummaryCard(summary: summary, lessons: lessons, date: date),
                         ),
                     ],
                   ),

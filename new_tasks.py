@@ -42,9 +42,13 @@ def _lines(items: list[dict]) -> list[str]:
             for i in sorted(items, key=lambda i: (i["due_date"], i.get("due_time") or ""))]
 
 
-def build(items: list[dict], moved: list[dict] | None = None) -> str:
-    """Новые задания и перенесённые сроки — одним сообщением."""
+def build(items: list[dict], moved: list[dict] | None = None, opened: list[str] | None = None) -> str:
+    """Новые задания, перенесённые сроки и открытые тесты (строки
+    quiz_alerts.open_line) — одним сообщением."""
     parts = []
+    if opened:
+        parts.append(("🔓 <b>Открыли тест</b>" if len(opened) == 1 else "🔓 <b>Открыли тесты</b>")
+                     + "\n" + "\n".join(opened))
     if items:
         head = "🆕 В СДО новое задание:" if len(items) == 1 else "🆕 В СДО новые задания:"
         parts.append(head + "\n" + "\n".join(_lines(items)))
@@ -72,23 +76,58 @@ async def announce(bot, new_ids: list[int], moved: dict[int, str] | None = None)
     from database import get_all_optional_answers
     answers = await get_all_optional_answers()
     ids, sent = set(new_ids), 0
+    opened_now = await _opened(new_ids)
     for user in await get_reminder_users():
         uid = user["user_id"]
-        if not notify_prefs.merge(user.get("notify")).get("new_tasks"):
+        prefs = notify_prefs.merge(user.get("notify"))
+        if not prefs.get("new_tasks") and not (prefs.get("quiz_open") and opened_now):
             continue
         # предметы по выбору, куда человек не ходит («хожу» не отвечал), — мимо
         skip = [s.lower() for s in OPTIONAL_SUBJECTS if not answers.get(uid, {}).get(s)]
         visible = [d for d in await get_active_deadlines(uid) if not d.get("done")
                    and not any(s in (d.get("subject") or "").lower() for s in skip)]
         mine = [d for d in visible if d["id"] in ids]
-        shifted = [dict(d, was=moved[d["id"]]) for d in visible if d["id"] in moved]
-        if not mine and not shifted:
+        # новый тест, который уже открыт, — «Открыли тест» (Тесты СДО → «Тест
+        # открылся»), а не строкой нового задания; отметка — та же, что у
+        # quiz_alerts, чтобы минутная проверка не прислала его ещё раз
+        opened = []
+        if prefs.get("quiz_open"):
+            from database.sdo import mark_quiz_alert
+            for d in [d for d in mine if d["id"] in opened_now]:
+                mine.remove(d)
+                if await mark_quiz_alert(uid, d["id"], "open", ""):
+                    opened.append(opened_now[d["id"]])
+        if not prefs.get("new_tasks"):
+            mine, shifted = [], []
+        else:
+            shifted = [dict(d, was=moved[d["id"]]) for d in visible if d["id"] in moved]
+        if not mine and not shifted and not opened:
             continue
         try:
             import delivery
-            await delivery.deliver(bot, uid, build(mine, shifted), kind="new_tasks", tab="deadlines",
+            await delivery.deliver(bot, uid, build(mine, shifted, opened), kind="new_tasks", tab="deadlines",
                                    reply_markup=app_button("📋 Открыть дедлайны", "deadlines"))
             sent += 1
         except Exception as e:
             logger.info(f"новые задания {uid}: {e}")
     return sent
+
+
+async def _opened(new_ids: list[int]) -> dict[int, str]:
+    """Новые дедлайны-тесты, которые уже открыты: {id: строка для «Открыли тест»}."""
+    if not new_ids:
+        return {}
+    import quiz_alerts
+    import quiz_time
+    from database import get_deadline, get_quiz_limits
+    from database.sdo import get_quiz_opens
+    from datetime import datetime
+    from utils import TZ
+    now = datetime.now(TZ)
+    quizzes = [d for i in new_ids if (d := await get_deadline(i)) and quiz_time.quiz_cmid(d.get("description"))]
+    if not quizzes:
+        return {}
+    cmids = [quiz_time.quiz_cmid(d["description"]) for d in quizzes]
+    opens, limits = await get_quiz_opens(cmids), await get_quiz_limits(cmids)
+    return {d["id"]: quiz_alerts.open_line(d, limits.get(c)) for d, c in zip(quizzes, cmids)
+            if quiz_alerts.is_open(opens.get(c), now) and quiz_alerts.close_at(d) > now}

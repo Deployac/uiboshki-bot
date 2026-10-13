@@ -14,7 +14,11 @@ import 'util.dart';
 
 const _summary = {
   'done': [
-    {'title': 'Лабораторная 3'},
+    {
+      'title': 'Практика 1 · Моделирование бизнес-процессов (Зач)',
+      'task': 'Практика 1',
+      'course': 'Моделирование бизнес-процессов',
+    },
   ],
   'grades': [
     {'name': 'Анализ данных', 'delta': 6.0},
@@ -80,15 +84,31 @@ void main() {
         await t.scrollUntilVisible(card, 200, scrollable: find.byType(Scrollable).last);
         expect(card, findsOneWidget);
         expect(find.text('Сводка за день'), findsOneWidget);
-        expect(find.text('Лабораторная 3'), findsOneWidget);
-        expect(find.text('Анализ данных: +6'), findsOneWidget);
         // 3 пары (сдвоенная — две), 1 сдано, +6 баллов
         final line = find.descendant(of: card, matching: find.byType(RichText));
         final texts = [for (final e in line.evaluate()) (e.widget as RichText).text.toPlainText()];
         expect(texts, containsAll(['3 пары', '1 сдано', '+6 баллов']));
+        // Никита 12.10: в неделе карточка компактная — без списка работ и предметов
+        expect(find.text('Практика 1'), findsNothing);
+        expect(find.textContaining('Анализ данных:'), findsNothing);
+        expect(t.getSize(card).height, lessThan(90));
         // карточка — ниже пар дня
         final lastLesson = t.getRect(find.text('Архитектура').last);
         expect(t.getRect(card).top, greaterThan(lastLesson.bottom));
+
+        // нажал — лист с подробностями и чистыми названиями
+        await t.tap(card);
+        await settle(t);
+        final sheet = find.byType(DaySummarySheet);
+        expect(sheet, findsOneWidget);
+        Finder inSheet(String text) => find.descendant(of: sheet, matching: find.text(text));
+        expect(inSheet('Сдано'), findsOneWidget);
+        expect(inSheet('Практика 1'), findsOneWidget);
+        expect(inSheet('Моделирование бизнес-процессов'), findsOneWidget);
+        expect(inSheet('Баллы СДО'), findsOneWidget);
+        expect(inSheet('Анализ данных'), findsOneWidget);
+        expect(inSheet('+6'), findsOneWidget);
+        expect(find.descendant(of: sheet, matching: find.textContaining('[I.')), findsNothing);
       });
 
       testWidgets('без итога в ответе — карточки нет', (t) async {
@@ -148,8 +168,15 @@ void main() {
     expect(DaySummaryCard.signed(4.5), '+4,5');
     expect(DaySummaryCard.signed(-2), '−2');
     final s = DaySummary.fromJson(_summary);
-    expect(s.done, ['Лабораторная 3']);
+    expect(s.done, [('Практика 1', 'Моделирование бизнес-процессов')]);
     expect(s.grades.single, ('Анализ данных', 6.0));
+    // старый сервер — только title: он целиком в работе
+    final old = DaySummary.fromJson(const {
+      'done': [
+        {'title': 'Лабораторная 3'},
+      ],
+    });
+    expect(old.done, [('Лабораторная 3', '')]);
     expect(DaySummary.fromJson(const {'done': [], 'grades': []}).isEmpty, isTrue);
   });
 }

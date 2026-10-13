@@ -41,7 +41,30 @@ async def test_own_title_and_hidden(db):
     await db.hide_deadline_for(7, b)
     for did in (a, b):
         await _done_at(db, did, 7, "2026-09-26 09:00:00")
-    assert (await day_summary.summary(7, D))["done"] == [{"title": "Моя практика"}]
+    assert (await day_summary.summary(7, D))["done"] == [{"title": "Моя практика", "task": "Моя практика", "course": ""}]
+
+
+@pytest.mark.asyncio
+async def test_clean_names_from_raw_sdo(db, monkeypatch):
+    """Никита 12.10: в сводке «Практическое задание 1 - срок сдачи (Моделирование
+    бизнес-процессов_Зачет (часть 1/2) [I.26-27])» — сырые названия СДО."""
+    raw = ("Практическое задание 1 - срок сдачи "
+           "(Моделирование бизнес-процессов_Зачет (часть 1/2) [I.26-27])")
+    a = await db.add_deadline(raw, "", "2026-09-27", "23:59", 0)
+    b = await db.add_deadline("Практика 2 · Анализ данных (Экз)", "", "2026-09-27", "23:59", 0)
+    for did in (a, b):
+        await _done_at(db, did, 7, "2026-09-26 09:00:00")
+    await db.save_score_points(7, "2026-09-25", {11: 10.0})
+    await db.save_score_points(7, "2026-09-26", {11: 15.0})
+    await db.set_setting(day_summary.NAMES_KEY, json.dumps(
+        {"11": "Основы предпринимательской деятельности_Зачет (часть 1/1) [I.26-27]"}, ensure_ascii=False))
+    s = await day_summary.summary(7, D)
+    assert s["done"] == [
+        {"title": "Практика 1 · Моделирование бизнес-процессов (Зач)", "task": "Практика 1",
+         "course": "Моделирование бизнес-процессов"},
+        {"title": "Практика 2 · Анализ данных (Экз)", "task": "Практика 2", "course": "Анализ данных"},
+    ]
+    assert s["grades"] == [{"name": "Основы предпринимательской деятельности", "delta": 5.0}]
 
 
 @pytest.mark.asyncio
@@ -86,7 +109,8 @@ async def test_api_day_summary_past_only(db, client, monkeypatch):  # noqa: F811
     await _done_at(db, did, 222, f"{past.isoformat()} 09:00:00")
     c, headers = client
     data = c.get("/api/day", params={"date": past.isoformat()}, headers=headers).json()
-    assert data["summary"] == {"done": [{"title": "Лабораторная 3"}], "grades": [], "points": 0}
+    assert data["summary"] == {"done": [{"title": "Лабораторная 3", "task": "Лабораторная 3", "course": ""}],
+                               "grades": [], "points": 0}
     data = c.get("/api/day", params={"date": (past - timedelta(days=1)).isoformat()}, headers=headers).json()
     assert "summary" in data and data["summary"] is None
     data = c.get("/api/day", params={"date": (today + timedelta(days=3)).isoformat()}, headers=headers).json()

@@ -901,6 +901,10 @@
   .nt-remind { padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--border); }
   .nt-remind .nt-mins { margin-top: 8px; }
   .nt-sub { font-size: 14px; font-weight: 600; }
+  .nt-note { margin: 2px 0 0; color: var(--hint); font-size: 12.5px; }
+  .nt-head.tap { cursor: pointer; }
+  .nt-chev { flex: none; color: var(--hint); display: flex; transition: transform .2s; }
+  .nt-chev.open { transform: rotate(90deg); }
   .nt-custom { display: flex; gap: 8px; margin-top: 8px; }
   .nt-custom input { flex: 1; min-width: 0; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border);
                      background: var(--bg); color: var(--text); font-size: 16px; }

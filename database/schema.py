@@ -556,4 +556,25 @@ async def init_db():
                 seen_at  TEXT DEFAULT (datetime('now'))
             )
         """)
+        # Тесты СДО в уведомлениях (quiz_alerts.py, Никита 12.10): когда тест
+        # открывается (из календаря СДО, по cmid — одно на всех; '' — открыт,
+        # когда — не знаем) и что кому уже ушло (напоминание до закрытия,
+        # «открыли тест») — по одному разу.
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS quiz_opens (
+                cmid     INTEGER PRIMARY KEY,
+                open_at  TEXT NOT NULL,
+                seen_at  TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS quiz_alerts (
+                user_id     INTEGER NOT NULL,
+                deadline_id INTEGER NOT NULL,
+                kind        TEXT NOT NULL,
+                at          TEXT NOT NULL,
+                sent_at     TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (user_id, deadline_id, kind, at)
+            )
+        """)
         await db.commit()

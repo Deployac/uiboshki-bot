@@ -662,6 +662,54 @@ function setEveningTime(t) {
   saveNotify({ prefs: { evening_time: t } });
 }
 
+// Тесты СДО (quiz_alerts.py, Никита 12.10): один пункт, по нажатию — за
+// сколько до закрытия напомнить (несколько сразу) и «Тест открылся».
+const QUIZ_CHOICES = [1440, 180, 60, 30, 10];
+let notifyQuizOpen = false;
+
+function quizLabel(m) { return m >= 1440 ? "1 день" : minText(m); }
+
+function quizSummary(p) {
+  const r = (p.quiz_remind || []).slice().sort((a, b) => b - a).map(quizLabel);
+  const parts = [];
+  if (r.length) parts.push("за " + (r.length > 1 ? r.slice(0, -1).join(", ") + " и " + r[r.length - 1] : r[0]) + " до закрытия");
+  if (p.quiz_open !== false) parts.push("когда откроют");
+  return parts.length ? parts.join(" · ") : "выключено";
+}
+
+function ntQuiz(s) {
+  const p = s.prefs, mins = p.quiz_remind || [], on = mins.length > 0 || p.quiz_open !== false;
+  let html = '<div class="nt-card' + (on ? "" : " off") + '"><div class="nt-head tap" onclick="toggleQuizCard()">' +
+    '<span class="nt-ic">' + icon("clock") + '</span><div><b>Тесты СДО</b><p>' + quizSummary(p) + '</p></div>' +
+    '<span class="nt-chev' + (notifyQuizOpen ? " open" : "") + '">' + icon("chevron") + '</span></div>';
+  if (notifyQuizOpen) {
+    html += '<div class="nt-remind"><div class="nt-sub">Напомнить до закрытия</div><p class="nt-note">можно несколько</p>' +
+      '<div class="nt-mins">' + (s.quiz_choices || QUIZ_CHOICES).map(m =>
+        '<button class="' + (mins.includes(m) ? "on" : "") + '" onclick="toggleQuizRemind(' + m + ')">' + quizLabel(m) + '</button>').join("") +
+      '</div></div>' +
+      '<div class="nt-row"><div><b>Тест открылся</b><p>напишу, когда преподаватель откроет тест</p></div>' +
+      ntSwitch(p.quiz_open !== false, "toggleQuizOpen()") + '</div>';
+  }
+  return html + '</div>';
+}
+
+function toggleQuizCard() {
+  haptic();
+  notifyQuizOpen = !notifyQuizOpen;
+  renderNotify();
+}
+
+function toggleQuizRemind(m) {
+  const list = (notifyState.prefs.quiz_remind || []).slice();
+  const i = list.indexOf(m);
+  if (i >= 0) list.splice(i, 1); else list.push(m);
+  saveNotify({ prefs: { quiz_remind: list.sort((a, b) => b - a) } });
+}
+
+function toggleQuizOpen() {
+  saveNotify({ prefs: { quiz_open: notifyState.prefs.quiz_open === false } });
+}
+
 function renderNotify() {
   const s = notifyState, p = s.prefs;
   const box = document.getElementById("notify-body");
@@ -689,6 +737,7 @@ function renderNotify() {
       '<div class="nt-card' + (p.new_tasks ? "" : " off") + '"><div class="nt-head"><span class="nt-ic">' + icon("deadlines") + '</span>' +
         '<div><b>Новые задания</b><p>напишу, когда в СДО появится задание или перенесут срок</p></div>' +
         ntSwitch(p.new_tasks, "toggleNotify('new_tasks')") + '</div></div>' +
+      ntQuiz(s) +
       ntEvening(p);
   }
   box.innerHTML = html + '<button class="ghost" onclick="closeSheet(\'notify-sheet\')">Готово</button>';

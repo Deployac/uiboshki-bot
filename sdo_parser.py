@@ -96,10 +96,12 @@ async def _time_remaining(client: httpx.AsyncClient, html: str) -> int | None:
         return None
 
 
-async def keepalive() -> bool:
+async def keepalive(peek=None) -> bool:
     """Лёгкий запрос в СДО, чтобы сессия Moodle не истекла без обращений
     (сколько она живёт без них — не знаем; синк раз в 6 ч её не спас).
-    True — сессия жива."""
+    True — сессия жива. peek(client, html) — заодно заглянуть в календарь
+    той же сессией (quiz_alerts.peek: не открыли ли тест), его сбой сессию
+    живой не делает мёртвой."""
     if not SDO_SESSION_COOKIE:
         return False
     global IDLE_TIMEOUT
@@ -108,6 +110,11 @@ async def keepalive() -> bool:
                                      follow_redirects=True, timeout=30) as client:
             resp = await get_checked(client, f"{SDO_BASE_URL}/my/")
             IDLE_TIMEOUT = await _time_remaining(client, resp.text) or IDLE_TIMEOUT
+            if peek:
+                try:
+                    await peek(client, resp.text)
+                except Exception as e:
+                    logger.info(f"СДО keepalive: peek: {type(e).__name__}: {e}")
         return True
     except Exception as e:
         logger.info(f"СДО keepalive: {e}")
@@ -267,6 +274,12 @@ async def fetch_calendar_events(client: httpx.AsyncClient, months: int = CALENDA
     m = re.search(r'"sesskey":"([^"]+)"', resp.text)
     if not m:
         return None
+    return await calendar_months(client, m.group(1), months)
+
+
+async def calendar_months(client: httpx.AsyncClient, sesskey: str, months: int = CALENDAR_MONTHS) -> list[dict] | None:
+    """События календаря за months месяцев с текущего — по запросу на месяц.
+    None — AJAX недоступен."""
     method = "core_calendar_get_calendar_monthly_view"
     today = datetime.now(TZ).date()
     year, month = today.year, today.month
@@ -274,7 +287,7 @@ async def fetch_calendar_events(client: httpx.AsyncClient, months: int = CALENDA
     for _ in range(months):
         try:
             r = await client.post(
-                f"{SDO_BASE_URL}/lib/ajax/service.php?sesskey={m.group(1)}&info={method}",
+                f"{SDO_BASE_URL}/lib/ajax/service.php?sesskey={sesskey}&info={method}",
                 json=[{"index": 0, "methodname": method, "args": {
                     "year": year, "month": month, "courseid": 1, "includenavigation": False, "mini": False}}],
             )
@@ -292,9 +305,24 @@ async def fetch_calendar_events(client: httpx.AsyncClient, months: int = CALENDA
     return events
 
 
+def quiz_opens(events: list[dict]) -> dict[int, str]:
+    """Когда открываются тесты: {cmid: «ГГГГ-ММ-ДД ЧЧ:ММ»} из событий
+    «… открывается» (mod_quiz, open) — для «Тест открылся» (quiz_alerts.py)."""
+    from quiz_time import quiz_cmid
+    out = {}
+    for e in events:
+        component = e.get("component") or (f"mod_{e['modulename']}" if e.get("modulename") else "")
+        if (component, e.get("eventtype")) == ("mod_quiz", "open") and (c := quiz_cmid(e.get("url"))):
+            out[c] = datetime.fromtimestamp(int(e.get("timestart") or 0), tz=TZ).strftime("%Y-%m-%d %H:%M")
+    return out
+
+
 def parse_calendar_events(events: list[dict]) -> list[dict]:
-    """То же, что parse_deadlines, но из JSON календаря; прошедшие — мимо."""
+    """То же, что parse_deadlines, но из JSON календаря; прошедшие — мимо.
+    У закрытия теста — opens: когда он открывается (нет события — None)."""
+    from quiz_time import quiz_cmid
     today = datetime.now(TZ).date()
+    opens = quiz_opens(events)
     results, seen = [], set()
     for e in events:
         component = e.get("component") or (f"mod_{e['modulename']}" if e.get("modulename") else "")
@@ -317,6 +345,8 @@ def parse_calendar_events(events: list[dict]) -> list[dict]:
             "due_time":    dt.strftime("%H:%M"),
             "calendar":    True,               # из полного календаря — по нему видно, что пропало
         })
+        if component == "mod_quiz":
+            results[-1]["opens"] = opens.get(quiz_cmid(e.get("url")))
     results.sort(key=lambda d: (d["due_date"], d["due_time"]))
     return results
 
@@ -351,6 +381,12 @@ async def sync_deadlines() -> dict:
     expired=True, чтобы вызывающий код (scheduler/хендлер) сам решил,
     как об этом сообщить старосте, вместо падения джобы целиком.
     """
+    from locks import lock
+    async with lock("sdo_sync"):        # синк по расписанию и внеочередной (peek теста) — не вместе
+        return await _sync_deadlines()
+
+
+async def _sync_deadlines() -> dict:
     try:
         items = await fetch_deadline_items()
     except SdoSessionExpired as e:
@@ -423,6 +459,13 @@ async def apply_items(items: list[dict], group_id: int | None = None) -> dict:
         for i in old:
             i["external_id"] = i["external_id"].replace("sdo:", f"sdo:{group_id}:", 1)
     gone = await drop_vanished(items + old, group_id)
+    try:                                  # тесты: когда открываются (quiz_alerts.py, «Тест открылся»)
+        import quiz_alerts
+        await quiz_alerts.note_opens(items + old)
+        if not group_id and items + old and all(i.get("calendar") for i in items + old):
+            await quiz_alerts.remember(items + old)
+    except Exception as e:
+        logger.warning(f"СДО sync: открытие тестов не записал: {e}")
     return {"added": added, "updated": updated, "skipped": skipped, "old_semester": len(old), "new_ids": new_ids,
             "moved": moved, "gone": gone,
             "old_courses": sorted({i.get("course") or course_of(i["subject"]) for i in old} - {""}),
