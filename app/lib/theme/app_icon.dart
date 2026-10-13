@@ -3,49 +3,97 @@
 // каждую (MainActivity.kt), iOS — альтернативные иконки (AppDelegate.swift),
 // картинки — tools/app_icons.py. Канал «uiboshki/icon»; на вебе и в тестах
 // его нет — тихо ничего не делаем.
+//
+// 5.84: плюс иконки-картинки (Никита 13.10: 47 из 288 вариантов ChatGPT),
+// каждая светлая и тёмная. iOS 18 сам берёт тёмную в тёмной теме телефона,
+// Android так не умеет — там переключатель «Тёмная версия» (alias …Dark).
+// Список — design/app_icons.json → app_icons_art.dart.
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/services.dart';
 
-/// Варианты: «Обычная» — нынешняя иконка, по умолчанию.
-enum AppIcon { classic, depth, indigo, terracotta, page, sunset, library }
+part 'app_icons_art.dart';
 
-extension AppIconInfo on AppIcon {
-  String get label => switch (this) {
-    AppIcon.classic => 'Обычная',
-    AppIcon.depth => 'Глубина',
-    AppIcon.indigo => 'Индиго',
-    AppIcon.terracotta => 'Терракота',
-    AppIcon.page => 'Из-за страницы',
-    AppIcon.sunset => 'Закат',
-    AppIcon.library => 'Библиотека',
-  };
+/// Группа нарисованных кодом вариантов (капибара на мяче, как на основной).
+const classicGroup = 'Капибара на мяче';
 
-  /// Цвет капибары — как на самой иконке.
-  Color get capy => switch (this) {
-    AppIcon.classic => const Color(0xFFFFF8EE),
-    AppIcon.terracotta => const Color(0xFFF3EEE5),
-    AppIcon.page => const Color(0xFF2A2721),
-    AppIcon.library => const Color(0xFFB9DCA3),
+class AppIcon {
+  /// Имя в канале и в настройках: classic, depth, kremlin…
+  final String name;
+  final String label;
+  final String group;
+
+  /// Картинка (5.84), а не капибара на мяче, нарисованная кодом.
+  final bool art;
+
+  /// Только для подписчиков — пока подписки нет, в списке не показываем.
+  final bool sub;
+
+  /// «MM-dd»: в этот день стоит у всех, выбрать её нельзя (Хэллоуин 31.10).
+  final String? season;
+
+  const AppIcon._(this.name, this.label) : group = classicGroup, art = false, sub = false, season = null;
+  const AppIcon._art(this.name, this.label, this.group, {this.sub = false, this.season}) : art = true;
+
+  /// «Обычная» — нынешняя иконка, по умолчанию.
+  static const classic = AppIcon._('classic', 'Обычная');
+  static const depth = AppIcon._('depth', 'Глубина');
+  static const indigo = AppIcon._('indigo', 'Индиго');
+  static const terracotta = AppIcon._('terracotta', 'Терракота');
+  static const page = AppIcon._('page', 'Из-за страницы');
+  static const sunset = AppIcon._('sunset', 'Закат');
+  static const library = AppIcon._('library', 'Библиотека');
+
+  static const drawn = <AppIcon>[classic, depth, indigo, terracotta, page, sunset, library];
+
+  /// Все, что есть в приложении (и в сборке под iOS/Android).
+  static const values = <AppIcon>[...drawn, ...artIcons];
+
+  /// Что можно выбрать в «Оформлении»: без праздничных и подписочных.
+  static List<AppIcon> get choosable => [
+    for (final i in values)
+      if (!i.sub && i.season == null) i,
+  ];
+
+  static AppIcon byName(String? name) => values.firstWhere((i) => i.name == name, orElse: () => classic);
+
+  /// Праздничная на этот день, если есть.
+  static AppIcon? seasonal(DateTime now) {
+    final d = '${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    for (final i in artIcons) {
+      if (i.season == d) return i;
+    }
+    return null;
+  }
+
+  /// Образец для «Оформления» (assets/appicons, 192 px).
+  String preview({bool dark = false}) => 'assets/appicons/$name${dark ? '_dark' : ''}.png';
+
+  /// Цвет капибары — как на самой иконке (для нарисованных кодом).
+  Color get capy => switch (name) {
+    'classic' => const Color(0xFFFFF8EE),
+    'terracotta' => const Color(0xFFF3EEE5),
+    'page' => const Color(0xFF2A2721),
+    'library' => const Color(0xFFB9DCA3),
     _ => const Color(0xFFFFFFFF),
   };
 
   /// Фон иконки (для образца в «Оформлении»).
-  Decoration get background => switch (this) {
+  Decoration get background => switch (name) {
     // нынешняя: индиго с градиентом из левого верхнего угла
-    AppIcon.classic => const BoxDecoration(
+    'classic' => const BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
         colors: [Color(0xFF7B7EF4), Color(0xFF4B4FD6)],
       ),
     ),
-    AppIcon.depth => const BoxDecoration(color: Color(0xFF141823)),
-    AppIcon.indigo => const BoxDecoration(color: Color(0xFF5B5FE0)),
-    AppIcon.terracotta => const BoxDecoration(color: Color(0xFFB75438)),
-    AppIcon.page => const BoxDecoration(color: pagePaper),
+    'depth' => const BoxDecoration(color: Color(0xFF141823)),
+    'indigo' => const BoxDecoration(color: Color(0xFF5B5FE0)),
+    'terracotta' => const BoxDecoration(color: Color(0xFFB75438)),
+    'page' => const BoxDecoration(color: pagePaper),
     // 160° как в CSS: концы линии — так, чтобы углы квадрата попали в 0 и 1
-    AppIcon.sunset => const BoxDecoration(
+    'sunset' => const BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment(-0.438, -1.205),
         end: Alignment(0.438, 1.205),
@@ -53,8 +101,12 @@ extension AppIconInfo on AppIcon {
         stops: [0, 0.6, 1],
       ),
     ),
-    AppIcon.library => const BoxDecoration(color: Color(0xFF111715)),
+    'library' => const BoxDecoration(color: Color(0xFF111715)),
+    _ => const BoxDecoration(),
   };
+
+  @override
+  String toString() => 'AppIcon.$name';
 }
 
 /// «Из-за страницы»: бумага и терракотовая линия по краю листа.
@@ -64,17 +116,32 @@ const pageLine = Color(0xFFB75438);
 const _channel = MethodChannel('uiboshki/icon');
 
 /// Меняется ли иконка на этом устройстве: только Android и iPhone/iPad.
+/// Стенд (веб-сборка для скринов) показывает выбор с --dart-define=ICONS=true.
 bool get appIconSupported =>
+    const bool.fromEnvironment('ICONS') ||
     !kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS);
 
-/// Поставить иконку [want], если на телефоне стоит другая. Нет канала
+/// Имя для канала: на Android у картинок тёмная версия — отдельный alias.
+/// null — основная иконка.
+@visibleForTesting
+String? channelName(AppIcon icon, {bool dark = false}) {
+  if (icon == AppIcon.classic) return null;
+  if (icon.art && dark && defaultTargetPlatform == TargetPlatform.android) return '${icon.name}Dark';
+  return icon.name;
+}
+
+/// Поставить иконку [want], если на телефоне стоит другая. В праздник
+/// (31.10) — праздничная у всех, на следующий день — снова своя ([holiday]:
+/// при выключенном новом дизайне — нет). Нет канала
 /// (веб, тесты, старая сборка) или система отказала — молча ничего.
-Future<void> syncAppIcon(AppIcon want) async {
+Future<void> syncAppIcon(AppIcon want, {bool dark = false, bool holiday = true, DateTime? now}) async {
   if (!appIconSupported) return;
+  final day = holiday ? AppIcon.seasonal(now ?? DateTime.now()) : null;
+  final target = channelName(day ?? want, dark: dark);
   try {
     final have = await _channel.invokeMethod<String>('getIcon');
-    if ((have ?? AppIcon.classic.name) == want.name) return;
-    await _channel.invokeMethod<void>('setIcon', want == AppIcon.classic ? null : want.name);
+    if (have == target) return;
+    await _channel.invokeMethod<void>('setIcon', target);
   } on MissingPluginException {
     // канала нет — и не надо
   } on PlatformException {

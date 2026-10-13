@@ -79,7 +79,8 @@ class _UiboAppState extends State<UiboApp> {
       if (on != null && on != _design2 && mounted) setState(() => _design2 = on);
       // иконка на телефоне — по выбору, а без нового дизайна — обычная
       // (откат DESIGN2=0 убирает и её; включат снова — выбор вернётся)
-      syncAppIcon((on ?? _design2) ? _look.icon : AppIcon.classic);
+      final d2 = on ?? _design2;
+      syncAppIcon(d2 ? _look.icon : AppIcon.classic, dark: d2 && _look.iconDark, holiday: d2);
     });
     // «по закату»: раз в минуту проверить, не пора ли темнеть
     _sun = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -111,10 +112,10 @@ class _UiboAppState extends State<UiboApp> {
   }
 
   Future<void> _setLook(Look l) async {
-    final icon = l.icon != _look.icon;
+    final icon = l.icon != _look.icon || l.iconDark != _look.iconDark;
     setState(() => _look = l);
     await l.save(await SharedPreferences.getInstance());
-    if (icon && _design2) await syncAppIcon(l.icon);
+    if (icon && _design2) await syncAppIcon(l.icon, dark: l.iconDark);
   }
 
   Future<void> _setTheme(ThemeChoice t) async {

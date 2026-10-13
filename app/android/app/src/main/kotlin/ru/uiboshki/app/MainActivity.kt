@@ -9,8 +9,21 @@ import ru.uiboshki.app.widget.WidgetBridge
 
 class MainActivity : FlutterActivity() {
     // Иконка на выбор (5.79): у каждой — свой activity-alias в AndroidManifest.xml
-    // (.IconClassic, .IconDepth…), включён ровно один. Имена — AppIcon.* в Dart.
-    private val icons = listOf("classic", "depth", "indigo", "terracotta", "page", "sunset", "library")
+    // (.IconClassic, .IconDepth…, с 5.84 и картинки .IconKremlin/.IconKremlinDark —
+    // их пишет tools/app_icons.py), включён ровно один. Список — из манифеста,
+    // имена — AppIcon.name в Dart (тёмная картинка — «kremlinDark»).
+    private val icons: List<String> by lazy {
+        val prefix = "$packageName.Icon"
+        @Suppress("DEPRECATION")
+        val info = packageManager.getPackageInfo(
+            packageName,
+            PackageManager.GET_ACTIVITIES or PackageManager.MATCH_DISABLED_COMPONENTS,
+        )
+        info.activities.orEmpty()
+            .map { it.name }
+            .filter { it.startsWith(prefix) }
+            .map { it.removePrefix(prefix).replaceFirstChar { c -> c.lowercase() } }
+    }
 
     private fun alias(name: String) =
         ComponentName(this, "ru.uiboshki.app.Icon" + name.replaceFirstChar { it.uppercase() })

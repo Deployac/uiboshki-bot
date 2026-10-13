@@ -44,6 +44,9 @@ class Look {
   /// Иконка приложения на телефоне (theme/app_icon.dart).
   final AppIcon icon;
 
+  /// Тёмная версия иконки-картинки — только Android (iOS 18 меняет сам).
+  final bool iconDark;
+
   const Look({
     this.light = LightTheme.notebook,
     this.dark = DarkTheme.depth,
@@ -52,6 +55,7 @@ class Look {
     this.day = DayView.cards,
     this.cheer = Cheer.quiet,
     this.icon = AppIcon.classic,
+    this.iconDark = false,
   });
 
   /// Как до 5.79 — и по умолчанию, и при выключенном новом дизайне.
@@ -65,6 +69,7 @@ class Look {
     DayView? day,
     Cheer? cheer,
     AppIcon? icon,
+    bool? iconDark,
   }) => Look(
     light: light ?? this.light,
     dark: dark ?? this.dark,
@@ -73,6 +78,7 @@ class Look {
     day: day ?? this.day,
     cheer: cheer ?? this.cheer,
     icon: icon ?? this.icon,
+    iconDark: iconDark ?? this.iconDark,
   );
 
   static T _pick<T extends Enum>(List<T> values, String? name, T fallback) =>
@@ -85,7 +91,8 @@ class Look {
     card: _pick(CardStyle.values, p.getString('uib_look_card'), CardStyle.tint),
     day: _pick(DayView.values, p.getString('uib_look_day'), DayView.cards),
     cheer: _pick(Cheer.values, p.getString('uib_look_cheer'), Cheer.quiet),
-    icon: _pick(AppIcon.values, p.getString('uib_look_icon'), AppIcon.classic),
+    icon: AppIcon.byName(p.getString('uib_look_icon')),
+    iconDark: p.getBool('uib_look_icon_dark') ?? false,
   );
 
   Future<void> save(SharedPreferences p) => Future.wait([
@@ -96,6 +103,7 @@ class Look {
     p.setString('uib_look_day', day.name),
     p.setString('uib_look_cheer', cheer.name),
     p.setString('uib_look_icon', icon.name),
+    p.setBool('uib_look_icon_dark', iconDark),
   ]);
 
   @override
@@ -107,10 +115,11 @@ class Look {
       other.card == card &&
       other.day == day &&
       other.cheer == cheer &&
-      other.icon == icon;
+      other.icon == icon &&
+      other.iconDark == iconDark;
 
   @override
-  int get hashCode => Object.hash(light, dark, paper, card, day, cheer, icon);
+  int get hashCode => Object.hash(light, dark, paper, card, day, cheer, icon, iconDark);
 }
 
 /// Включён ли новый дизайн: последнее слово сервера, без ответа — включён.

@@ -15,9 +15,21 @@
   в project.pbxproj, Info.plist собирает Xcode).
 
 Имена — те же, что в app/lib/theme/app_icon.dart (AppIcon.*).
+
+Иконки-картинки (5.84, Никита 13.10: 47 из 288 вариантов ChatGPT, каждая
+светлая и тёмная) — список в design/app_icons.json. Картинки (--art):
+iOS Icon<Имя>.appiconset (все размеры, тёмная — для тёмной темы iOS 18),
+Android mipmap-xxxhdpi/ic_launcher_<имя>[_dark].png, образцы для
+«Оформления» (assets/appicons/). Каждый запуск: alias .Icon<Имя>[Dark] между
+метками ART в манифесте, ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES и
+lib/theme/app_icons_art.dart.
+
+    python tools/app_icons.py --art <папка>  — взять новые картинки из папки
+                                               (<src>-light.png, <src>-dark.png)
 """
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -167,5 +179,130 @@ def build(preview: bool = False):
         print(out)
 
 
+ART_JSON = ROOT / "design" / "app_icons.json"
+MANIFEST = APP / "android" / "app" / "src" / "main" / "AndroidManifest.xml"
+PBXPROJ = APP / "ios" / "Runner.xcodeproj" / "project.pbxproj"
+PREVIEWS = APP / "assets" / "appicons"
+ART_DART = APP / "lib" / "theme" / "app_icons_art.dart"
+ART_BEGIN, ART_END = "<!-- ART:BEGIN", "<!-- ART:END -->"
+PREVIEW_PX = 192    # образец в «Оформлении»: плитка ~80 точек × 2–3
+ANDROID_PX = 192    # xxxhdpi; лаунчер сам уменьшает для плотностей ниже
+
+
+def art_list() -> list[dict]:
+    return json.loads(ART_JSON.read_text(encoding="utf-8"))["icons"]
+
+
+def slim(img: Image.Image) -> Image.Image:
+    """Палитра в 256 цветов без сглаживания: иконок почти сотня, без этого
+    приложение и репозиторий толстеют втрое. На значке разницы не видно."""
+    return img.convert("RGB").quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+
+
+def import_art(src: Path):
+    """Картинки ChatGPT (<src>-light.png, <src>-dark.png, любой квадрат) →
+    iOS (все размеры, тёмная — appearance dark), Android и образцы.
+    Сами большие картинки в репозиторий не кладём: 94 по 1024 — десятки МБ;
+    исходники — в папке проекта art/icons/redraw/out."""
+    PREVIEWS.mkdir(parents=True, exist_ok=True)
+    (RES / "mipmap-xxxhdpi").mkdir(parents=True, exist_ok=True)
+    pixels = sorted({round(float(pt.split("x")[0]) * scale) for pt, _, scale in IOS})
+    for ic in art_list():
+        n = ic["name"]
+        folder = XCASSETS / f"{cap(n)}.appiconset"
+        folder.mkdir(parents=True, exist_ok=True)
+        for old in folder.glob("*.png"):
+            old.unlink()
+        images = []
+        for kind, suf in (("light", ""), ("dark", "_dark")):
+            f = src / f"{ic['src']}-{kind}.png"
+            big = Image.open(f).convert("RGB")
+            w, h = big.size
+            if w != h:  # вдруг не квадрат — центр
+                m = min(w, h)
+                big = big.crop(((w - m) // 2, (h - m) // 2, (w + m) // 2, (h + m) // 2))
+            for px in pixels:
+                slim(big.resize((px, px), Image.LANCZOS)).save(folder / f"{kind}-{px}.png", optimize=True)
+            for pt, idiom, scale in IOS:
+                px = round(float(pt.split("x")[0]) * scale)
+                entry = {"filename": f"{kind}-{px}.png", "idiom": idiom, "scale": f"{scale}x", "size": pt}
+                if kind == "dark":
+                    entry = {"appearances": [{"appearance": "luminosity", "value": "dark"}], **entry}
+                images.append(entry)
+            small = slim(big.resize((ANDROID_PX, ANDROID_PX), Image.LANCZOS))
+            small.save(RES / "mipmap-xxxhdpi" / f"ic_launcher_{n}{suf}.png", optimize=True)
+            if PREVIEW_PX != ANDROID_PX:
+                small = slim(big.resize((PREVIEW_PX, PREVIEW_PX), Image.LANCZOS))
+            small.save(PREVIEWS / f"{n}{suf}.png", optimize=True)
+        folder.joinpath("Contents.json").write_text(
+            json.dumps({"images": images, "info": {"author": "xcode", "version": 1}}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+
+def alias_xml(name: str, icon: str) -> str:
+    return (
+        "        <activity-alias\n"
+        f'            android:name=".{name}"\n'
+        '            android:targetActivity=".MainActivity"\n'
+        f'            android:icon="@mipmap/{icon}"\n'
+        '            android:enabled="false"\n'
+        '            android:exported="true">\n'
+        "            <intent-filter>\n"
+        '                <action android:name="android.intent.action.MAIN"/>\n'
+        '                <category android:name="android.intent.category.LAUNCHER"/>\n'
+        "            </intent-filter>\n"
+        "        </activity-alias>\n"
+    )
+
+
+def build_art():
+    """Манифест, проект Xcode и список для Dart — из design/app_icons.json
+    (картинки — import_art)."""
+    icons = art_list()
+    aliases = []
+    for ic in icons:
+        n = ic["name"]
+        aliases.append(alias_xml(cap(n), f"ic_launcher_{n}"))
+        aliases.append(alias_xml(cap(n) + "Dark", f"ic_launcher_{n}_dark"))
+
+    # манифест: всё между метками — отсюда
+    text = MANIFEST.read_text(encoding="utf-8")
+    a, b = text.index(ART_BEGIN), text.index(ART_END)
+    head = text[a:].split("\n", 1)[0] + "\n"
+    MANIFEST.write_text(text[:a] + head + "".join(aliases) + "        " + text[b:], encoding="utf-8")
+
+    # Xcode: какие наборы — альтернативные иконки
+    names = " ".join([cap(v) for v in VARIANTS] + [cap(ic["name"]) for ic in icons])
+    pbx = PBXPROJ.read_text(encoding="utf-8")
+    pbx = re.sub(r"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = \"[^\"]*\";",
+                 f'ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES = "{names}";', pbx)
+    PBXPROJ.write_text(pbx, encoding="utf-8")
+
+    # Dart: список для «Оформления»
+    groups = json.loads(ART_JSON.read_text(encoding="utf-8"))["groups"]
+    lines = [
+        "// Создано tools/app_icons.py из design/app_icons.json — руками не править.",
+        "part of 'app_icon.dart';",
+        "",
+        f"const artGroups = <String>[{', '.join(repr(g) for g in groups)}];",
+        "",
+        "const artIcons = <AppIcon>[",
+    ]
+    for ic in icons:
+        extra = ""
+        if ic.get("sub"):
+            extra += ", sub: true"
+        if ic.get("season"):
+            extra += f", season: '{ic['season']}'"
+        lines.append(f"  AppIcon._art('{ic['name']}', '{ic['label']}', '{ic['group']}'{extra}),")
+    lines += ["];", ""]
+    ART_DART.write_text("\n".join(lines), encoding="utf-8")
+
+
 if __name__ == "__main__":
-    build(preview="--preview" in sys.argv)
+    if "--art" in sys.argv:
+        import_art(Path(sys.argv[sys.argv.index("--art") + 1]))
+    if "--only-art" not in sys.argv:
+        build(preview="--preview" in sys.argv)
+    build_art()
