@@ -29,7 +29,14 @@ import UIKit
 /// Assets.xcassets (ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES в проекте).
 /// Из Dart приходит имя AppIcon (depth, sunset…), nil или "classic" — основная.
 class AppIconPlugin: NSObject, FlutterPlugin {
-  static let icons = ["depth", "indigo", "terracotta", "page", "sunset", "library"]
+  // Какие есть — из Info.plist: его CFBundleAlternateIcons собирает Xcode из
+  // ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES (tools/app_icons.py), так что
+  // новые иконки-картинки (5.84) не надо перечислять ещё и здесь.
+  static let assets: Set<String> = {
+    let icons = Bundle.main.object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any]
+    let alt = icons?["CFBundleAlternateIcons"] as? [String: Any]
+    return Set(alt?.keys.map { $0 } ?? [])
+  }()
 
   static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "uiboshki/icon", binaryMessenger: registrar.messenger())
@@ -47,12 +54,16 @@ class AppIconPlugin: NSObject, FlutterPlugin {
       result(app.supportsAlternateIcons)
     case "getIcon":
       let current = app.alternateIconName
-      result(AppIconPlugin.icons.first { AppIconPlugin.assetName($0) == current })
+      // "IconKremlin" → "kremlin", как AppIcon.name в Dart
+      result(current.map { name -> String in
+        let rest = name.dropFirst(4)
+        return rest.prefix(1).lowercased() + rest.dropFirst()
+      })
     case "setIcon":
       let name = call.arguments as? String
       var target: String? = nil
       if let name = name, name != "classic" {
-        guard AppIconPlugin.icons.contains(name) else {
+        guard AppIconPlugin.assets.contains(AppIconPlugin.assetName(name)) else {
           result(FlutterError(code: "unknown", message: "Нет такой иконки: \(name)", details: nil))
           return
         }

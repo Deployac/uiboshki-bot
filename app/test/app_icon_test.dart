@@ -1,6 +1,8 @@
 // Иконка приложения на выбор (5.79, второй круг дизайна, Никита 12.10):
 // секция в «Оформлении» только на Android и iPhone, выбор идёт в канал
 // uiboshki/icon, «Вернуть как было» и выключенный новый дизайн — обычная.
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -81,9 +83,17 @@ void main() {
     expect(fake.sets, isEmpty); // на телефоне и так обычная — не трогаем
     await openLook(t);
 
-    for (final i in AppIcon.values) {
-      await reach(t, 'look:icon:${i.name}');
+    await reach(t, 'look:icon');
+    await t.tap(find.byKey(const Key('look:icon')));
+    await settle(t);
+    // в листе — все, что можно выбрать, а праздничной и подписочной нет
+    final sheet = find.descendant(of: find.byKey(const Key('look:icons')), matching: find.byType(Scrollable)).first;
+    for (final i in AppIcon.choosable) {
+      await t.scrollUntilVisible(find.byKey(Key('look:icon:${i.name}')), 200, scrollable: sheet);
     }
+    expect(find.byKey(const Key('look:icon:halloween'), skipOffstage: false), findsNothing);
+    expect(find.byKey(const Key('look:icon:crown'), skipOffstage: false), findsNothing);
+    await t.scrollUntilVisible(find.byKey(const Key('look:icon:sunset')), -200, scrollable: sheet);
     await t.tap(find.byKey(const Key('look:icon:sunset')));
     await settle(t);
     expect(fake.sets, ['sunset']);
@@ -146,7 +156,7 @@ void main() {
     await openLook(t);
     await reach(t, 'look:cheer:capy');
     expect(find.text('иконка приложения'), findsNothing);
-    expect(find.byKey(const Key('look:icon:classic')), findsNothing);
+    expect(find.byKey(const Key('look:icon')), findsNothing);
   }, variant: TargetPlatformVariant.only(TargetPlatform.linux));
 
   testWidgets('без канала (старая сборка) — выбор не падает', (t) async {
@@ -154,11 +164,76 @@ void main() {
     await t.pumpWidget(UiboApp(api: fakeApi(overrides: meta(true)), design2: true));
     await settle(t);
     await openLook(t);
-    await reach(t, 'look:icon:library');
+    await reach(t, 'look:icon');
+    await t.tap(find.byKey(const Key('look:icon')));
+    await settle(t);
     await t.tap(find.byKey(const Key('look:icon:library')));
     await settle(t);
     expect(t.takeException(), isNull);
     expect(styleOf(t).look.icon, AppIcon.library);
     await t.runAsync(() => syncAppIcon(AppIcon.classic)); // и напрямую — тихо
+  });
+
+  testWidgets('картинка: на Android — светлая или тёмная (свой alias), на iPhone — одно имя', (t) async {
+    phone(t);
+    final fake = FakeIcons();
+    await t.pumpWidget(UiboApp(api: fakeApi(overrides: meta(true)), design2: true));
+    await settle(t);
+    await openLook(t);
+    await reach(t, 'look:icon');
+    await t.tap(find.byKey(const Key('look:icon')));
+    await settle(t);
+    final sheet = find.descendant(of: find.byKey(const Key('look:icons')), matching: find.byType(Scrollable)).first;
+    await t.scrollUntilVisible(find.byKey(const Key('look:icon:kremlin')), 200, scrollable: sheet);
+    await t.tap(find.byKey(const Key('look:icon:kremlin')));
+    await settle(t);
+    expect(fake.current, 'kremlin');
+    expect(styleOf(t).look.icon, AppIcon.byName('kremlin'));
+    final android = defaultTargetPlatform == TargetPlatform.android;
+    expect(find.byKey(const Key('look:icon-shade:dark')), android ? findsOneWidget : findsNothing);
+    if (android) {
+      await t.tap(find.byKey(const Key('look:icon-shade:dark')));
+      await settle(t);
+      expect(fake.sets, ['kremlin', 'kremlinDark']);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getBool('uib_look_icon_dark'), isTrue);
+    } else {
+      expect(find.textContaining('iOS 18'), findsOneWidget);
+    }
+  }, variant: const TargetPlatformVariant({TargetPlatform.android, TargetPlatform.iOS}));
+
+  testWidgets('31.10 — у всех Хэллоуин, на следующий день — снова своя', (t) async {
+    final fake = FakeIcons('kremlinDark');
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      await syncAppIcon(AppIcon.byName('kremlin'), dark: true, now: DateTime(2026, 10, 31, 9));
+      expect(fake.current, 'halloweenDark');
+      await syncAppIcon(AppIcon.byName('kremlin'), dark: true, now: DateTime(2026, 11, 1, 9));
+      expect(fake.current, 'kremlinDark');
+      // выключенный новый дизайн — без праздника
+      await syncAppIcon(AppIcon.classic, holiday: false, now: DateTime(2026, 10, 31, 9));
+      expect(fake.current, isNull);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  test('список иконок: имена разные, образцы на месте, «Обычная» — основная', () {
+    final names = AppIcon.values.map((i) => i.name).toList();
+    expect(names.toSet().length, names.length);
+    expect(AppIcon.byName('нет такой'), AppIcon.classic);
+    expect(AppIcon.byName('sunset'), AppIcon.sunset);
+    expect(channelName(AppIcon.classic), isNull);
+    for (final i in AppIcon.values.where((i) => i.art)) {
+      for (final dark in [false, true]) {
+        expect(
+          File(i.preview(dark: dark)).existsSync(),
+          isTrue,
+          reason: i.preview(dark: dark),
+        );
+      }
+    }
+    expect(AppIcon.seasonal(DateTime(2026, 10, 31))?.name, 'halloween');
+    expect(AppIcon.seasonal(DateTime(2026, 10, 30)), isNull);
   });
 }

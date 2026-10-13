@@ -1,0 +1,58 @@
+{
+  "_": "Иконки-картинки на выбор (5.84, Никита 13.10: 47 из 288, каждая светлая и тёмная). src — номер на странице выбора, name — имя в коде (AppIcon, Icon<Name> на iOS, .Icon<Name>[Dark] на Android). Сборка — python tools/app_icons.py.",
+  "groups": ["Москва", "Учёба и день", "Космос", "Праздники", "Формы", "Фактуры"],
+  "icons": [
+    {"src": "09-city-01", "name": "kremlin", "label": "Кремль", "group": "Москва"},
+    {"src": "09-city-02", "name": "university", "label": "Университет", "group": "Москва"},
+    {"src": "09-city-11", "name": "domes", "label": "Купола", "group": "Москва"},
+    {"src": "09-city-12", "name": "ostankino", "label": "Останкино", "group": "Москва"},
+    {"src": "09-city-13", "name": "bridge", "label": "Мост", "group": "Москва"},
+    {"src": "09-city-14", "name": "streetlamp", "label": "Фонарь в снегу", "group": "Москва"},
+    {"src": "09-city-05", "name": "park", "label": "Осенний парк", "group": "Москва"},
+    {"src": "09-city-07", "name": "ushanka", "label": "Ушанка", "group": "Москва"},
+    {"src": "09-city-08", "name": "matryoshka", "label": "Матрёшка", "group": "Москва"},
+
+    {"src": "01-study-02", "name": "laptop", "label": "Ноутбук", "group": "Учёба и день"},
+    {"src": "01-study-08", "name": "chalkboard", "label": "У доски", "group": "Учёба и день"},
+    {"src": "01-study-11", "name": "desklamp", "label": "Ночью с лампой", "group": "Учёба и день"},
+    {"src": "02-time-12", "name": "coffee", "label": "Кофе с собой", "group": "Учёба и день"},
+    {"src": "02-time-13", "name": "sunrise", "label": "Рассвет", "group": "Учёба и день"},
+    {"src": "02-time-14", "name": "moon", "label": "Луна и звёзды", "group": "Учёба и день"},
+    {"src": "03-food-16", "name": "bubbletea", "label": "Баббл-ти", "group": "Учёба и день"},
+    {"src": "05-head-03", "name": "orange", "label": "С апельсином", "group": "Учёба и день"},
+    {"src": "05-head-04", "name": "headphones", "label": "В наушниках", "group": "Учёба и день"},
+    {"src": "08-tech-02", "name": "music", "label": "Музыка", "group": "Учёба и день"},
+    {"src": "08-tech-10", "name": "wifi", "label": "Wi-Fi", "group": "Учёба и день"},
+    {"src": "15-hobby-07", "name": "dj", "label": "Диджей", "group": "Учёба и день"},
+    {"src": "10-emotions-03", "name": "heart", "label": "Сердце", "group": "Учёба и день"},
+    {"src": "04-sport-05", "name": "surf", "label": "Сёрфинг", "group": "Учёба и день"},
+
+    {"src": "07-fantasy-01", "name": "astronaut", "label": "Астронавт", "group": "Космос"},
+    {"src": "07-fantasy-04", "name": "planet", "label": "На планете", "group": "Космос"},
+    {"src": "18-ball-09", "name": "ballplanet", "label": "Мяч-планета", "group": "Космос"},
+    {"src": "17-travel-14", "name": "submarine", "label": "Подлодка", "group": "Космос"},
+    {"src": "07-fantasy-12", "name": "ninja", "label": "Ниндзя", "group": "Космос"},
+    {"src": "07-fantasy-10", "name": "crown", "label": "Корона", "group": "Космос", "sub": true},
+
+    {"src": "11-seasons-01", "name": "newyear", "label": "Новый год", "group": "Праздники"},
+    {"src": "11-seasons-02", "name": "tree", "label": "Ёлка", "group": "Праздники"},
+    {"src": "11-seasons-06", "name": "leaves", "label": "Листопад", "group": "Праздники"},
+    {"src": "11-seasons-07", "name": "halloween", "label": "Хэллоуин", "group": "Праздники", "season": "10-31"},
+
+    {"src": "12-compose-01", "name": "circle", "label": "В круге", "group": "Формы"},
+    {"src": "12-compose-02", "name": "closeup", "label": "Крупно", "group": "Формы"},
+    {"src": "12-compose-06", "name": "diagonal", "label": "Два цвета", "group": "Формы"},
+    {"src": "12-compose-12", "name": "curled", "label": "Клубочком", "group": "Формы"},
+    {"src": "12-compose-14", "name": "peek", "label": "Выглядывает", "group": "Формы"},
+    {"src": "18-ball-14", "name": "onball", "label": "На мяче", "group": "Формы"},
+
+    {"src": "14-styles-01", "name": "papercut", "label": "Бумага", "group": "Фактуры"},
+    {"src": "14-styles-05", "name": "pixel", "label": "Пиксели", "group": "Фактуры"},
+    {"src": "14-styles-06", "name": "origami", "label": "Оригами", "group": "Фактуры"},
+    {"src": "14-styles-07", "name": "stainedglass", "label": "Витраж", "group": "Фактуры"},
+    {"src": "14-styles-08", "name": "clay", "label": "Пластилин", "group": "Фактуры"},
+    {"src": "14-styles-09", "name": "embroidery", "label": "Вышивка", "group": "Фактуры"},
+    {"src": "14-styles-10", "name": "chalk", "label": "Мел", "group": "Фактуры"},
+    {"src": "14-styles-15", "name": "riso", "label": "Ризограф", "group": "Фактуры"}
+  ]
+}

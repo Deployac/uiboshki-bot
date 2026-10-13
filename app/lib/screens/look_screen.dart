@@ -186,37 +186,32 @@ class LookScreen extends StatelessWidget {
                 ),
               ),
 
-              // иконка на телефоне (5.79) — только в приложении на Android и iPhone
+              // иконка на телефоне (5.79; картинки — 5.84) — только в приложении
+              // на Android и iPhone. В «Оформлении» одна строка, все — листом.
               if (appIconSupported) ...[
                 const Section('иконка приложения'),
                 _Pad(
-                  Column(
-                    children: [
-                      for (var r = 0; r < AppIcon.values.length; r += 3) ...[
-                        if (r > 0) const SizedBox(height: Space.m),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            for (var i = r; i < r + 3; i++) ...[
-                              if (i > r) const SizedBox(width: Space.s),
-                              Expanded(
-                                child: i < AppIcon.values.length
-                                    ? _IconTile(
-                                        icon: AppIcon.values[i],
-                                        selected: look.icon == AppIcon.values[i],
-                                        onTap: () => set(look.copyWith(icon: AppIcon.values[i])),
-                                      )
-                                    : const SizedBox(),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
-                    ],
+                  _IconRow(
+                    icon: look.icon,
+                    dark: _iconDark(context, look),
+                    onPick: (i) => set(look.copyWith(icon: i)),
                   ),
                 ),
+                if (defaultTargetPlatform == TargetPlatform.android && look.icon.art) ...[
+                  const SizedBox(height: Space.s),
+                  _Pad(
+                    _Seg<_Shade>(
+                      id: 'icon-shade',
+                      value: look.iconDark ? _Shade.dark : _Shade.light,
+                      items: const [(_Shade.light, 'Светлая'), (_Shade.dark, 'Тёмная')],
+                      onPick: (v) => set(look.copyWith(iconDark: v == _Shade.dark)),
+                    ),
+                  ),
+                ],
                 if (defaultTargetPlatform == TargetPlatform.android)
-                  const _Hint('На Android ярлык на рабочем столе может переставиться.'),
+                  const _Hint('На Android ярлык на рабочем столе может переставиться.')
+                else if (look.icon.art)
+                  const _Hint('В тёмной теме iPhone (iOS 18) иконка сама станет тёмной.'),
               ],
 
               if (changed) ...[
@@ -578,65 +573,133 @@ class _FontCard extends StatelessWidget {
   }
 }
 
-/// Иконка образцом — нарисована так же, как в tools/app_icons.py: фон и
-/// капибара на мяче (82 % по центру); «Из-за страницы» — крупнее, низ под листом.
-class _IconTile extends StatelessWidget {
+enum _Shade { light, dark }
+
+/// Какую версию иконки-картинки показывать образцом: на Android — выбранную,
+/// на iPhone — по теме телефона (её подставляет сама iOS 18).
+bool _iconDark(BuildContext context, Look look) => defaultTargetPlatform == TargetPlatform.android
+    ? look.iconDark
+    : MediaQuery.platformBrightnessOf(context) == Brightness.dark;
+
+/// Строка «иконка приложения»: нынешняя и «Выбрать» — все листом.
+class _IconRow extends StatelessWidget {
   final AppIcon icon;
-  final bool selected;
-  final VoidCallback onTap;
-  const _IconTile({required this.icon, required this.selected, required this.onTap});
+  final bool dark;
+  final ValueChanged<AppIcon> onPick;
+  const _IconRow({required this.icon, required this.dark, required this.onPick});
 
   @override
   Widget build(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
-    return Semantics(
-      selected: selected,
-      button: true,
-      label: icon.label,
-      excludeSemantics: true,
+    return Material(
+      color: p.cardSolid,
+      borderRadius: BorderRadius.circular(Radii.tile),
       child: InkWell(
-        key: Key('look:icon:${icon.name}'),
+        key: const Key('look:icon'),
         borderRadius: BorderRadius.circular(Radii.tile),
-        onTap: selected ? null : onTap,
-        child: Column(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(Radii.tile + 3),
-                border: Border.all(color: selected ? p.accent : Colors.transparent, width: 2),
+        onTap: () async {
+          final picked = await appSheet<AppIcon>(context, (_) => IconPicker(current: icon, dark: dark));
+          if (picked != null && picked != icon) onPick(picked);
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(Space.m),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 52,
+                child: IconArt(icon: icon, dark: dark),
               ),
-              child: AspectRatio(
-                aspectRatio: 1,
-                child: LayoutBuilder(
-                  builder: (context, box) {
-                    final w = box.maxWidth;
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(w * 0.225),
-                      child: DecoratedBox(decoration: icon.background, child: _art(w)),
-                    );
-                  },
+              const SizedBox(width: Space.m),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(icon.label, style: s.body(16, weight: FontWeight.w600)),
+                    Text('${AppIcon.choosable.length} на выбор', style: s.body(13, color: p.muted)),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              icon.label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              style: s.body(
-                12.5,
-                weight: selected ? FontWeight.w600 : FontWeight.w400,
-                color: selected ? p.text : p.muted,
-              ),
-            ),
-          ],
+              Text('Выбрать', style: s.body(15, color: p.accent)),
+              Icon(Icons.chevron_right_rounded, color: p.accent),
+            ],
+          ),
         ),
       ),
     );
   }
+}
+
+/// Лист со всеми иконками по группам, по четыре в ряд. Нажал — выбрал.
+class IconPicker extends StatelessWidget {
+  final AppIcon current;
+  final bool dark;
+  const IconPicker({super.key, required this.current, required this.dark});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final all = AppIcon.choosable;
+    return SizedBox(
+      height: MediaQuery.sizeOf(context).height * 0.86,
+      child: CustomScrollView(
+        key: const Key('look:icons'),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(Space.xl, 0, Space.xl, Space.s),
+            sliver: SliverToBoxAdapter(child: Text('Иконка приложения', style: s.title(24))),
+          ),
+          for (final g in [classicGroup, ...artGroups]) ...[
+            SliverToBoxAdapter(child: Section(g)),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: Space.l),
+              sliver: SliverGrid.count(
+                crossAxisCount: 4,
+                mainAxisSpacing: Space.s,
+                crossAxisSpacing: Space.s,
+                childAspectRatio: 0.68,
+                children: [
+                  for (final i in all)
+                    if (i.group == g)
+                      _IconTile(icon: i, dark: dark, selected: i == current, onTap: () => Navigator.of(context).pop(i)),
+                ],
+              ),
+            ),
+          ],
+          SliverToBoxAdapter(child: SizedBox(height: Space.xl + MediaQuery.paddingOf(context).bottom)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Иконка образцом: картинка (5.84) или нарисованная кодом (как в
+/// tools/app_icons.py: фон и капибара на мяче, 82 % по центру; «Из-за
+/// страницы» — крупнее, низ под листом). Скругление — как у iOS.
+class IconArt extends StatelessWidget {
+  final AppIcon icon;
+  final bool dark;
+  const IconArt({super.key, required this.icon, this.dark = false});
+
+  @override
+  Widget build(BuildContext context) => AspectRatio(
+    aspectRatio: 1,
+    child: LayoutBuilder(
+      builder: (context, box) {
+        final w = box.maxWidth;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(w * 0.225),
+          child: icon.art
+              ? Image.asset(
+                  icon.preview(dark: dark),
+                  fit: BoxFit.cover,
+                  filterQuality: FilterQuality.medium,
+                )
+              : DecoratedBox(decoration: icon.background, child: _art(w)),
+        );
+      },
+    ),
+  );
 
   Widget _art(double w) {
     if (icon != AppIcon.page) {
@@ -677,6 +740,57 @@ class _IconTile extends StatelessWidget {
           child: const ColoredBox(color: pageLine),
         ),
       ],
+    );
+  }
+}
+
+/// Плитка в листе выбора: образец и подпись, выбранная — в рамке.
+class _IconTile extends StatelessWidget {
+  final AppIcon icon;
+  final bool dark;
+  final bool selected;
+  final VoidCallback onTap;
+  const _IconTile({required this.icon, required this.dark, required this.selected, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: icon.label,
+      excludeSemantics: true,
+      child: InkWell(
+        key: Key('look:icon:${icon.name}'),
+        borderRadius: BorderRadius.circular(Radii.tile),
+        onTap: onTap,
+        child: Column(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(Radii.tile + 3),
+                border: Border.all(color: selected ? p.accent : Colors.transparent, width: 2),
+              ),
+              child: IconArt(icon: icon, dark: dark),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              icon.label,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: s.body(
+                12,
+                weight: selected ? FontWeight.w600 : FontWeight.w400,
+                color: selected ? p.text : p.muted,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
