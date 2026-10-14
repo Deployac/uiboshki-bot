@@ -1191,6 +1191,23 @@ def test_token_from_url_only_after_own_oauth_start():
 
 def test_pwa_login_shows_pick_number():
     """Вход через бота: экран «Войти» показывает число, которое надо нажать в Telegram."""
-    body = JS["js/core.js"].split("async function startLogin")[1].split("async function pollLogin")[0]
-    assert "login-pick" in body and "res.pick" in body
+    body = JS["js/core.js"].split("function showPending")[1].split("\n}\n")[0]
+    assert "login-pick" in body and "p.pick" in body
     assert ".login-pick" in CSS
+
+
+def test_pwa_login_opens_telegram_directly_and_survives_restart():
+    """PWA с экрана «Домой»: t.me открывался во встроенном браузере, после
+    «Да, это я» вместо числа — белая страница, и так по кругу (Никита, 14.10).
+    На телефоне в режиме приложения — tg://, начатый вход переживает перезапуск."""
+    core = JS["js/core.js"]
+    open_bot = core.split("function openBot")[1].split("\n}\n")[0]
+    assert "STANDALONE_PHONE && p.tg" in open_bot and "location.href = p.tg" in open_bot
+    start = core.split("async function startLogin")[1].split("async function pollLogin")[0]
+    assert "res.tg_link" in start and "savePending(p)" in start and "openBot(p)" in start
+    assert "window.open(res.link" not in start
+    show = core.split("function showLogin")[1].split("\n}\n")[0]
+    assert "readPending()" in show and "showPending(pending)" in show
+    poll = core.split("async function pollLogin")[1].split("\n}\n")[0]
+    assert poll.count("savePending(null)") == 2          # вошёл или код сгорел — забыть
+    assert ".login-web" in CSS

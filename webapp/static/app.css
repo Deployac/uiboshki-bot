@@ -1246,6 +1246,7 @@
   }
   /* вход через бота: число, которое надо нажать в Telegram (ревью безопасности 09.10) */
   .login-pick { display: block; margin-top: 10px; font-size: 44px; font-weight: 800; letter-spacing: 4px; color: var(--text); }
+  .login-web { display: block; margin-top: 14px; font-size: 13px; color: var(--link); cursor: pointer; }
 
   /* ── 152-ФЗ (js/privacy.js): галочка согласия со ссылками на тексты ── */
   .consent-row { display: flex; gap: 11px; align-items: flex-start; margin: 14px 0 4px; font-size: 14px;

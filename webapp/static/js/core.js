@@ -382,6 +382,8 @@ function showLogin() {
     '<button class="primary" id="login-btn" onclick="startLogin()">Войти через Telegram</button>' +
     '<p class="hint" id="login-hint">Бот спросит «Это ты?» — нажми «Да». Один раз на этом устройстве.</p>' +
     '<div id="login-more"></div></div>';
+  const pending = readPending();
+  if (pending) showPending(pending);
   // VK ID и Яндекс ID — если на сервере есть их ключи (/api/auth/providers)
   fetch("/api/auth/providers").then(r => r.json()).then(res => {
     const box = document.getElementById("login-more");
@@ -406,40 +408,83 @@ async function startOAuth(provider) {
   }
 }
 
+// Открыть бота. В PWA с экрана «Домой» window.open(t.me…) открывал поверх
+// приложения встроенный браузер: t.me уводил в Telegram, а вернувшись, человек
+// видел белую страницу вместо числа для входа, и при новом запуске она снова
+// уводила в Telegram (Никита, 14.10). Поэтому на телефоне в режиме приложения —
+// сразу в Telegram по tg://, без промежуточной страницы; не открылся —
+// ссылка «Открыть в браузере» (t.me) под кнопкой.
+const STANDALONE_PHONE = !IN_TG && /iPhone|iPad|iPod|Android/.test(navigator.userAgent) &&
+  !!(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches));
+
+function openBot(p) {
+  if (STANDALONE_PHONE && p.tg) location.href = p.tg;
+  else window.open(p.link, "_blank");
+}
+
+// Начатый вход помним (10 минут, как код на сервере): телефон часто
+// перезапускает PWA, пока человек в Telegram, и без этого число и опрос
+// пропадали — приходилось начинать заново.
+function savePending(p) { try { if (p) localStorage.setItem("uib_login", JSON.stringify(p)); else localStorage.removeItem("uib_login"); } catch (e) {} }
+function readPending() {
+  try {
+    const p = JSON.parse(localStorage.getItem("uib_login") || "null");
+    return p && p.code && p.until > Date.now() ? p : null;
+  } catch (e) { return null; }
+}
+
+function showPending(p) {
+  const btn = document.getElementById("login-btn"), hint = document.getElementById("login-hint");
+  loginCode = p.code;
+  hint.innerHTML = "Открыл бота — нажми там «Да, это я», потом это число:" +
+    '<b class="login-pick">' + escapeHtml(String(p.pick)) + "</b>" +
+    (STANDALONE_PHONE ? '<a class="login-web" id="login-web">Telegram не открылся? Открыть в браузере</a>' : "");
+  const web = document.getElementById("login-web");
+  if (web) web.onclick = () => window.open(p.link, "_blank");
+  btn.textContent = "Открыть бота ещё раз";
+  btn.disabled = false;
+  btn.onclick = () => openBot(p);
+  clearInterval(loginTimer);
+  loginTimer = setInterval(pollLogin, 2000);
+}
+
+// Вернулся из Telegram — проверить вход сразу, не ждать таймера
+document.addEventListener("visibilitychange", () => { if (!document.hidden && loginCode) pollLogin(); });
+
 async function startLogin() {
   const btn = document.getElementById("login-btn"), hint = document.getElementById("login-hint");
   btn.disabled = true;
   try {
     const res = await fetch("/api/auth/start", { method: "POST" }).then(r => r.ok ? r.json() : Promise.reject(r));
-    loginCode = res.code;
-    window.open(res.link, "_blank");
-    hint.innerHTML = "Открыл бота — нажми там «Да, это я», потом это число:" +
-      '<b class="login-pick">' + escapeHtml(String(res.pick)) + "</b>";
-    btn.textContent = "Открыть бота ещё раз";
-    btn.disabled = false;
-    btn.onclick = () => window.open(res.link, "_blank");
-    clearInterval(loginTimer);
-    loginTimer = setInterval(pollLogin, 2000);
+    const p = { code: res.code, pick: res.pick, link: res.link, tg: res.tg_link,
+                until: Date.now() + (res.expires_in || 600) * 1000 };
+    savePending(p);
+    showPending(p);
+    openBot(p);
   } catch (e) {
     btn.disabled = false;
     hint.textContent = "Не получилось начать вход — попробуй через минуту.";
   }
 }
 
+let loginBusy = false;      // опрос по таймеру и по возврату из Telegram — не двумя запросами сразу
 async function pollLogin() {
-  if (!loginCode) return;
+  if (!loginCode || loginBusy) return;
   let res;
+  loginBusy = true;
   try {
     res = await fetch("/api/auth/poll", { method: "POST", headers: { "Content-Type": "application/json" },
                                           body: JSON.stringify({ code: loginCode }) }).then(r => r.json());
-  } catch (e) { return; }
+  } catch (e) { return; } finally { loginBusy = false; }
   if (res.status === "ok") {
     clearInterval(loginTimer);
+    savePending(null);
     saveToken(res.token);
     location.replace("/app");
   } else if (res.status !== "wait") {
     clearInterval(loginTimer);
     loginCode = null;
+    savePending(null);
     document.getElementById("login-hint").textContent =
       res.status === "denied" ? "Вход отклонён в боте." : "Ссылка устарела — нажми «Войти» ещё раз.";
     const btn = document.getElementById("login-btn");
