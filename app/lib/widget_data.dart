@@ -59,11 +59,37 @@ Map<String, Object?> widgetLesson(Lesson l, String date) {
   };
 }
 
+/// «09:40» по Москве.
+String mskHm(DateTime t) {
+  final m = t.toUtc().add(const Duration(hours: 3));
+  return '${m.hour.toString().padLeft(2, '0')}:${m.minute.toString().padLeft(2, '0')}';
+}
+
+/// Блок подряд идущих пар (5 пар военки) — по паре на запись: виджет считает
+/// «до конца пары» до конца текущей, а не всего блока («530′», 14.10). У
+/// каждой — номер в блоке `n`, сколько их `of` и конец блока `be`.
+List<Map<String, Object?>> widgetLessons(Lesson l, String date) {
+  if (l.parts.length < 2) return [widgetLesson(l, date)];
+  return [
+    for (var i = 0; i < l.parts.length; i++)
+      {
+        ...widgetLesson(l, date),
+        's': mskHm(l.parts[i].$1),
+        'e': mskHm(l.parts[i].$2),
+        'sa': l.parts[i].$1.millisecondsSinceEpoch,
+        'ea': l.parts[i].$2.millisecondsSinceEpoch,
+        'n': i + 1,
+        'of': l.parts.length,
+        'be': l.end,
+      },
+  ];
+}
+
 /// День для виджета; [partial] — из дня известна только первая пара.
 Map<String, Object?> widgetDay(String date, List<Lesson> lessons, {bool partial = false}) {
   final list = [
     for (final l in lessons)
-      if (!l.cancelled) widgetLesson(l, date),
+      if (!l.cancelled) ...widgetLessons(l, date),
   ];
   return {'d': date, 'h': widgetDayHeader(date, list.length, partial: partial), 'part': partial, 'l': list};
 }

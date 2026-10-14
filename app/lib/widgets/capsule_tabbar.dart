@@ -43,6 +43,37 @@ class CapsuleTabBar extends StatelessWidget {
   Widget _bar(BuildContext context) {
     final s = AppStyle.of(context);
     final p = s.p;
+    // мягкий градиент под капсулой (14.10, совет Gemini): строки списка уходят
+    // под меню, а не обрезаются пополам. Рисуется и выше полосы меню, касания
+    // пропускает
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          left: 0,
+          right: 0,
+          top: -28,
+          bottom: 0,
+          child: IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [p.bg.withValues(alpha: 0), p.bg.withValues(alpha: 0.85)],
+                  stops: const [0, 0.55],
+                ),
+              ),
+            ),
+          ),
+        ),
+        _capsule(context),
+      ],
+    );
+  }
+
+  Widget _capsule(BuildContext context) {
+    final p = AppStyle.of(context).p;
     return SafeArea(
       top: false,
       minimum: const EdgeInsets.only(bottom: Space.m),

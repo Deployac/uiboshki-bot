@@ -25,6 +25,12 @@
 15 дней без оценки) считаем потерянными: пересдачу открывает преподаватель, на неё не рассчитываем.
 Своя цель хранится в settings («goals:<id>» → {курс: оценка}); без неё —
 первая отметка курса (зачёт или «3»).
+
+Два счёта (владелец 14.10: «дойдёшь до 5/4/3 считать без учёта экзамена»):
+пока экзамен впереди, карточка считает «автомат» — только баллы семестра,
+отметки без последней («5» автоматом нет), — или «с экзаменом» — сумма с
+экзаменом, все отметки. По умолчанию — автомат; выбор — settings
+«goal_modes:<id>» → {курс: "auto"|"exam"}.
 """
 
 import json
@@ -35,6 +41,7 @@ OPEN = ("todo", "soon", "offline", "wait", "late")   # ещё могут дат�
 LOST = ("low", "miss")
 TIGHT_MARGIN = 5.0                            # запас меньше — «впритык»
 EXAM_POINTS = 40.0                            # «Семестровый контроль 0–40», если в журнале его нет
+MODES = ("auto", "exam")                      # счёт цели: автомат или с экзаменом
 
 
 def exam_info(course: dict) -> tuple[float, float]:
@@ -71,26 +78,35 @@ def final_mark(marks: list[dict], semester: float, exam: float | None = None, tk
     return got[-1]["label"] if got else None
 
 
-async def get_goals(user_id: int) -> dict[str, str]:
+async def get_goals(user_id: int, key: str = "goals") -> dict[str, str]:
     from database import get_setting
     try:
-        data = json.loads(await get_setting(f"goals:{user_id}") or "{}")
+        data = json.loads(await get_setting(f"{key}:{user_id}") or "{}")
     except ValueError:
         return {}
     return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
 
 
-async def set_goal(user_id: int, course_id: int, label: str | None) -> dict[str, str]:
+async def get_modes(user_id: int) -> dict[str, str]:
+    """Счёт цели по курсам: "auto" — автомат, "exam" — с экзаменом."""
+    return await get_goals(user_id, "goal_modes")
+
+
+async def set_goal(user_id: int, course_id: int, label: str | None, key: str = "goals") -> dict[str, str]:
     from database import set_setting
     from locks import lock
-    async with lock("goals", user_id):       # две цели подряд по разным предметам — сохраняются обе
-        goals = await get_goals(user_id)
+    async with lock(key, user_id):           # две цели подряд по разным предметам — сохраняются обе
+        goals = await get_goals(user_id, key)
         if label:
             goals[str(course_id)] = label
         else:
             goals.pop(str(course_id), None)
-        await set_setting(f"goals:{user_id}", json.dumps(goals, ensure_ascii=False))
+        await set_setting(f"{key}:{user_id}", json.dumps(goals, ensure_ascii=False))
     return goals
+
+
+async def set_mode(user_id: int, course_id: int, mode: str) -> dict[str, str]:
+    return await set_goal(user_id, course_id, mode if mode in MODES else None, "goal_modes")
 
 
 def _status(score: float, at: float, best: float, tk: dict, auto: bool = True) -> str:
@@ -105,22 +121,33 @@ def _status(score: float, at: float, best: float, tk: dict, auto: bool = True) -
     return "ok"
 
 
-def plan(course: dict, attendance: dict | None = None, label: str | None = None) -> dict:
+def plan(course: dict, attendance: dict | None = None, label: str | None = None,
+         mode: str | None = None) -> dict:
     """course — ответ sdo_grades.course_detail (работы со статусами),
-    attendance — attendance.for_course или None."""
-    marks = course.get("marks") or [{"at": 40, "label": "3"}]
-    mark = next((m for m in marks if m["label"] == label), marks[0])
-    at, score = float(mark["at"]), float(course.get("score") or 0)
+    attendance — attendance.for_course или None, mode — "auto" или "exam"
+    (пока экзамен впереди; без него — автомат)."""
+    all_marks = course.get("marks") or [{"at": 40, "label": "3"}]
+    score = float(course.get("score") or 0)
+    exam_max, exam_got = exam_info(course)
+    exam = max(0.0, exam_max - exam_got)
+    # экзамен ещё впереди — автомат и экзамен считаем отдельно
+    pending = len(all_marks) >= 2 and exam > 0 and not exam_got
+    mode = (mode if mode in MODES else "auto") if pending else None
+    marks = all_marks[:-1] if mode == "auto" else all_marks
+    mark = next((m for m in marks if m["label"] == label), None)
+    if mark is None and mode == "auto" and label == all_marks[-1]["label"]:
+        mark = marks[-1]                 # цель «5» в счёте автомата — лучшая автоматом
+    mark = mark or marks[0]
+    at = float(mark["at"])
     works = course.get("works") or []
     open_ = [w for w in works if w.get("status") in OPEN]
     lost = [w for w in works if w.get("status") in LOST]
     open_points = sum(float(w.get("max") or 0) for w in open_)
     att_ok = bool(attendance and attendance.get("ok"))
     att_left = float(attendance.get("can_get") or 0) if att_ok else 0.0
-    exam_max, exam_got = exam_info(course)
-    exam = max(0.0, exam_max - exam_got)
     semester_best = score + open_points + att_left
-    best = semester_best + exam
+    exam_in = 0.0 if mode == "auto" else exam
+    best = semester_best + exam_in
 
     total = len(works)
     passed = sum(1 for w in works if w.get("status") == "ok")
@@ -129,29 +156,34 @@ def plan(course: dict, attendance: dict | None = None, label: str | None = None)
     tk = {"total": total, "passed": passed, "need": need, "left": left, "open": len(open_),
           "ok": passed >= need, "reachable": len(open_) >= left}
 
-    # экзамен ещё впереди — считаем автомат отдельно от экзамена
-    pending = len(marks) >= 2 and exam > 0 and not exam_got
-    auto_ok = not pending or mark is not marks[-1]
+    auto_ok = not pending or mark is not all_marks[-1]
+    with_exam = mode == "exam"
 
     out = {
         "label": mark["label"], "at": at, "own": bool(label) and mark["label"] == label,
-        "marks": [m["label"] for m in marks],
+        "marks": [m["label"] for m in marks], "mode": mode,
         "score": round(score, 2), "need": round(max(0.0, at - score), 2),
         "open_points": round(open_points, 2), "open_count": len(open_),
-        "attendance_left": round(att_left, 2), "exam_left": round(exam, 2), "best": round(best, 2),
+        "attendance_left": round(att_left, 2), "exam_left": round(exam_in, 2), "best": round(best, 2),
         "lost_count": len(lost), "lost_points": round(sum(float(w.get("max") or 0) for w in lost), 2),
         "tk": tk, "status": _status(score, at, best, tk, auto_ok),
         "exam_pending": pending, "exam_max": round(exam_max, 2),
         # какая отметка автоматом: уже есть / можно добрать работами и лекциями
-        "auto": final_mark(marks, score, None, tk["ok"]) if pending else None,
-        "auto_best": final_mark(marks, semester_best, None, tk["reachable"]) if pending else None,
+        "auto": final_mark(all_marks, score, None, tk["ok"]) if pending else None,
+        "auto_best": final_mark(all_marks, semester_best, None, tk["reachable"]) if pending else None,
         "auto_ok": auto_ok,
-        # сколько нужно на экзамене для цели при нынешних баллах (минимума
-        # нет, больше максимума экзамена не бывает); exam_short — сколько не
-        # хватит даже с полным экзаменом: добирать работами и лекциями
-        "need_exam": round(min(exam, max(0.0, at - score)), 2) if pending else 0,
-        "exam_short": round(max(0.0, at - score - exam), 2) if pending else 0,
+        # с экзаменом: сколько нужно на экзамене для цели при нынешних баллах
+        # (минимума нет, больше максимума экзамена не бывает); exam_short —
+        # сколько не хватит даже с полным экзаменом: добирать работами и лекциями
+        "need_exam": round(min(exam, max(0.0, at - score)), 2) if with_exam else 0,
+        "exam_short": round(max(0.0, at - score - exam), 2) if with_exam else 0,
     }
+    # прогноз без процентов (14.10): какие открытые работы нельзя пропустить —
+    # без любой из них цель уже не набрать (баллами или правилом 75 %)
+    if out["status"] in ("ok", "tight"):
+        must = [w for w in open_
+                if best - float(w.get("max") or 0) < at or len(open_) - 1 < left]
+        out["must"] = [str(w.get("name") or "") for w in must]
     # «что если пропущу лекцию»: минус одна лекция из того, что дают посещения
     future = [x for x in (attendance or {}).get("lectures") or [] if x.get("status") == "future"]
     if att_ok and future and attendance.get("unit"):

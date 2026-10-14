@@ -13,6 +13,10 @@ class Lesson {
   final int pairs;
   final DateTime? startAt, endAt;
 
+  /// Пары блока по отдельности (`parts`, только у блока): «до конца пары» в
+  /// пяти парах военки — до конца текущей, а не всего блока (14.10).
+  final List<(DateTime, DateTime)> parts;
+
   /// Изменения в расписании (5.79, своя группа): прежний кабинет и когда
   /// заметили перенос; отменённая пара — [cancelled] (её нет в счёте пар).
   final String roomWas, changedAt;
@@ -31,6 +35,7 @@ class Lesson {
     this.pairs = 1,
     this.startAt,
     this.endAt,
+    this.parts = const [],
     this.roomWas = '',
     this.changedAt = '',
     this.cancelled = false,
@@ -49,10 +54,31 @@ class Lesson {
     pairs: j['pairs'] is int ? j['pairs'] as int : 1,
     startAt: j['start_iso'] != null ? DateTime.tryParse(j['start_iso']) : null,
     endAt: j['end_iso'] != null ? DateTime.tryParse(j['end_iso']) : null,
+    parts: [
+      for (final x in (j['parts'] as List? ?? const []))
+        if (x is List && x.length == 2 && DateTime.tryParse('${x[0]}') != null && DateTime.tryParse('${x[1]}') != null)
+          (DateTime.parse('${x[0]}'), DateTime.parse('${x[1]}')),
+    ],
     roomWas: j['room_was'] ?? '',
     changedAt: j['room_changed_at'] ?? j['cancelled_at'] ?? '',
     cancelled: j['cancelled_at'] != null,
   );
+
+  /// Что идёт в [t] внутри пары или блока: номер пары блока (с 1), сколько
+  /// их, начало и конец текущей пары; [pause] — перемена между парами блока
+  /// (тогда начало и конец — самой перемены). Не идёт — null.
+  ({int index, int of, DateTime start, DateTime end, bool pause})? liveAt(DateTime t) {
+    final s = startAt, e = endAt;
+    if (s == null || e == null || t.isBefore(s) || !t.isBefore(e)) return null;
+    for (var i = 0; i < parts.length; i++) {
+      final (a, b) = parts[i];
+      if (!t.isBefore(a) && t.isBefore(b)) return (index: i + 1, of: parts.length, start: a, end: b, pause: false);
+      if (i + 1 < parts.length && !t.isBefore(b) && t.isBefore(parts[i + 1].$1)) {
+        return (index: i + 2, of: parts.length, start: b, end: parts[i + 1].$1, pause: true);
+      }
+    }
+    return (index: 1, of: 1, start: s, end: e, pause: false);
+  }
 
   /// «Лекция · А-17 (В-78)»
   String get place =>

@@ -97,8 +97,12 @@ def _merge_runs(events: list[dict]) -> list[dict]:
             prev["last"] = i
             prev["time_end"] = e.get("time_end")
             prev["end_str"] = (e.get("time") or "").split("–")[-1]
+            prev["parts"].append((e.get("time_start"), e.get("time_end")))
             continue
         runs.append({**e, "first": i, "last": i,
+                     # каждая пара блока отдельно: «до конца пары» в 4 парах
+                     # военки — до конца текущей, а не всего блока (виджет, 14.10)
+                     "parts": [(e.get("time_start"), e.get("time_end"))],
                      "start_str": (e.get("time") or "").split("–")[0],
                      "end_str": (e.get("time") or "").split("–")[-1]})
     return runs

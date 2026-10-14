@@ -2,6 +2,7 @@
 и расписание любой группы/преподавателя/аудитории МИРЭА, закреплённые,
 заметки к парам и картинки расписания для inline-режима (/card)."""
 
+import asyncio
 import logging
 import re
 
@@ -35,7 +36,7 @@ async def schedule_card_image(key: str, sig: str = "", thumb: int = 0):
         raise HTTPException(403, "Неверная ссылка")
     hit = _card_cache.get(key)
     if hit and hit[0] > time.time():
-        return _card_response(hit[1], thumb)
+        return await _card_response(hit[1], thumb)
     kind, target_type, target_id = parsed
     now = datetime.now(TZ)
     if kind == "target":
@@ -61,14 +62,15 @@ async def schedule_card_image(key: str, sig: str = "", thumb: int = 0):
     if len(_card_cache) > 200:
         _card_cache.clear()
     _card_cache[key] = (time.time() + 600, data)
-    return _card_response(data, thumb)
+    return await _card_response(data, thumb)
 
 
-def _card_response(data: bytes, thumb: int) -> Response:
-    """Картинка целиком или маленькое превью (inline: thumbnail_url — свой адрес)."""
+async def _card_response(data: bytes, thumb: int) -> Response:
+    """Картинка целиком или маленькое превью (inline: thumbnail_url — свой адрес).
+    Pillow — в отдельном потоке, как и сама карточка: сервер не замирает."""
     if thumb:
         import schedule_card
-        data = schedule_card.thumbnail(data)
+        data = await asyncio.to_thread(schedule_card.thumbnail, data)
     return Response(data, media_type="image/jpeg")
 
 

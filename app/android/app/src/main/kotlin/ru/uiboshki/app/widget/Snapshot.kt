@@ -19,7 +19,13 @@ data class WLesson(
     val endAt: Long,
     val title: String,
     val room: String,
-)
+    /** Пара блока (5 пар военки): номер, сколько их, конец блока. 0 — не блок. */
+    val n: Int = 0,
+    val of: Int = 0,
+    val blockEnd: String = "",
+) {
+    val inBlock: Boolean get() = of > 1
+}
 
 data class WDay(val date: String, val header: String, val partial: Boolean, val lessons: List<WLesson>)
 
@@ -76,6 +82,9 @@ object WidgetStore {
                                     l.optLong("ea"),
                                     l.optString("t"),
                                     l.optString("r"),
+                                    l.optInt("n"),
+                                    l.optInt("of"),
+                                    l.optString("be"),
                                 ),
                             )
                         }
@@ -122,6 +131,24 @@ object Schedule {
             return LessonState.Next(it, minutesUntil(now, it.startAt), true)
         }
         return LessonState.Free
+    }
+
+    /** Что после идущей пары сегодня. */
+    fun after(s: Snapshot?, now: Long, cur: WLesson): WLesson? =
+        s?.let { today(it, now) }?.lessons?.firstOrNull { it.startAt >= cur.endAt }
+
+    /** Пары дня строками: блок (военка) — одной, от начала первой до конца последней. */
+    fun rows(day: WDay): List<WLesson> {
+        val out = mutableListOf<WLesson>()
+        for (l in day.lessons) {
+            val last = out.lastOrNull()
+            if (l.n > 1 && last != null && last.title == l.title && last.room == l.room) {
+                out[out.size - 1] = last.copy(end = l.end, endAt = l.endAt)
+            } else {
+                out.add(l)
+            }
+        }
+        return out
     }
 
     /** День для большого виджета: сегодня, пока пары не кончились, потом завтра. Второе — это завтра. */

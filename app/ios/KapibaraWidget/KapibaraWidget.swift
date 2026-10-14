@@ -17,9 +17,25 @@ struct WLesson: Decodable {
   let ea: Double
   let t: String
   let r: String
+  /// Пара блока (5 пар военки): номер, сколько их и конец блока «15:50».
+  /// Снимок кладёт блок по паре на запись — «до конца» считается до конца
+  /// текущей пары, а не всего блока («530′», 14.10).
+  var n: Int? = nil
+  var of: Int? = nil
+  var be: String? = nil
 
   var start: Date { Date(timeIntervalSince1970: sa / 1000) }
   var end: Date { Date(timeIntervalSince1970: ea / 1000) }
+  var inBlock: Bool { (of ?? 1) > 1 }
+}
+
+/// Строка большого виджета: блок пар — одной строкой.
+struct WRow {
+  let s: String
+  let t: String
+  let r: String
+  let start: Date
+  let end: Date
 }
 
 struct WDay: Decodable {
@@ -113,6 +129,25 @@ enum Sched {
       return .next(first, minutes: minutes(now, first.start), tomorrow: true)
     }
     return .free
+  }
+
+  /// Что после идущей пары сегодня (следующая пара или следующая пара блока).
+  static func after(_ snap: WSnapshot?, _ now: Date, _ cur: WLesson) -> WLesson? {
+    guard let s = snap else { return nil }
+    return days(s, now).today?.l.first { $0.start >= cur.end }
+  }
+
+  /// Пары дня строками: блок (военка) — одной, «09:00 … 15:50».
+  static func rows(_ day: WDay) -> [WRow] {
+    var out: [WRow] = []
+    for l in day.l {
+      if let n = l.n, n > 1, let last = out.last, last.t == l.t, last.r == l.r {
+        out[out.count - 1] = WRow(s: last.s, t: last.t, r: last.r, start: last.start, end: l.end)
+      } else {
+        out.append(WRow(s: l.s, t: l.t, r: l.r, start: l.start, end: l.end))
+      }
+    }
+    return out
   }
 
   /// День для большого виджета: сегодня, пока пары не кончились, потом завтра.
@@ -269,50 +304,112 @@ extension View {
 
 // MARK: - «Пара»: маленький
 
+/// Тонкая полоска «сколько прошло».
+struct Bar: View {
+  let value: Double
+  let color: Color
+  let track: Color
+
+  var body: some View {
+    GeometryReader { g in
+      ZStack(alignment: .leading) {
+        Capsule().fill(track)
+        Capsule().fill(color).frame(width: max(4, g.size.width * value))
+      }
+    }
+    .frame(height: 5)
+  }
+}
+
+/// Во время пары: где и что, крупно минуты до конца пары, полоска и что
+/// дальше. До пары: через сколько, крупно кабинет, предмет и время.
 struct SmallView: View {
   let entry: DayEntry
   @Environment(\.colorScheme) private var scheme
 
   var body: some View {
     let p = Pal.of(scheme)
-    var label = ""
-    var big = ""
-    var sub = ""
-    var labelColor = p.accent
-    switch Sched.state(entry.snap, entry.date) {
-    case .noData:
-      big = "Капибара"
-      sub = "Открой приложение — здесь появятся пары"
-    case .free:
-      label = "сегодня и завтра"
-      big = "Пар нет"
-      sub = "Можно выдохнуть"
-      labelColor = p.muted
-    case let .now(l, m, _):
-      label = l.r.isEmpty ? "идёт" : "идёт · \(l.r)"
-      big = "\(m)’"
-      sub = "до конца пары"
-      labelColor = p.ok
-    case let .next(l, m, tomorrow):
-      label = Sched.nextLabel(l, m, tomorrow)
-      big = l.r.isEmpty ? l.s : l.r
-      sub = l.t
-    }
-    return VStack(alignment: .leading, spacing: 2) {
-      if !label.isEmpty {
-        Text(label).font(.system(size: 13, weight: .semibold)).foregroundColor(labelColor).lineLimit(1)
+    let now = entry.date
+    return Group {
+      switch Sched.state(entry.snap, now) {
+      case .noData:
+        message(p, top: nil, big: "Капибара", sub: "Открой приложение — здесь появятся пары")
+      case .free:
+        message(p, top: "сегодня и завтра", big: "Пар нет", sub: "Можно выдохнуть")
+      case let .now(l, m, progress):
+        live(p, l, m, progress, Sched.after(entry.snap, now, l))
+      case let .next(l, m, tomorrow):
+        next(p, l, m, tomorrow)
       }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    .widgetBackground(p.bg)
+  }
+
+  private func label(_ text: String, _ color: Color) -> some View {
+    HStack(spacing: 5) {
+      Circle().fill(color).frame(width: 7, height: 7)
+      Text(text).font(.system(size: 13, weight: .semibold)).foregroundColor(color).lineLimit(1)
+    }
+  }
+
+  private func live(_ p: Pal, _ l: WLesson, _ m: Int, _ progress: Double, _ after: WLesson?) -> some View {
+    let foot: String
+    if l.inBlock, let n = l.n, let of = l.of {
+      foot = "пара \(n) из \(of) · до \(l.be ?? l.e)"
+    } else if let a = after {
+      foot = a.r.isEmpty ? "дальше в \(a.s)" : "дальше \(a.s) · \(a.r)"
+    } else {
+      foot = "последняя · до \(l.e)"
+    }
+    return VStack(alignment: .leading, spacing: 0) {
+      label(l.r.isEmpty ? "идёт" : "идёт · \(l.r)", p.ok)
+      Text(l.t).font(.system(size: 12)).foregroundColor(p.muted).lineLimit(1).padding(.top, 2)
+      Spacer(minLength: 0)
+      HStack(alignment: .firstTextBaseline, spacing: 3) {
+        Text(m >= 60 ? "\(m / 60):" + String(format: "%02d", m % 60) : "\(m)")
+          .font(.system(size: 40, weight: .bold, design: .rounded))
+          .foregroundColor(p.text)
+          .monospacedDigit()
+        Text(m >= 60 ? "ч" : "мин").font(.system(size: 15, weight: .semibold)).foregroundColor(p.muted)
+      }
+      .lineLimit(1)
+      .minimumScaleFactor(0.6)
+      Text("до конца пары").font(.system(size: 12)).foregroundColor(p.muted).padding(.bottom, 6)
+      Bar(value: progress, color: p.ok, track: p.muted.opacity(0.25))
+      Text(foot).font(.system(size: 12, weight: .medium)).foregroundColor(p.text).lineLimit(1).padding(.top, 6)
+    }
+  }
+
+  private func next(_ p: Pal, _ l: WLesson, _ m: Int, _ tomorrow: Bool) -> some View {
+    let pause = !tomorrow && l.inBlock && (l.n ?? 1) > 1
+    return VStack(alignment: .leading, spacing: 0) {
+      label(pause ? "перемена · \(m) мин" : Sched.nextLabel(l, m, tomorrow), pause ? p.ok : p.accent)
+      Spacer(minLength: 0)
+      Text(l.r.isEmpty ? l.s : l.r)
+        .font(.system(size: 38, weight: .bold, design: .rounded))
+        .foregroundColor(p.text)
+        .lineLimit(1)
+        .minimumScaleFactor(0.45)
+      Text(l.t).font(.system(size: 13)).foregroundColor(p.muted).lineLimit(2)
+      Spacer(minLength: 0)
+      Text(l.inBlock ? "\(l.s)–\(l.be ?? l.e) · пара \(l.n ?? 1) из \(l.of ?? 1)" : "\(l.s)–\(l.e)")
+        .font(.system(size: 12, weight: .medium)).foregroundColor(p.text).lineLimit(1)
+    }
+  }
+
+  private func message(_ p: Pal, top: String?, big: String, sub: String) -> some View {
+    VStack(alignment: .leading, spacing: 2) {
+      if let top = top { label(top, p.muted) }
       Spacer(minLength: 0)
       Text(big)
-        .font(.system(size: 38, weight: .bold, design: .rounded))
+        .font(.system(size: 34, weight: .bold, design: .rounded))
         .foregroundColor(p.text)
         .lineLimit(1)
         .minimumScaleFactor(0.45)
       Spacer(minLength: 0)
       Text(sub).font(.system(size: 13)).foregroundColor(p.muted).lineLimit(2)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-    .widgetBackground(p.bg)
   }
 }
 
@@ -333,7 +430,7 @@ struct RectView: View {
       case let .now(l, m, _):
         Text(l.r.isEmpty ? "идёт" : "идёт · \(l.r)").font(.headline).widgetAccentable()
         Text(l.t).font(.caption).lineLimit(1)
-        Text("ещё \(m)’ до конца").font(.caption)
+        Text(l.inBlock ? "ещё \(m)’ · пара \(l.n ?? 1) из \(l.of ?? 1)" : "ещё \(m)’ до конца").font(.caption)
       case let .next(l, m, tomorrow):
         Text(l.r.isEmpty ? l.s : "\(l.s) · \(l.r)").font(.headline).widgetAccentable()
         Text(l.t).font(.caption).lineLimit(1)
@@ -418,7 +515,7 @@ struct LargeView: View {
         if shown.day.l.isEmpty {
           Text("Пар нет — можно выдохнуть").font(.system(size: 15)).foregroundColor(p.text).padding(.top, 4)
         }
-        ForEach(Array(shown.day.l.prefix(8).enumerated()), id: \.offset) { _, l in
+        ForEach(Array(Sched.rows(shown.day).prefix(8).enumerated()), id: \.offset) { _, l in
           let color = l.start <= now && now < l.end ? p.ok : (l.end <= now ? p.muted : p.text)
           HStack(spacing: 8) {
             Text(l.s).font(.system(size: 14, weight: .semibold)).monospacedDigit()

@@ -89,15 +89,25 @@ object Widgets {
                 labelColor = R.color.w_muted
             }
             is LessonState.Now -> {
-                label = if (st.lesson.room.isEmpty()) "идёт" else "идёт · ${st.lesson.room}"
+                val l = st.lesson
+                label = if (l.room.isEmpty()) "идёт" else "идёт · ${l.room}"
                 big = "${st.minutesLeft}’"
-                sub = "до конца пары"
+                // до конца текущей пары, не всего блока военки («530′», 14.10)
+                val after = Schedule.after(snap, now, l)
+                sub = when {
+                    l.inBlock -> "до конца пары · ${l.n} из ${l.of}, всё до ${l.blockEnd.ifEmpty { l.end }}"
+                    after != null -> "до конца пары · дальше ${after.start} ${after.room}".trimEnd()
+                    else -> "до конца пары · последняя"
+                }
                 labelColor = R.color.w_ok
             }
             is LessonState.Next -> {
-                label = Schedule.nextLabel(st)
-                big = st.lesson.room.ifEmpty { st.lesson.start }
-                sub = st.lesson.title
+                val l = st.lesson
+                val pause = !st.tomorrow && l.inBlock && l.n > 1
+                label = if (pause) "перемена · ${st.minutes} мин" else Schedule.nextLabel(st)
+                if (pause) labelColor = R.color.w_ok
+                big = l.room.ifEmpty { l.start }
+                sub = if (l.inBlock) "${l.title} · пара ${l.n} из ${l.of}" else "${l.title} · ${l.start}–${l.end}"
             }
         }
         v.setTextViewText(R.id.w_label, label)
@@ -120,7 +130,7 @@ object Widgets {
         } else {
             val (day, tomorrow) = shown
             v.setTextViewText(R.id.w_head, if (tomorrow) "ЗАВТРА · ${day.header}" else day.header)
-            for (l in day.lessons.take(8)) {
+            for (l in Schedule.rows(day).take(8)) {
                 val row = RemoteViews(ctx.packageName, R.layout.widget_day_row)
                 row.setTextViewText(R.id.row_time, l.start)
                 row.setTextViewText(R.id.row_title, l.title)
