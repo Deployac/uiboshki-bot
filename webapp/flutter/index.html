@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <!-- Веб-сборка Капибары = PWA на /app (Никита 14.10: «дизайн у приложений
+       на iPhone и PWA одинаковый»). Собирается с --base-href /app/
+       (.github/workflows/app-web.yml), отдаёт её webapp/server.py. -->
+  <base href="/app/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Расписание, дедлайны, баллы СДО и лекции твоей группы РТУ МИРЭА">
+  <meta name="theme-color" content="#0f1115">
+
+  <!-- iPhone: с экрана «Домой» — на весь экран, имя и иконка как у приложения -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Капибара">
+  <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="/pwa/icon-192.png">
+
+  <title>Капибара — учёба МИРЭА</title>
+  <!-- тот же манифест, что у прежней PWA: id /app — установленная PWA остаётся собой -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>html, body { margin: 0; background: #0f1115; }</style>
+</head>
+<body>
+  <script>
+    // До запуска Flutter (shared_preferences в вебе — localStorage, ключи
+    // «flutter.<имя>», значения — JSON):
+    //  • вход прежней PWA (uib_token) переносим сюда — заново входить не надо;
+    //    переносим, а не копируем: иначе «Выйти» вернул бы старый вход;
+    //  • VK/Яндекс вернули на /app#token=… — берём, только если вход начат
+    //    в этом браузере (15 минут, как в js/core.js): чужая ссылка с токеном
+    //    не должна переключать в чужой аккаунт (ревью безопасности 09.10);
+    //  • service worker (/sw.js): приложение без сети и пуши прежней PWA.
+    (function () {
+      try {
+        var ls = localStorage, key = "flutter.uib_token", old = ls.getItem("uib_token");
+        if (old) {
+          if (!ls.getItem(key)) ls.setItem(key, JSON.stringify(old));
+          ls.removeItem("uib_token");
+        }
+        if (location.hash.indexOf("#token=") === 0) {
+          var at = Math.max(+JSON.parse(ls.getItem("flutter.uib_oauth_at") || "0") || 0,
+                            +(ls.getItem("uib_oauth_at") || 0) || 0);
+          ls.removeItem("flutter.uib_oauth_at");
+          ls.removeItem("uib_oauth_at");
+          if (Date.now() - at < 15 * 60 * 1000) ls.setItem(key, JSON.stringify(decodeURIComponent(location.hash.slice(7))));
+          history.replaceState(null, "", location.pathname + location.search);
+        }
+      } catch (e) {}
+      if ("serviceWorker" in navigator && location.protocol === "https:") {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
+      }
+    })();
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>
