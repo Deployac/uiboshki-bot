@@ -464,6 +464,15 @@ JSON приложения VPN (секрет хостинга, в репозит�
   ответ; «выйти» чистит данные), системная тема вне Telegram (`core.js`),
   вне Telegram: скачивание — обычной ссылкой, «Ярлык» — установка браузера
   (Android) или подсказка «Поделиться → На экран „Домой“» (iPhone).
+  **С 14.10 (5.85, Никита: «дизайн на iPhone и PWA одинаковый») PWA `/app` —
+  веб-сборка Flutter из `app/`** (`webapp/flutter`, `server.pwa_page`; нет
+  сборки — прежний WebApp). Собирает `tools/pwa_build.sh` (`--base-href /app/`,
+  canvaskit своим сервером), коммитит GitHub Actions `app-web.yml` после мержа
+  `app/` — руками сборку не править. `app/web/index.html` до запуска переносит
+  вход старой PWA (`uib_token` → `flutter.uib_token`), берёт токен VK/Яндекс
+  из `#token=` и регистрирует `/sw.js`; свой service worker Flutter выключен
+  (`app/web/flutter_bootstrap.js`). Mini App в Telegram — по-прежнему
+  `index.html` + `js/…`.
   **API как контракт (2 (в))**: `/api/v1/…` = `/api/…` (`server.ApiV1`), своё
   приложение и PWA — на v1; `/api/meta` — версия сервера и минимальные версии
   приложения (`APP_MIN_WEB/ANDROID/IOS`); снимок путей —

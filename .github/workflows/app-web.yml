@@ -1,0 +1,55 @@
+name: PWA — веб-сборка приложения
+
+# PWA на /app — то же приложение, что на iPhone (Никита 14.10). Railway
+# Flutter не собирает, поэтому после мержа изменений в app/ этот запуск
+# собирает веб-версию (tools/pwa_build.sh) и коммитит её в webapp/flutter;
+# дальше — как обычно: Sync fork → деплой. Коммит от github-actions не
+# запускает другие проверки. Сборка та же — коммита нет.
+
+on:
+  push:
+    branches: [main]
+    paths: ["app/**", "tools/pwa_build.sh", ".github/workflows/app-web.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pwa-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.6
+          channel: stable
+          cache: true
+
+      - name: Собрать и закоммитить
+        run: |
+          (cd app && flutter pub get)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          build() {
+            sh tools/pwa_build.sh
+            git add -A -- webapp/flutter
+            git diff --cached --quiet && return 1
+            git commit -m "PWA: веб-сборка приложения"
+          }
+          build || { echo "сборка не изменилась"; exit 0; }
+          for i in 1 2 3; do
+            git push origin HEAD:main && exit 0
+            # main ушёл вперёд (новый мерж) — собрать заново поверх него
+            git fetch origin main && git reset --hard origin/main
+            build || exit 0
+          done
+          exit 1
