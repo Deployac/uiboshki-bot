@@ -100,3 +100,41 @@ def test_subscribe_api(db, monkeypatch):
     for bad in ("https://push.example/x", "https://10.255.255.1/x", "https://fcm.googleapis.com.evil.ru/x"):
         assert c.post("/api/push/subscribe", json=dict(sub, endpoint=bad), headers=h).status_code == 400
     assert c.post("/api/push/unsubscribe", json={"endpoint": sub["endpoint"]}, headers=h).json()["removed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_push_only_skips_telegram_when_push_arrived(db, monkeypatch):
+    """«Дублировать в Telegram» выключено (Никита 14.10: «чтоб приходили от PWA,
+    а не TG»): пуш дошёл — в Telegram не шлём; пуш не дошёл — Telegram всё равно."""
+    import delivery
+    from database import set_notify, upsert_user
+    from database.push import save_push_sub
+    _, p256dh, auth = _browser()
+    await upsert_user(1, "", "Аня")
+    await set_notify(1, {"tg_copy": False})
+    codes = [201]
+
+    async def send(sub, data, ttl=3600):
+        return codes[0]
+
+    monkeypatch.setattr(webpush, "send", send)
+
+    class Bot:
+        sent = []
+
+        async def send_message(self, uid, text, **kw):
+            self.sent.append(uid)
+
+    bot = Bot()
+    await delivery.deliver(bot, 1, "пара", kind="lesson")
+    assert bot.sent == [1]                                  # пуш-подписки нет — Telegram
+    await save_push_sub(1, "https://push.example/a", p256dh, auth)
+    await delivery.deliver(bot, 1, "пара", kind="lesson")
+    assert bot.sent == [1]                                  # пуш дошёл — в Telegram не дублируем
+    codes[0] = 500
+    await delivery.deliver(bot, 1, "пара", kind="lesson")
+    assert bot.sent == [1, 1]                               # пуш не дошёл — Telegram
+    await set_notify(1, {"tg_copy": True})
+    codes[0] = 201
+    await delivery.deliver(bot, 1, "пара", kind="lesson")
+    assert bot.sent == [1, 1, 1]                            # по умолчанию — и туда, и туда

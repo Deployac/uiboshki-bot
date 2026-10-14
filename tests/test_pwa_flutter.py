@@ -77,3 +77,15 @@ def test_root_outside_telegram_with_login_opens_app():
     """www.uiboshki.ru вне Telegram: со входом — приложение /app, без — сайт."""
     core = (ROOT / "webapp" / "static" / "js" / "core.js").read_text(encoding="utf-8")
     assert 'location.replace(APP_TOKEN || flutterToken() ? "/app" : "/about")' in core
+
+
+def test_web_index_push_bridge():
+    """Пуши из PWA (5.86): Flutter зовёт window.uibPush (lib/web_push_web.dart);
+    iPhone не с экрана «Домой» — подсказка поставить, а не «не поддерживается»."""
+    js = WEB_INDEX.split("window.uibPush")[1].split("</script>")[0]
+    for name in ("state:", "enable:", "disable:"):
+        assert name in js
+    assert '"install"' in js and "navigator.standalone" in js
+    assert "applicationServerKey" in js and "sub.toJSON()" in js
+    dart = (ROOT / "app" / "lib" / "web_push_web.dart").read_text(encoding="utf-8")
+    assert all(f"@JS('uibPush.{n}')" in dart for n in ("state", "enable", "disable"))

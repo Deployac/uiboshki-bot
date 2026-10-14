@@ -56,6 +56,41 @@
       }
     })();
   </script>
+  <script>
+    // Пуши PWA (этап 2 (г), сервер — webpush.py): Flutter зовёт отсюда через
+    // dart:js_interop (lib/web_push_web.dart). Каждая функция — Promise<string>.
+    //  state: on / off / denied / install (iPhone не с экрана «Домой» — там
+    //  пушей нет) / unsupported; enable(ключ VAPID) — подписка JSON или ""
+    //  (не разрешили); disable — адрес отписанной подписки или "".
+    window.uibPush = {
+      state: async function () {
+        if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+          return /iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone ? "install" : "unsupported";
+        }
+        if (Notification.permission === "denied") return "denied";
+        var reg = await navigator.serviceWorker.getRegistration("/");
+        var sub = reg && await reg.pushManager.getSubscription();
+        return sub ? "on" : "off";
+      },
+      enable: async function (key) {
+        if (await Notification.requestPermission() !== "granted") return "";
+        await navigator.serviceWorker.register("/sw.js");
+        var reg = await navigator.serviceWorker.ready;
+        var pad = "=".repeat((4 - key.length % 4) % 4);
+        var raw = Uint8Array.from(atob((key + pad).replace(/-/g, "+").replace(/_/g, "/")), function (c) { return c.charCodeAt(0); });
+        var sub = await reg.pushManager.getSubscription() ||
+                  await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw });
+        return JSON.stringify(sub.toJSON());
+      },
+      disable: async function () {
+        var reg = await navigator.serviceWorker.getRegistration("/");
+        var sub = reg && await reg.pushManager.getSubscription();
+        if (!sub) return "";
+        await sub.unsubscribe();
+        return sub.endpoint;
+      },
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
