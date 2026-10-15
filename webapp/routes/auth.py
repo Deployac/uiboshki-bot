@@ -49,7 +49,10 @@ async def auth_start(request: Request):
     code = await create_login(_device(request))
     # pick — число на экране устройства: в боте его надо выбрать из трёх, иначе
     # вход по чужой ссылке подтверждался одним «Да, это я» (ревью безопасности 09.10)
-    return {"code": code, "link": f"https://t.me/{BOT_USERNAME}?start=login_{code}", "expires_in": 600,
+    # tg_link — сразу в приложение Telegram: PWA с экрана «Домой» открывает t.me
+    # во встроенном браузере, и после возврата там оставалась белая страница
+    return {"code": code, "link": f"https://t.me/{BOT_USERNAME}?start=login_{code}",
+            "tg_link": f"tg://resolve?domain={BOT_USERNAME}&start=login_{code}", "expires_in": 600,
             "pick": (await get_login(code))["pick"]}
 
 
