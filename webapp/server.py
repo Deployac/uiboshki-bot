@@ -201,7 +201,6 @@ def _digest(rel: str) -> str:
 
 @app.get("/", include_in_schema=False)
 @app.get("/index.html", include_in_schema=False)
-@app.get("/app", include_in_schema=False)       # PWA: приложение вне Telegram (вход — экран «Войти»)
 async def index_page(request: Request):
     """index.html со ссылками на стили и скрипты с меткой версии (?v=хэш
     содержимого): WebApp Telegram держит старые файлы в кэше, и после
@@ -232,6 +231,32 @@ async def index_page(request: Request):
                     headers={"Cache-Control": "no-cache"})
 
 
+# PWA (/app) — то же приложение, что на iPhone: веб-сборка Flutter из app/
+# (Никита 14.10: «дизайн у приложений на iPhone и PWA одинаковый»). Собирает
+# её GitHub Actions после мержа (app-web.yml) в webapp/flutter; сборки нет
+# (тесты, разработка) — /app отдаёт прежний WebApp, как раньше.
+FLUTTER_DIR = Path(__file__).parent / "flutter"
+
+
+class _NoCacheStatic(StaticFiles):
+    """У файлов Flutter нет метки версии в адресе — браузер каждый раз
+    сверяет их с сервером (ETag), иначе после выпуска оставался бы старый код."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+
+@app.get("/app", include_in_schema=False)
+@app.get("/app/", include_in_schema=False)
+async def pwa_page(request: Request):
+    index = FLUTTER_DIR / "index.html"
+    if not index.is_file():
+        return await index_page(request)
+    return Response(index.read_bytes(), media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/sw.js", include_in_schema=False)
 async def service_worker():
     """Service worker PWA (этап 2): без кэша — обновление приложения доходит сразу."""
@@ -245,4 +270,6 @@ async def web_manifest():
                     headers={"Cache-Control": "no-cache"})
 
 
+if FLUTTER_DIR.is_dir():
+    app.mount("/app", _NoCacheStatic(directory=str(FLUTTER_DIR)), name="pwa")
 app.mount("/", StaticFiles(directory=str(STATIC_DIR), html=True), name="static")

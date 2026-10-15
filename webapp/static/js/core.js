@@ -26,8 +26,11 @@ if (!IN_TG && location.hash.startsWith("#token=")) {
 const APP_TOKEN = IN_TG ? "" : readToken();
 // Корень открыли в обычном браузере без входа — это гость по ссылке
 // www.uiboshki.ru: ему нужен сайт-презентация, а не приложение без входа.
-if (!IN_TG && !APP_TOKEN && (location.pathname === "/" || location.pathname === "/index.html")) {
-  location.replace("/about");
+// С входом — приложение /app (с 14.10 — то же, что на iPhone; вход старой
+// PWA оно забирает себе, app/web/index.html).
+function flutterToken() { try { return localStorage.getItem("flutter.uib_token") || ""; } catch (e) { return ""; } }
+if (!IN_TG && (location.pathname === "/" || location.pathname === "/index.html")) {
+  location.replace(APP_TOKEN || flutterToken() ? "/app" : "/about");
 }
 const NEED_LOGIN = !IN_TG && !APP_TOKEN;      // /app без входа — экран «Войти»
 // PWA: service worker (sw.js — оболочка и последние данные без сети) — только вне Telegram
