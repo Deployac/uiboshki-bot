@@ -472,7 +472,9 @@ JSON приложения VPN (секрет хостинга, в репозит�
   вход старой PWA (`uib_token` → `flutter.uib_token`), берёт токен VK/Яндекс
   из `#token=` и регистрирует `/sw.js`; свой service worker Flutter выключен
   (`app/web/flutter_bootstrap.js`). Mini App в Telegram — по-прежнему
-  `index.html` + `js/…`.
+  `index.html` + `js/…`. В вебе (`kIsWeb`) — без `BackdropFilter` и без
+  бесконечных анимаций: тормозят (Никита 15.10); отступы выреза iPhone —
+  `window.uibInsets` → `lib/web_safe_area.dart` (Flutter их сам не знает).
   **API как контракт (2 (в))**: `/api/v1/…` = `/api/…` (`server.ApiV1`), своё
   приложение и PWA — на v1; `/api/meta` — версия сервера и минимальные версии
   приложения (`APP_MIN_WEB/ANDROID/IOS`); снимок путей —

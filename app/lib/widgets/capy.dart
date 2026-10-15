@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -118,7 +119,10 @@ class CapyBadge extends StatefulWidget {
 }
 
 class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMixin {
-  late final _breath = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200))..repeat();
+  // в браузере дыхание бесконечно перерисовывало экран (PWA тормозила) —
+  // там капибара дышит пару раз и замирает
+  late final _breath = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200))
+    ..repeat(count: kIsWeb ? 2 : null);
   int? _at; // какая подпись была последней
   int _taps = 0;
   DateTime? _lastTap;
@@ -258,12 +262,15 @@ class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin
           animation: widget.appear,
           builder: (context, child) {
             final v = widget.appear.value;
+            // в браузере без размытия (тормозит) — фон плотнее
+            final shade = ColoredBox(
+              color: p.bg.withValues(alpha: (kIsWeb ? 0.85 : 0.45) * v),
+              child: child,
+            );
+            if (kIsWeb) return shade;
             return BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 14 * v, sigmaY: 14 * v),
-              child: ColoredBox(
-                color: p.bg.withValues(alpha: 0.45 * v),
-                child: child,
-              ),
+              child: shade,
             );
           },
           child: Center(
@@ -439,7 +446,8 @@ class _CapyPeekState extends State<CapyPeek> with TickerProviderStateMixin {
   /// «z» над спящей — только ночью; наступило утро — перестали.
   void _sleep() {
     if (_night && _zz == null) {
-      _zz = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
+      _zz = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))
+        ..repeat(count: kIsWeb ? 3 : null);
     } else if (!_night && _zz != null) {
       _zz!.dispose();
       _zz = null;
