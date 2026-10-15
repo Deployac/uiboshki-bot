@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../achievements/ui.dart';
 import '../api/api.dart';
 import '../api/links.dart';
 import '../api/models.dart';
@@ -70,6 +71,11 @@ class MoreScreen extends StatelessWidget {
           _Profile(me: me),
           // баллы грузятся сами по себе: СДО не отвечает — остальной экран работает
           _PointsCard(api: api, me: me, onOpen: onStudy, onSdo: onSdo),
+          const SizedBox(height: Space.m),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: Space.l),
+            child: AchievementsRow(),
+          ),
           const SizedBox(height: Space.m),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Space.l),
