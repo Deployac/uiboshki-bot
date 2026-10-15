@@ -255,8 +255,9 @@ class Api {
   }
 
   /// Ссылка на вход у провайдера; вернётся он на ru.uiboshki.app://auth#token=…
-  Future<String> startOAuth(String provider) async =>
-      (await post('/auth/$provider/start', {'client': 'app'}))['url'] as String;
+  /// (client 'web' — PWA: на /app#token=…).
+  Future<String> startOAuth(String provider, {String client = 'app'}) async =>
+      (await post('/auth/$provider/start', {'client': client}))['url'] as String;
 
   /// Адрес возврата → токен (сохраняется); null — токена нет.
   Future<String?> finishOAuth(String callbackUrl) async {

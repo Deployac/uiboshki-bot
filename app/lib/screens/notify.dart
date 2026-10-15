@@ -1,11 +1,15 @@
 // «Уведомления» — что бот присылает и в какие дни (/api/notify, notify_prefs.py).
 // Как лист в WebApp: сохраняется сразу при каждом нажатии, без «Сохранить».
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
+import '../web_push.dart';
 import '../widgets/common.dart';
 import 'files.dart' show BackRow;
 
@@ -135,13 +139,16 @@ class _NotifyBodyState extends State<_NotifyBody> {
               const SizedBox(width: Space.s),
               Expanded(
                 child: Text(
-                  'Уведомления — в Telegram и в браузере; в приложении — скоро.',
+                  kIsWeb
+                      ? 'Уведомления приходят в Telegram, а сюда — когда включишь их ниже.'
+                      : 'Уведомления — в Telegram и в браузере; в приложении — скоро.',
                   style: s.body(13, color: p.muted),
                 ),
               ),
             ],
           ),
         ),
+        if (kIsWeb) _WebPushCard(api: widget.api, tgCopy: _prefs['tg_copy'] != false, onTgCopy: () => _toggle('tg_copy')),
         _Card(
           title: 'Присылать уведомления',
           sub: on ? 'Включены — ниже, что именно' : 'Выключены — бот ничего не пришлёт сам',
@@ -533,6 +540,85 @@ class _Card extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// PWA: уведомления на этом устройстве (веб-пуш) и «Дублировать в Telegram»
+/// (Никита 14.10: «нажал в PWA — и приходят от PWA, а не от TG»).
+class _WebPushCard extends StatefulWidget {
+  final Api api;
+  final bool tgCopy;
+  final VoidCallback onTgCopy;
+  const _WebPushCard({required this.api, required this.tgCopy, required this.onTgCopy});
+
+  @override
+  State<_WebPushCard> createState() => _WebPushCardState();
+}
+
+class _WebPushCardState extends State<_WebPushCard> {
+  String _state = '';
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    webPushState().then((v) {
+      if (mounted) setState(() => _state = v);
+    });
+  }
+
+  Future<void> _switch() async {
+    if (_busy) return;
+    tick();
+    setState(() => _busy = true);
+    try {
+      if (_state == 'on') {
+        final endpoint = await webPushDisable();
+        if (endpoint.isNotEmpty) await widget.api.post('/push/unsubscribe', {'endpoint': endpoint});
+      } else {
+        final key = (await widget.api.get('/push/key'))['key'] as String;
+        final sub = await webPushEnable(key);
+        if (sub.isNotEmpty) await widget.api.post('/push/subscribe', jsonDecode(sub));
+      }
+    } catch (e) {
+      if (mounted) showToast(context, 'Не получилось: ${errorText(e)}', kind: ToastKind.error);
+    }
+    final v = await webPushState();
+    if (mounted) {
+      setState(() {
+        _state = v;
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_state.isEmpty || _state == 'unsupported') return const SizedBox.shrink();
+    final on = _state == 'on';
+    final sub = switch (_state) {
+      'on' => 'Включены — приходят на это устройство',
+      'denied' => 'Запрещены в настройках браузера — разреши там, потом включи здесь',
+      'install' => 'Добавь Капибару на экран «Домой» (Поделиться → На экран «Домой») и открой оттуда',
+      _ => 'Включи — и уведомления придут сюда, как у приложения',
+    };
+    return _Card(
+      icon: Icons.notifications_active_outlined,
+      title: 'На этом устройстве',
+      sub: sub,
+      switchKey: 'push',
+      on: on,
+      onChanged: _state == 'install' || _state == 'denied' ? () {} : _switch,
+      children: [
+        _Row(
+          title: 'Дублировать в Telegram',
+          sub: widget.tgCopy ? 'приходят и сюда, и в Telegram' : 'только сюда; не дошло — тогда в Telegram',
+          k: 'tg_copy',
+          prefs: {'tg_copy': widget.tgCopy},
+          onTap: (_) => widget.onTgCopy(),
+        ),
+      ],
     );
   }
 }

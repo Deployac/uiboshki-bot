@@ -1,46 +1,96 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
+  <!-- Веб-сборка Капибары = PWA на /app (Никита 14.10: «дизайн у приложений
+       на iPhone и PWA одинаковый»). Собирается с --base-href /app/
+       (.github/workflows/app-web.yml), отдаёт её webapp/server.py. -->
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Расписание, дедлайны, баллы СДО и лекции твоей группы РТУ МИРЭА">
+  <meta name="theme-color" content="#0f1115">
 
-  <!-- iOS meta tags & icons -->
+  <!-- iPhone: с экрана «Домой» — на весь экран, имя и иконка как у приложения -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Капибара">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="apple-touch-icon" href="/pwa/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="/pwa/icon-192.png">
 
   <title>Капибара — учёба МИРЭА</title>
-  <link rel="manifest" href="manifest.json">
+  <!-- тот же манифест, что у прежней PWA: id /app — установленная PWA остаётся собой -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <style>html, body { margin: 0; background: #0f1115; }</style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
-
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
+  <script>
+    // До запуска Flutter (shared_preferences в вебе — localStorage, ключи
+    // «flutter.<имя>», значения — JSON):
+    //  • вход прежней PWA (uib_token) переносим сюда — заново входить не надо;
+    //    переносим, а не копируем: иначе «Выйти» вернул бы старый вход;
+    //  • VK/Яндекс вернули на /app#token=… — берём, только если вход начат
+    //    в этом браузере (15 минут, как в js/core.js): чужая ссылка с токеном
+    //    не должна переключать в чужой аккаунт (ревью безопасности 09.10);
+    //  • service worker (/sw.js): приложение без сети и пуши прежней PWA.
+    (function () {
+      try {
+        var ls = localStorage, key = "flutter.uib_token", old = ls.getItem("uib_token");
+        if (old) {
+          if (!ls.getItem(key)) ls.setItem(key, JSON.stringify(old));
+          ls.removeItem("uib_token");
+        }
+        if (location.hash.indexOf("#token=") === 0) {
+          var at = Math.max(+JSON.parse(ls.getItem("flutter.uib_oauth_at") || "0") || 0,
+                            +(ls.getItem("uib_oauth_at") || 0) || 0);
+          ls.removeItem("flutter.uib_oauth_at");
+          ls.removeItem("uib_oauth_at");
+          if (Date.now() - at < 15 * 60 * 1000) ls.setItem(key, JSON.stringify(decodeURIComponent(location.hash.slice(7))));
+          history.replaceState(null, "", location.pathname + location.search);
+        }
+      } catch (e) {}
+      if ("serviceWorker" in navigator && location.protocol === "https:") {
+        navigator.serviceWorker.register("/sw.js").catch(function () {});
+      }
+    })();
+  </script>
+  <script>
+    // Пуши PWA (этап 2 (г), сервер — webpush.py): Flutter зовёт отсюда через
+    // dart:js_interop (lib/web_push_web.dart). Каждая функция — Promise<string>.
+    //  state: on / off / denied / install (iPhone не с экрана «Домой» — там
+    //  пушей нет) / unsupported; enable(ключ VAPID) — подписка JSON или ""
+    //  (не разрешили); disable — адрес отписанной подписки или "".
+    window.uibPush = {
+      state: async function () {
+        if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+          return /iPhone|iPad|iPod/.test(navigator.userAgent) && !navigator.standalone ? "install" : "unsupported";
+        }
+        if (Notification.permission === "denied") return "denied";
+        var reg = await navigator.serviceWorker.getRegistration("/");
+        var sub = reg && await reg.pushManager.getSubscription();
+        return sub ? "on" : "off";
+      },
+      enable: async function (key) {
+        if (await Notification.requestPermission() !== "granted") return "";
+        await navigator.serviceWorker.register("/sw.js");
+        var reg = await navigator.serviceWorker.ready;
+        var pad = "=".repeat((4 - key.length % 4) % 4);
+        var raw = Uint8Array.from(atob((key + pad).replace(/-/g, "+").replace(/_/g, "/")), function (c) { return c.charCodeAt(0); });
+        var sub = await reg.pushManager.getSubscription() ||
+                  await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: raw });
+        return JSON.stringify(sub.toJSON());
+      },
+      disable: async function () {
+        var reg = await navigator.serviceWorker.getRegistration("/");
+        var sub = reg && await reg.pushManager.getSubscription();
+        if (!sub) return "";
+        await sub.unsubscribe();
+        return sub.endpoint;
+      },
+    };
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

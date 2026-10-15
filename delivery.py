@@ -59,19 +59,31 @@ async def push(user_id: int, kind: str, html: str, tab: str | None = None, title
     return sent
 
 
+async def _tg_copy(user_id: int) -> bool:
+    """Слать ли в Telegram, когда пуш уже дошёл (тумблер «Дублировать в
+    Telegram» в уведомлениях PWA). Пуш не дошёл — Telegram в любом случае."""
+    import notify_prefs
+    from database import get_user
+    return notify_prefs.merge((await get_user(user_id) or {}).get("notify"))["tg_copy"]
+
+
 async def deliver(bot, user_id: int, html: str, *, kind: str, tab: str | None = None, reply_markup=None,
                   parse_mode: str = "HTML", title: str | None = None):
-    """Сообщение человеку: Telegram (как раньше) + пуш на его устройства.
+    """Сообщение человеку: пуш на его устройства + Telegram (выключен
+    тумблером tg_copy — только если пуш дошёл).
     Ошибка Telegram пробрасывается (рассылки её логируют), пуш — молча.
     До согласия на обработку данных (privacy.blocked) — ничего."""
     import privacy
     if await privacy.blocked(user_id):
         return None
+    sent = 0
     try:
-        await push(user_id, kind, html, tab, **({"title": title} if title else {}))
+        sent = await push(user_id, kind, html, tab, **({"title": title} if title else {}))
     except Exception as e:
         logger.info(f"доставка {user_id}: пуш не ушёл: {e}")
     from database.identities import is_local
     if is_local(user_id):
         return None               # вошёл через VK/Яндекс, Telegram нет — только пуш
+    if sent and not await _tg_copy(user_id):
+        return None               # «только в приложение»: пуш дошёл — в Telegram не дублируем
     return await bot.send_message(user_id, html, parse_mode=parse_mode, reply_markup=reply_markup)

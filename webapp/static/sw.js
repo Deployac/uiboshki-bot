@@ -21,6 +21,22 @@ self.addEventListener("message", e => {
   if (e.data === "logout") e.waitUntil(caches.delete(DATA));   // вышел — чужих данных на телефоне не оставляем
 });
 
+// Файлы приложения (/app/…, веб-сборка Flutter): свежие из сети, медленно или
+// без сети — из кэша; в кэше ещё нет (первый запуск) — ждём сеть сколько надо:
+// canvaskit большой, на 3G за 4 с не успевает.
+async function freshFirst(req, cacheName, ms) {
+  const cache = await caches.open(cacheName);
+  const net = fetch(req).then(resp => {
+    if (resp.ok) cache.put(req, resp.clone());
+    return resp;
+  });
+  try {
+    return await Promise.race([net, timeout(ms)]);
+  } catch (e) {
+    return (await cache.match(req)) || net;
+  }
+}
+
 function timeout(ms) { return new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), ms)); }
 
 async function networkFirst(req, cacheName, ms) {
@@ -39,8 +55,10 @@ async function networkFirst(req, cacheName, ms) {
 self.addEventListener("fetch", e => {
   const req = e.request, url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== location.origin) return;
-  if (url.pathname === "/app" || url.pathname === "/" || url.pathname === "/index.html") {
+  if (url.pathname === "/app" || url.pathname === "/app/" || url.pathname === "/" || url.pathname === "/index.html") {
     e.respondWith(networkFirst(new Request("/app"), SHELL, 4000));
+  } else if (url.pathname.startsWith("/app/")) {
+    e.respondWith(freshFirst(req, SHELL, 4000));
   } else if (url.search.includes("v=") && /\.(js|css)$/.test(url.pathname) || url.pathname.startsWith("/pwa/")) {
     e.respondWith(caches.open(SHELL).then(c => c.match(req).then(hit => hit || fetch(req).then(resp => {
       if (resp.ok) c.put(req, resp.clone());

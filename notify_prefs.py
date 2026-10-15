@@ -43,6 +43,7 @@ DEFAULTS = {
     "evening_time": "20:00",
     "quiz_remind": [],       # тесты СДО: за сколько минут до закрытия (quiz_alerts.py), несколько
     "quiz_open": True,       # тесты СДО: «Открыли тест»
+    "tg_copy": True,         # пуш дошёл — дублировать ли ещё в Telegram (delivery.deliver, Никита 14.10)
 }
 # Тесты СДО (quiz_alerts.CHOICES): за 1 день, 3 ч, 1 ч, 30 мин, 10 мин до закрытия
 QUIZ_REMIND_CHOICES = (1440, 180, 60, 30, 10)

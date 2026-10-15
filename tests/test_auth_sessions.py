@@ -39,6 +39,7 @@ async def test_login_via_bot_gives_device_session(db, client):
     res = client.post("/api/auth/start").json()
     code = res["code"]
     assert res["link"].endswith(f"?start=login_{code}")
+    assert res["tg_link"].startswith("tg://resolve?domain=") and res["tg_link"].endswith(f"&start=login_{code}")
     assert client.post("/api/auth/poll", json={"code": code}).json() == {"status": "wait"}
 
     bot = Bot(token="123456:TEST-TOKEN-NOT-REAL-AAAAAAAAAAAAAAAAAAA", session=FakeSession())
