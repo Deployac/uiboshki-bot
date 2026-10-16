@@ -9,6 +9,7 @@ import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
@@ -150,8 +151,15 @@ class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMix
   }
 
   void _open(CapyPose pose) {
-    tick();
-    showCapy(context, pose, _next(pose));
+    // заметный «тык» (14.10): щелчок выбора на iPhone почти не чувствуется;
+    // пятое касание подряд — щекотка, отклик сильнее. В вебе вибрации нет — тихо
+    final line = _next(pose);
+    if (line == tickleLine) {
+      HapticFeedback.mediumImpact();
+    } else {
+      HapticFeedback.lightImpact();
+    }
+    showCapy(context, pose, line);
   }
 
   @override

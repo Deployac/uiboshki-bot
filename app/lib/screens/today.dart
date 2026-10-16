@@ -699,8 +699,16 @@ class _LiveFocus extends StatelessWidget {
     final s = AppStyle.of(context);
     final p = s.p;
     final c = s.ink(lesson.title);
-    final total = lesson.endAt!.difference(lesson.startAt!).inSeconds;
-    final passed = at.difference(lesson.startAt!).inSeconds.clamp(0, total);
+    // в блоке (5 пар военки) — до конца текущей пары или перемены, не всего блока
+    final live = lesson.liveAt(at);
+    final from = live?.start ?? lesson.startAt!, till = live?.end ?? lesson.endAt!;
+    final total = till.difference(from).inSeconds;
+    final passed = at.difference(from).inSeconds.clamp(0, total);
+    final label = live == null || live.of == 1
+        ? 'до конца'
+        : live.pause
+        ? 'перемена · до ${live.index}-й пары из ${live.of}'
+        : 'до конца пары · ${live.index} из ${live.of}';
     final n = next;
     final Widget after;
     if (n != null) {
@@ -731,9 +739,9 @@ class _LiveFocus extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('до конца', style: s.body(13, color: p.muted)),
+        Text(label, style: s.body(13, color: p.muted)),
         const SizedBox(height: 4),
-        _Countdown(minutes: minutesTo(at, lesson.endAt!), color: c),
+        _Countdown(minutes: minutesTo(at, till), color: c),
         const SizedBox(height: Space.m),
         ClipRRect(
           borderRadius: BorderRadius.circular(3),
@@ -944,6 +952,16 @@ class _InfoTile extends StatelessWidget {
   }
 }
 
+/// «идёт · ещё 23 мин»; в блоке — до конца текущей пары: «идёт 2-я из 5 ·
+/// ещё 23 мин», на перемене — «перемена · ещё 8 мин».
+String _liveLine(Lesson l, DateTime at) {
+  final live = l.liveAt(at);
+  if (live == null) return 'идёт';
+  final left = spanText(minutesTo(at, live.end));
+  if (live.of == 1) return 'идёт · ещё $left';
+  return live.pause ? 'перемена · ещё $left' : 'идёт ${live.index}-я из ${live.of} · ещё $left';
+}
+
 /// Пара карточкой (владелец, 09.10, 22А): слева время начала и конца,
 /// название без засечек, точка цвета предмета и тип, кабинет плашкой,
 /// преподаватель; справа номер пары по звонку. Карточка чуть подкрашена
@@ -1044,11 +1062,7 @@ class LessonCard extends StatelessWidget {
                         ],
                         if (live) ...[
                           const SizedBox(height: 7),
-                          dotLine(
-                            p.ok,
-                            'идёт · ещё ${spanText(minutesTo(at, l.endAt!))}',
-                            s.body(13, weight: FontWeight.w700, color: p.ok),
-                          ),
+                          dotLine(p.ok, _liveLine(l, at), s.body(13, weight: FontWeight.w700, color: p.ok)),
                         ],
                       ],
                     ),

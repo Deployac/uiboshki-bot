@@ -152,6 +152,8 @@ def lessons_for_date(raw: bytes, target: date, now: datetime | None = None) -> l
             "status": status,
             "start_iso": r["time_start"].isoformat() if r.get("time_start") else None,
             "end_iso": r["time_end"].isoformat() if r.get("time_end") else None,
+            **({"parts": [[a.isoformat(), b.isoformat()] for a, b in r["parts"] if a and b]}
+               if r["last"] > r["first"] and all(a and b for a, b in r["parts"]) else {}),
         })
     return out
 

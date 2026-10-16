@@ -301,11 +301,14 @@ async def _goal(user_id: int, course: dict) -> dict:
     """Цель по предмету: сколько не хватает, откуда взять, правило 75 % (sdo_goal.py)."""
     import sdo_goal
     goals = await sdo_goal.get_goals(user_id)
-    return sdo_goal.plan(course, course.get("attendance"), goals.get(str(course["id"])))
+    modes = await sdo_goal.get_modes(user_id)
+    cid = str(course["id"])
+    return sdo_goal.plan(course, course.get("attendance"), goals.get(cid), modes.get(cid))
 
 
 class Goal(BaseModel):
     label: str | None = None     # «зачёт», «3», «4», «5»; None — снять свою цель
+    mode: str | None = None      # "auto" — автомат, "exam" — с экзаменом; None — не менять
 
 
 @router.post("/api/sdo/goal/{course_id}")
@@ -328,7 +331,14 @@ async def api_sdo_goal(course_id: int, body: Goal, user: dict = CurrentUser):
         raise HTTPException(status_code=502, detail="СДО сейчас не отвечает — попробуй позже")
     if body.label is not None and body.label not in [m["label"] for m in course.get("marks") or []]:
         raise HTTPException(status_code=400, detail="такой оценки у предмета нет")
-    await sdo_goal.set_goal(user["id"], course_id, body.label)
+    if body.mode is not None and body.mode not in sdo_goal.MODES:
+        raise HTTPException(status_code=400, detail="счёт цели — auto или exam")
+    if body.mode is not None:
+        await sdo_goal.set_mode(user["id"], course_id, body.mode)
+        if body.label is not None:
+            await sdo_goal.set_goal(user["id"], course_id, body.label)
+    else:
+        await sdo_goal.set_goal(user["id"], course_id, body.label)
     try:
         att = await attendance.for_course(user["id"], course)
     except Exception:

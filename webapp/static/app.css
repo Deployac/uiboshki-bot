@@ -1165,6 +1165,8 @@
   .gc-opts button { flex: 1; min-width: 0; padding: 8px 0; border-radius: 10px; border: 1px solid var(--border);
     background: var(--bg-raised); color: var(--text); font-weight: 750; font-size: 14px; }
   .gc-opts button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .gc-mode { margin: 10px 0 0; }
+  .gc-mode button { flex: 0 0 auto; padding: 5px 12px; font-size: 13px; }
   .gc-lines { display: grid; margin-top: 6px; }
   .gc-lines .gl { display: flex; align-items: flex-start; gap: 8px; padding: 9px 0; border-top: 1px solid var(--border);
     font-size: 13.5px; line-height: 1.4; }

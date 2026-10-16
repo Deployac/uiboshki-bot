@@ -134,6 +134,10 @@ async def test_webapp_grades(db, monkeypatch):
     r = c.post("/api/sdo/goal/18672", headers=h, json={"label": "зачёт"})
     assert r.status_code == 200 and r.json()["own"]
     assert c.get("/api/sdo/grades", headers=h).json()["goals"] == {"18672": "зачёт"}
+    # счёт «автомат / с экзаменом» (14.10): у зачёта экзамена нет — переключателя нет
+    assert c.post("/api/sdo/goal/18672", headers=h, json={"mode": "x"}).status_code == 400
+    r = c.post("/api/sdo/goal/18672", headers=h, json={"mode": "exam"})
+    assert r.status_code == 200 and r.json()["mode"] is None and r.json()["own"]   # цель не сбросилась
     assert c.post("/api/pulsecheck", headers=h).status_code == 403            # не староста
 
 

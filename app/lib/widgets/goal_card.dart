@@ -26,14 +26,21 @@ String dayMonth(String isoDate) {
 String _points(num n) => '${fmtNum(n)} ${plural(n.ceil(), 'балл', 'балла', 'баллов')}';
 
 /// Главная строка «Цели» называет то, что мешает (2.1, 2.19): «Нужно зачесть
-/// ещё 4 работы», «Не хватает 12 баллов», ««4» выходит автоматом», ««4»
-/// автоматом, на «5» нужно 20 баллов на экзамене». Автомат — только «3» и «4»
-/// (sdo_goal.final_mark), «5» — через экзамен.
+/// ещё 4 работы», «Не хватает 12 баллов», ««4» выходит автоматом». С 14.10
+/// сервер считает отдельно автомат и «с экзаменом» (поле `mode`): «не хватает»
+/// — всегда до порога целиком, без путаницы с недобором при полном экзамене.
 String goalHeadline(Map<String, dynamic> g) {
   final label = markWord('${g['label']}');
   final tk = Map<String, dynamic>.from(g['tk'] ?? {});
   final works = (tk['left'] as num?)?.toInt() ?? 0;
   final need = (g['need'] as num?) ?? 0;
+  final mode = g['mode'];
+  if (mode == 'auto' || mode == 'exam') {
+    if (g['status'] == 'done') return mode == 'auto' ? '$label выходит автоматом' : 'Баллов хватает';
+    if (need > 0) return 'Не хватает ${_points(need)}';
+    if (works > 0) return 'Нужно зачесть ещё $works ${plural(works, 'работу', 'работы', 'работ')}';
+    return mode == 'exam' ? 'Хватит любого балла на экзамене' : 'Баллов хватает';
+  }
   final pending = g['exam_pending'] == true;
   if (pending && g['auto_ok'] != true) {
     final short = (g['exam_short'] as num?) ?? 0;
@@ -56,10 +63,27 @@ String goalSubline(Map<String, dynamic> g) {
   final tk = Map<String, dynamic>.from(g['tk'] ?? {});
   final works = (tk['left'] as num?)?.toInt() ?? 0;
   final need = (g['need'] as num?) ?? 0;
+  final mode = g['mode'];
+  final what = g['label'] == 'зачёт' ? 'зачёта' : markWord('${g['label']}');
+  final at = _points((g['at'] as num?) ?? 0);
+  if (mode == 'auto') {
+    return [
+      'для $what автоматом нужно $at за семестр',
+      if (works > 0) 'и зачесть ещё $works ${plural(works, 'работу', 'работы', 'работ')}',
+    ].join(' ');
+  }
+  if (mode == 'exam') {
+    final exam = (g['need_exam'] as num?) ?? 0, short = (g['exam_short'] as num?) ?? 0;
+    return [
+      'для $what нужно $at вместе с экзаменом',
+      if (short > 0)
+        'с полным экзаменом добрать ещё ${fmtNum(short)} работами и лекциями'
+      else if (need > 0 && exam > 0)
+        'хватит ${_points(exam)} на экзамене',
+    ].join(' · ');
+  }
   final pending = g['exam_pending'] == true, autoOk = g['auto_ok'] == true;
-  final parts = [
-    'для ${g['label'] == 'зачёт' ? 'зачёта' : markWord('${g['label']}')} нужно ${_points((g['at'] as num?) ?? 0)}',
-  ];
+  final parts = ['для $what нужно $at'];
   if (pending && autoOk && need > 0 && ((g['need_exam'] as num?) ?? 0) > 0) {
     parts.add('или ${_points(g['need_exam'] as num)} на экзамене');
   }
@@ -70,6 +94,17 @@ String goalSubline(Map<String, dynamic> g) {
     parts.add('${markWord('${g['auto_best']}')} можно получить автоматом');
   }
   return parts.join(' · ');
+}
+
+/// Какие работы нельзя пропустить (поле `must`, 14.10): без любой из них цель
+/// уже не набрать. Прогноз без процентов — данных для них нет.
+String? mustLine(Map<String, dynamic> g) {
+  final must = [for (final m in (g['must'] as List? ?? const [])) '$m'];
+  if (must.isEmpty) return null;
+  final open = (g['open_count'] as num?)?.toInt() ?? 0;
+  if (must.length > 1 && must.length >= open) return 'сдать нужно все открытые работы: без любой не дойдёшь';
+  if (must.length > 3) return 'без ${must.length} открытых работ не дойдёшь — сдавай все';
+  return 'без «${must.join('», «')}» не дойдёшь';
 }
 
 class GoalCard extends StatefulWidget {
@@ -89,9 +124,19 @@ class _GoalCardState extends State<GoalCard> {
 
   Future<void> _set(String label) async {
     if (label == _g['label']) return;
+    await _post({'label': label});
+  }
+
+  /// Счёт цели: «автомат» — без экзамена, «с экзаменом» — сумма (14.10).
+  Future<void> _setMode(String mode) async {
+    if (mode == _g['mode']) return;
+    await _post({'mode': mode});
+  }
+
+  Future<void> _post(Map<String, Object?> body) async {
     tick();
     try {
-      final r = await widget.api.post('/sdo/goal/${widget.courseId}', {'label': label});
+      final r = await widget.api.post('/sdo/goal/${widget.courseId}', body);
       HapticFeedback.lightImpact();
       // Карточка в ленивом ListView: ушла за экран — создаётся заново из
       // widget.goal. Пишем выбор и туда, иначе цель «сбрасывалась» на первую.
@@ -136,6 +181,7 @@ class _GoalCardState extends State<GoalCard> {
           'зачтено ${tk['passed']} из ${tk['total']} · нужно ${tk['need']}'
               '${(tk['left'] ?? 0) > 0 ? ' → из ${tk['open']} открытых зачесть ${tk['left']}' : ''}',
         ),
+      if (mustLine(g) case final must?) (Icons.priority_high_rounded, must),
       if (need > 0 && status != 'done')
         (
           Icons.auto_awesome_outlined,
@@ -190,6 +236,11 @@ class _GoalCardState extends State<GoalCard> {
             ],
           ),
           const SizedBox(height: Space.m),
+          // пока экзамен впереди — маленький переключатель счёта, как вид «Недели»
+          if (g['mode'] == 'auto' || g['mode'] == 'exam') ...[
+            GoalModeToggle(mode: '${g['mode']}', onChanged: _setMode),
+            const SizedBox(height: Space.s),
+          ],
           // Выбор отметки — сегменты, выбранная залита цветом предмета
           Container(
             padding: const EdgeInsets.all(4),
@@ -268,6 +319,55 @@ class _GoalCardState extends State<GoalCard> {
       _ => 'дойдёшь',
     };
     return (Icons.schedule_rounded, 'пропущу лекцию $day: −${fmtNum(skip['value'] ?? 0)} → $after');
+  }
+}
+
+/// «автомат · с экзаменом» — две подписи в капсуле, как переключатель вида
+/// «Недели», только словами: значками смысл не передать.
+class GoalModeToggle extends StatelessWidget {
+  final String mode;
+  final ValueChanged<String> onChanged;
+  const GoalModeToggle({super.key, required this.mode, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = AppStyle.of(context);
+    final p = s.p;
+    Widget seg(String value, String text) {
+      final on = mode == value;
+      return Semantics(
+        button: true,
+        selected: on,
+        label: text == 'автомат' ? 'Считать автомат' : 'Считать с экзаменом',
+        excludeSemantics: true,
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => onChanged(value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 240),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: on ? p.text : p.text.withValues(alpha: 0),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              text,
+              style: s.body(13, weight: FontWeight.w700, color: on ? p.bg : p.muted),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(13)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [seg('auto', 'автомат'), const SizedBox(width: 2), seg('exam', 'с экзаменом')],
+      ),
+    );
   }
 }
 

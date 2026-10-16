@@ -51,6 +51,44 @@ void main() {
     expect(goalSubline(credit), 'для зачёта нужно 40 баллов');
   });
 
+  test('счёт «автомат / с экзаменом» (14.10): «не хватает» — до порога целиком', () {
+    // скрин владельца: 17,5 баллов, экзамен до 50; было «не хватает 12,5» до «5»
+    Map<String, dynamic> g(String mode, String label, num at, num need, [Map<String, dynamic> more = const {}]) => {
+      'mode': mode,
+      'label': label,
+      'at': at,
+      'need': need,
+      'status': 'ok',
+      'tk': {'left': 3},
+      'exam_pending': true,
+      ...more,
+    };
+    expect(goalHeadline(g('auto', '4', 60, 42.5)), 'Не хватает 42,5 балла');
+    expect(
+      goalSubline(g('auto', '4', 60, 42.5)),
+      'для «4» автоматом нужно 60 баллов за семестр и зачесть ещё 3 работы',
+    );
+    expect(goalHeadline(g('auto', '4', 60, 0, {'status': 'done'})), '«4» выходит автоматом');
+    final exam = g('exam', '5', 80, 62.5, {'need_exam': 50, 'exam_short': 12.5});
+    expect(goalHeadline(exam), 'Не хватает 62,5 балла');
+    expect(
+      goalSubline(exam),
+      'для «5» нужно 80 баллов вместе с экзаменом · с полным экзаменом добрать ещё 12,5 работами и лекциями',
+    );
+    expect(
+      goalSubline(g('exam', '5', 80, 20, {'need_exam': 20})),
+      'для «5» нужно 80 баллов вместе с экзаменом · хватит 20 баллов на экзамене',
+    );
+    expect(
+      goalHeadline(
+        g('exam', '5', 80, 0, {
+          'tk': {'left': 0},
+        }),
+      ),
+      'Хватит любого балла на экзамене',
+    );
+  });
+
   testWidgets('предмет: цель, посещения, рост баллов; смена цели', (t) async {
     phone(t);
     final asked = <String>[];

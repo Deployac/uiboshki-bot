@@ -59,6 +59,28 @@ TodayData demoToday() {
 }
 
 void main() {
+  test('блок пар (военка) — по паре на запись, «до конца» — текущей пары', () {
+    final l = militaryBlock();
+    final day = widgetDay('2026-10-08', [l]);
+    final list = day['l'] as List;
+    expect(list.length, 4);
+    expect(
+      [for (final x in list) '${(x as Map)['s']}–${x['e']} ${x['n']}/${x['of']}'],
+      ['09:00–10:30 1/4', '10:40–12:10 2/4', '12:40–14:10 3/4', '14:20–15:50 4/4'],
+    );
+    expect((list.first as Map)['be'], '15:50');
+    expect(day['h'], 'ЧТ, 8 ОКТ · 4 ПАРЫ');
+    // 09:10 — до конца первой пары 80 минут, а не 400; 10:35 — перемена до второй
+    final a = l.liveAt(DateTime.parse('2026-10-08T09:10:00+03:00'))!;
+    expect(
+      (a.index, a.of, a.pause, a.end.difference(DateTime.parse('2026-10-08T09:10:00+03:00')).inMinutes),
+      (1, 4, false, 80),
+    );
+    final b = l.liveAt(DateTime.parse('2026-10-08T10:35:00+03:00'))!;
+    expect((b.index, b.pause), (2, true));
+    expect(l.liveAt(DateTime.parse('2026-10-08T16:00:00+03:00')), isNull);
+  });
+
   late WidgetSink? real;
   setUp(() {
     real = HomeWidgets.sink;
@@ -247,3 +269,27 @@ void main() {
     expect(hint, findsOneWidget);
   });
 }
+
+// Баг 14.10 (скрин владельца): «идёт · кафедра 530′ до конца пары» — виджет
+// считал до конца всего блока военки. Теперь блок — по паре на запись, а
+// экран «Сегодня» считает до конца текущей пары.
+
+Lesson militaryBlock() => Lesson.fromJson({
+  'start': '09:00',
+  'end': '15:50',
+  'title': 'Военная кафедра',
+  'kind': 'практика',
+  'room': 'кафедра',
+  'teacher': '',
+  'status': 'now',
+  'num': '1–4',
+  'pairs': 4,
+  'start_iso': '2026-10-08T09:00:00+03:00',
+  'end_iso': '2026-10-08T15:50:00+03:00',
+  'parts': [
+    ['2026-10-08T09:00:00+03:00', '2026-10-08T10:30:00+03:00'],
+    ['2026-10-08T10:40:00+03:00', '2026-10-08T12:10:00+03:00'],
+    ['2026-10-08T12:40:00+03:00', '2026-10-08T14:10:00+03:00'],
+    ['2026-10-08T14:20:00+03:00', '2026-10-08T15:50:00+03:00'],
+  ],
+});

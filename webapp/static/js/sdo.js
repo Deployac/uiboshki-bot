@@ -331,7 +331,8 @@ function goalCard(c) {
   const tk = g.tk;
   const line = (ic, html, tap) => '<div class="gl' + (tap ? ' go" onclick="' + tap : '') + '">' + icon(ic, "inl") + '<span>' + html + '</span>' + (tap ? '<span class="chev">›</span>' : '') + '</div>';
   const lines = [];
-  lines.push(g.need ? line("medal", "до " + markWord(g.label) + " не хватает <b>" + fmtNum(g.need) + "</b>")
+  const how = g.mode === "auto" ? " автоматом" : g.mode === "exam" ? " с экзаменом" : "";
+  lines.push(g.need ? line("medal", "до " + markWord(g.label) + how + " не хватает <b>" + fmtNum(g.need) + "</b>")
     : line("check", markWord(g.label) + " по баллам уже набрано"));
   if (g.open_count) lines.push(line("upload", "работы: открыто " + g.open_count + " · до <b>+" + fmtNum(g.open_points) + "</b>", "openTk('todo')"));
   if (g.attendance_left) lines.push(line("users", "посещения лекций: до <b>+" + fmtNum(g.attendance_left) + "</b>", c.attendance ? "openPos()" : ""));
@@ -340,6 +341,10 @@ function goalCard(c) {
     lines.push(line("checkCircle", "зачтено " + tk.passed + " из " + tk.total + " · нужно " + tk.need +
       (tk.left ? " → из " + tk.open + " открытых зачесть <b>" + tk.left + "</b>" : " " + icon("check", "inl"))));
   }
+  if (g.must && g.must.length) lines.push(line("warning", g.must.length > 1 && g.must.length >= g.open_count
+    ? "сдать нужно все открытые работы: без любой не дойдёшь"
+    : g.must.length > 3 ? "без " + g.must.length + " открытых работ не дойдёшь — сдавай все"
+    : "без «" + g.must.map(escapeHtml).join("», «") + "» не дойдёшь"));
   if (g.need && g.status !== "done") lines.push(line("sparkle", "если сдать всё, ходить на лекции" + (g.exam_left ? " и сдать экзамен" : "") + " — до <b>" + fmtNum(g.best) + "</b>"));
   if (g.lost_count) lines.push(line("warning", "ниже порога или срок прошёл: " + g.lost_count + " " + plural(g.lost_count, "работа", "работы", "работ") +
     " — не считаю, " + plural(g.lost_count, "пригодится", "пригодятся", "пригодятся") + ", если дадут пересдать"));
@@ -352,8 +357,21 @@ function goalCard(c) {
     ? "Открытых работ меньше, чем нужно зачесть: без пересдачи экзамена по БРС не будет."
     : "Даже если сдать всё и ходить на все лекции, будет " + fmtNum(g.best) + " — меньше " + fmtNum(g.at) + ". Можно выбрать цель ниже.") + '</p>';
   return '<div class="card goal-card"><div class="gc-head"><b>Цель</b><span class="gc-pill ' + look[0] + '">' + look[1](g) + '</span></div>' +
+    // пока экзамен впереди — счёт «автомат / с экзаменом» (14.10)
+    (g.mode ? '<div class="gc-opts gc-mode">' + [["auto", "автомат"], ["exam", "с экзаменом"]].map(m =>
+      '<button class="' + (m[0] === g.mode ? "on" : "") + '" onclick="setGoalMode(\'' + m[0] + '\')">' + m[1] + '</button>').join("") + '</div>' : '') +
     '<div class="gc-opts">' + g.marks.map(m => '<button class="' + (m === g.label ? "on" : "") + '" onclick="setGoal(' + escapeHtml(JSON.stringify(m)) + ')">' + markWord(m) + '</button>').join("") + '</div>' +
     '<div class="gc-lines">' + lines.join("") + '</div>' + why + '</div>';
+}
+
+async function setGoalMode(mode) {
+  const c = sdoCourse;
+  if (!c || !c.goal || c.goal.mode === mode) return;
+  haptic();
+  try {
+    c.goal = await api("/api/sdo/goal/" + c.id, { method: "POST", body: JSON.stringify({ mode: mode }) });
+  } catch (e) { showToast(e.message); return; }
+  if (sdoView === "subject") renderSubject();
 }
 
 async function setGoal(label) {

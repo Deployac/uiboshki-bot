@@ -19,6 +19,7 @@
 точное превью у себя в личке до публикации.
 """
 
+import asyncio
 import hashlib
 import io
 import json
@@ -141,7 +142,8 @@ async def send_post(bot, chat_id, post: dict, base_url: str = "") -> list[int]:
         m = await bot.send_message(chat_id, html, parse_mode="HTML", link_preview_options=LinkPreviewOptions(
             url=cover_url(base_url, post), prefer_large_media=True, show_above_text=True))
         return [m.message_id]
-    photo = BufferedInputFile(cover_jpeg(post), filename=f"{post['slug']}.jpg")
+    # склейка картинок Pillow — в отдельном потоке, бот в это время отвечает
+    photo = BufferedInputFile(await asyncio.to_thread(cover_jpeg, post), filename=f"{post['slug']}.jpg")
     if visible_len(html) <= CAPTION_LIMIT:
         m = await bot.send_photo(chat_id, photo, caption=html, parse_mode="HTML")
         return [m.message_id]
