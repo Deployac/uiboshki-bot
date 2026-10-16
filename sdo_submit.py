@@ -29,6 +29,7 @@ import re
 import httpx
 from bs4 import BeautifulSoup
 
+import sdo_net
 from config import SDO_BASE_URL
 
 logger = logging.getLogger(__name__)
@@ -212,7 +213,7 @@ async def submission_rules(cookie: str, cmid: int) -> dict:
     "maxfiles", "maxbytes"} или {"closed": почему нельзя сдать}."""
     from sdo_parser import get_checked
     url = f"{SDO_BASE_URL}/mod/assign/view.php?id={cmid}"
-    async with httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=30) as client:
+    async with sdo_net.client(cookie) as client:
         try:
             resp = await get_checked(client, url + "&action=editsubmission")
             try:
@@ -324,7 +325,7 @@ async def submit_file(cookie: str, cmid: int, name: str = "", data: bytes = b"",
     if any(len(d) > MAX_BYTES for _, d in files):
         raise SubmitError("файл больше 20 МБ")
     url = f"{SDO_BASE_URL}/mod/assign/view.php?id={cmid}"
-    async with httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=60) as client:
+    async with sdo_net.client(cookie, timeout=60) as client:
         try:
             resp = await get_checked(client, url + "&action=editsubmission")
             try:
@@ -378,7 +379,7 @@ async def remove_submission(cookie: str, cmid: int) -> dict:
     from sdo_grades import parse_assign_page
     from sdo_parser import SdoSessionExpired, get_checked
     url = f"{SDO_BASE_URL}/mod/assign/view.php?id={cmid}"
-    async with httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=30) as client:
+    async with sdo_net.client(cookie) as client:
         try:
             resp = await get_checked(client, url + "&action=removesubmissionconfirm")
             soup = BeautifulSoup(resp.text, "html.parser")

@@ -73,4 +73,26 @@ void main() {
     expect(find.text('Сервер сейчас не отвечает (ошибка 500) — попробуй позже.'), findsOneWidget);
     expect(find.textContaining('интернет'), findsNothing);
   });
+
+  test('висит один путь, а сервер отвечает — без плашки «Сервер не отвечает»', () async {
+    var hang = false;
+    Future<http.Response> answer(http.Request r) async {
+      if (hang && r.url.path.contains('/sdo/')) throw TimeoutException('СДО висит');
+      return http.Response(jsonEncode({'ok': r.url.path}), 200, headers: {'content-type': 'application/json'});
+    }
+
+    final api = _api(answer);
+    await api.get('/sdo/grades'); // запомнили
+    await Future<void>.delayed(const Duration(milliseconds: 50)); // запас пишется в фоне
+    hang = true;
+    await api.get('/today'); // сервер только что ответил
+    expect(await api.get('/sdo/grades'), {'ok': '/api/v1/sdo/grades'});
+    expect(api.offlineSince.value, isNull);
+
+    // а если сервер давно молчит — плашка на месте
+    final cold = _api(answer);
+    expect(await cold.get('/sdo/grades'), isNotNull);
+    expect(cold.offlineSince.value, isNotNull);
+    expect(cold.offlineSlow.value, isTrue);
+  });
 }

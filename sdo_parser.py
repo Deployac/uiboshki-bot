@@ -38,6 +38,7 @@ from zoneinfo import ZoneInfo
 import httpx
 from bs4 import BeautifulSoup
 
+import sdo_net
 from config import SDO_SESSION_COOKIE, SDO_BASE_URL, TIMEZONE
 
 logger = logging.getLogger(__name__)
@@ -106,8 +107,7 @@ async def keepalive(peek=None) -> bool:
         return False
     global IDLE_TIMEOUT
     try:
-        async with httpx.AsyncClient(cookies={"MoodleSession": SDO_SESSION_COOKIE},
-                                     follow_redirects=True, timeout=30) as client:
+        async with sdo_net.client(SDO_SESSION_COOKIE) as client:
             resp = await get_checked(client, f"{SDO_BASE_URL}/my/")
             IDLE_TIMEOUT = await _time_remaining(client, resp.text) or IDLE_TIMEOUT
             if peek:
@@ -125,11 +125,7 @@ async def fetch_upcoming_html() -> str:
     if not SDO_SESSION_COOKIE:
         raise SdoSessionExpired("SDO_SESSION_COOKIE не задана")
 
-    async with httpx.AsyncClient(
-        cookies={"MoodleSession": SDO_SESSION_COOKIE},
-        follow_redirects=True,
-        timeout=30,
-    ) as client:
+    async with sdo_net.client(SDO_SESSION_COOKIE) as client:
         resp = await get_checked(client, UPCOMING_URL)
         resp.raise_for_status()
         html = resp.text
@@ -352,8 +348,7 @@ def parse_calendar_events(events: list[dict]) -> list[dict]:
 
 
 async def fetch_calendar_deadlines() -> list[dict] | None:
-    async with httpx.AsyncClient(cookies={"MoodleSession": SDO_SESSION_COOKIE},
-                                 follow_redirects=True, timeout=30) as client:
+    async with sdo_net.client(SDO_SESSION_COOKIE) as client:
         events = await fetch_calendar_events(client)
     return None if events is None else parse_calendar_events(events)
 
