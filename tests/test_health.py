@@ -156,3 +156,28 @@ async def test_keepalive_learns_idle_timeout(monkeypatch):
     monkeypatch.setattr(sdo_parser, "SDO_SESSION_COOKIE", "x" * 26)
     monkeypatch.setattr(sdo_parser, "IDLE_TIMEOUT", None)
     assert await sdo_parser.keepalive() and sdo_parser.IDLE_TIMEOUT == 7140
+
+
+@pytest.mark.asyncio
+async def test_keepalive_network_is_not_dead_cookie(monkeypatch):
+    """16.10: СДО не открывался с сервера, а /status писал «возможно, кука
+    протухла». Сеть — None (про куку не знаем), вход-редирект — False."""
+    import httpx
+    import sdo_parser
+
+    def down(request):
+        raise httpx.ConnectTimeout("висит", request=request)
+
+    def login(request):
+        if "login" in str(request.url):
+            return httpx.Response(200, text="вход")
+        return httpx.Response(303, headers={"location": "https://online-edu.mirea.ru/login/index.php"})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(sdo_parser, "SDO_SESSION_COOKIE", "x" * 26)
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: real(*a, transport=httpx.MockTransport(down), **kw))
+    assert await sdo_parser.keepalive() is None
+    import sdo_net
+    sdo_net.reset()
+    monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **kw: real(*a, transport=httpx.MockTransport(login), **kw))
+    assert await sdo_parser.keepalive() is False

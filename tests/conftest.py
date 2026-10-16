@@ -37,6 +37,16 @@ async def db(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _sdo_breaker_reset():
+    """Предохранитель СДО (sdo_net) — свой в каждом тесте: тест, где СДО «не
+    отвечает», не должен ронять соседей."""
+    import sdo_net
+    sdo_net.reset()
+    yield
+    sdo_net.reset()
+
+
+@pytest.fixture(autouse=True)
 def _no_schedule_network(monkeypatch):
     """Кнопки предметов (/solve, /upload) строятся из расписания группы —
     в тестах без сети: иначе каждый такой тест ходил бы за ical МИРЭА."""

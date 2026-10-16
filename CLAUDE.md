@@ -226,6 +226,8 @@ JSON приложения VPN (секрет хостинга, в репозит�
   из `schedule_parser`.
 - **СДО (Moodle, online-edu.mirea.ru)** — по куке `MoodleSession` владельца.
   Из облачной сессии разработки СДО недоступен, с Railway — доступен.
+  Клиенты к СДО — только `sdo_net.client(cookie)` (предохранитель, 16.10:
+  не соединились — 3 мин сразу ошибка, а не 30 с ожидания на каждый запрос).
   Сессия Moodle у МИРЭА гаснет **меньше чем за 6 ч** без запросов (синк раз в 6 ч
   её не удержал — проверено владельцем); держит её проверка куки раз в 55 мин
   (`scheduler.sdo_keepalive`), реже не делать. Без сбоев кука живёт сколько
@@ -472,7 +474,9 @@ JSON приложения VPN (секрет хостинга, в репозит�
   вход старой PWA (`uib_token` → `flutter.uib_token`), берёт токен VK/Яндекс
   из `#token=` и регистрирует `/sw.js`; свой service worker Flutter выключен
   (`app/web/flutter_bootstrap.js`). Mini App в Telegram — по-прежнему
-  `index.html` + `js/…`.
+  `index.html` + `js/…`. В вебе (`kIsWeb`) — без `BackdropFilter` и без
+  бесконечных анимаций: тормозят (Никита 15.10); отступы выреза iPhone —
+  `window.uibInsets` → `lib/web_safe_area.dart` (Flutter их сам не знает).
   **API как контракт (2 (в))**: `/api/v1/…` = `/api/…` (`server.ApiV1`), своё
   приложение и PWA — на v1; `/api/meta` — версия сервера и минимальные версии
   приложения (`APP_MIN_WEB/ANDROID/IOS`); снимок путей —

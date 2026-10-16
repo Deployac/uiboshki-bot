@@ -177,7 +177,17 @@ async function api(path, opts) {
     "X-Telegram-Init-Data": initData(),
     "Content-Type": "application/json",
   }, APP_TOKEN ? { "Authorization": "Bearer " + APP_TOKEN } : {}, opts.headers || {});
-  const resp = await fetch(path, opts);
+  // opts.timeout (мс) — не ждать дольше: вкладка СДО крутила серые карточки
+  // без конца, пока сервер ждал сайт СДО (16.10)
+  let resp;
+  if (opts.timeout) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), opts.timeout);
+    opts.signal = ctl.signal;
+    try { resp = await fetch(path, opts); }
+    catch (e) { throw new Error(ctl.signal.aborted ? "сервер долго не отвечает — попробуй позже" : e.message); }
+    finally { clearTimeout(timer); }
+  } else resp = await fetch(path, opts);
   if (resp.status === 401 && APP_TOKEN) {        // сессию отозвали («выйти везде») — заново войти
     saveToken("");
     location.replace("/app");

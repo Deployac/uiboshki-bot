@@ -123,7 +123,7 @@ async function openSdo(fresh) {
   if (!sdoData || fresh) box.innerHTML = '<div class="skel" style="height:118px"></div><div class="skel" style="height:110px"></div><div class="skel" style="height:110px"></div>';
   else renderSdoList();
   try {
-    sdoData = await api("/api/sdo/grades" + (fresh ? "?fresh=1" : ""));
+    sdoData = await api("/api/sdo/grades" + (fresh ? "?fresh=1" : ""), { timeout: 30000 });
     renderSdoList();
   } catch (e) {
     if (/подключи/.test(e.message)) sdoNeedConnect(box, e.message[0].toUpperCase() + e.message.slice(1));

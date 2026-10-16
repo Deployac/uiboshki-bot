@@ -26,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
+import sdo_net
 from config import BOT_TOKEN, SDO_BASE_URL, SDO_SESSION_COOKIE, is_starosta
 
 logger = logging.getLogger(__name__)
@@ -118,8 +119,7 @@ def clean_cookie(raw: str) -> str | None:
 
 
 def client_for(cookie: str, **kwargs) -> httpx.AsyncClient:
-    return httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True,
-                             timeout=kwargs.pop("timeout", 30), **kwargs)
+    return sdo_net.client(cookie, timeout=kwargs.pop("timeout", 30), **kwargs)
 
 
 async def check(cookie: str) -> bool:
