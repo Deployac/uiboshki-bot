@@ -42,6 +42,7 @@ async function scenario(name, opts, fn) {
     await L.shot(p, 'robot-today');
     await L.tap(p, /^10:40/, { wait: 1500 });
     check(await L.has(p, 'Бурлаков В. В.'), 'карточка пары открывается');
+    check(await L.has(p, 'Новая ачивка'), 'плашка «Новая ачивка» (снизу, «назад» не закрывает)');
     await L.back(p);
     check(await L.has(p, 'сегодня · 5 пар'), 'назад — снова «Сегодня»');
   });
@@ -147,6 +148,9 @@ async function scenario(name, opts, fn) {
     await L.shot(p, 'robot-look-1');
     await L.tap(p, 'Строгий', { wait: 1000, optional: true });
     await L.back(p);
+    // «Ачивки» (5.88): счёт и ранги
+    await L.tap(p, /Ачивки/, { wait: 1800 });
+    check(await L.has(p, /из 25/) && await L.has(p, 'Рассвет'), '«Ачивки» открываются');
   });
 
   await scenario('Ошибка сервера', { mode: 'error' }, async (s, p) => {

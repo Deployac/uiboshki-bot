@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -728,10 +729,13 @@ class AchievementsRow extends StatelessWidget {
 OverlayEntry? _banner;
 
 /// Плашки новых ачивок; тесты выключают (test/flutter_test_config.dart), чтобы
-/// плашка не закрывала кнопки вверху экрана.
+/// плашка не закрывала кнопки внизу экрана.
 bool achBanners = true;
 
-/// Плашка сверху «Новая ачивка» с «Посмотреть» — поверх любого экрана.
+/// Плашка «Новая ачивка» с «Посмотреть» — поверх любого экрана, снизу над
+/// меню, как остальные плашки. Сверху она закрывала «назад» и стрелки недели
+/// (робот-проверка 16.10): ачивка открывается ровно тогда, когда человек там
+/// нажимает. Снизу «Посмотреть» и под большим пальцем.
 void showUnlockBanner(Achievement a) {
   final overlay = appNavigator.currentState?.overlay;
   if (!achBanners || overlay == null || !overlay.mounted) return;
@@ -754,7 +758,8 @@ void showUnlockBanner(Achievement a) {
   );
   _banner = entry;
   overlay.insert(entry);
-  HapticFeedback.mediumImpact();
+  // в браузере вибрация без касания — ошибка в консоли (ачивка бывает от ответа API)
+  if (!kIsWeb) HapticFeedback.mediumImpact();
 }
 
 class UnlockBanner extends StatefulWidget {
@@ -795,10 +800,12 @@ class _UnlockBannerState extends State<UnlockBanner> with SingleTickerProviderSt
     final p = s.p;
     final mq = MediaQuery.of(context);
     final a = widget.a;
-    return Positioned(
-      left: Space.l,
-      right: Space.l,
-      top: mq.viewPadding.top + Space.s,
+    // над плашкой, если она есть; при клавиатуре — ещё и над полем ввода
+    final base = aboveCapsule(mq) + (mq.viewInsets.bottom > 0 ? 64 : 0);
+    return ValueListenableBuilder<bool>(
+      valueListenable: toastShown,
+      builder: (context, toast, child) =>
+          Positioned(left: Space.l, right: Space.l, bottom: base + (toast ? 64 : 0), child: child!),
       child: AnimatedBuilder(
         animation: _life,
         builder: (context, child) {
@@ -808,7 +815,7 @@ class _UnlockBannerState extends State<UnlockBanner> with SingleTickerProviderSt
           if (mq.disableAnimations) return Opacity(opacity: 1 - outV, child: child);
           return Opacity(
             opacity: (1 - outV).clamp(0.0, 1.0),
-            child: Transform.translate(offset: Offset(0, -40 * (1 - inV) - 20 * outV), child: child),
+            child: Transform.translate(offset: Offset(0, 40 * (1 - inV) + 20 * outV), child: child),
           );
         },
         child: Semantics(
