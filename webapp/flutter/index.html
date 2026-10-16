@@ -91,6 +91,29 @@
       },
     };
   </script>
+  <script>
+    // Под часы iPhone (Никита 15.10: сверху была чёрная полоса). Flutter при
+    // запуске заменяет <meta name="viewport"> своим, без viewport-fit=cover, —
+    // и iPhone не пускает страницу под часы. Возвращаем cover, а отступы
+    // (env(safe-area-inset-*)) отдаём Flutter: uibInsets() → «t,r,b,l»,
+    // их берёт lib/web_safe_area.dart.
+    (function () {
+      function fit() {
+        document.querySelectorAll('meta[name="viewport"]').forEach(function (m) {
+          if (m.content.indexOf("viewport-fit") < 0) m.content += ", viewport-fit=cover";
+        });
+      }
+      new MutationObserver(fit).observe(document.head, { childList: true });
+      var probe = document.createElement("div");
+      probe.style.cssText = "position:fixed;left:0;top:0;visibility:hidden;pointer-events:none;" +
+        "padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
+      document.body.appendChild(probe);
+      window.uibInsets = function () {
+        var s = getComputedStyle(probe);
+        return [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].map(parseFloat).join(",");
+      };
+    })();
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
