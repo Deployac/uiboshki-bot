@@ -189,6 +189,7 @@ class Api {
     _lastOk = DateTime.now();
     final body = _decode(r);
     offlineSince.value = null;
+    onOk?.call('GET', path, null, body);
     // Запас — в фоне: показ данных не ждёт памяти телефона и не падает из-за неё.
     if (!path.startsWith('/auth/')) unawaited(_remember(path, r).catchError((_) {}));
     return body;
@@ -234,8 +235,16 @@ class Api {
   Future<dynamic> delete(String path) async =>
       _noCacheZone() ?? _decode(await _client.delete(_uri(path), headers: _headers));
 
-  Future<dynamic> post(String path, [Object? body]) async =>
-      _noCacheZone() ?? _decode(await _client.post(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
+  Future<dynamic> post(String path, [Object? body]) async {
+    _noCacheZone();
+    final r = _decode(await _client.post(_uri(path), headers: _headers, body: jsonEncode(body ?? {})));
+    onOk?.call('POST', path, body, r);
+    return r;
+  }
+
+  /// Удачный ответ из сети (не из запаса): ачивки ловят по нему, что человек
+  /// сделал (achievements/store.dart). Ошибка в нём запрос не ломает.
+  static void Function(String method, String path, Object? body, Object? result)? onOk;
 
   /// Файл по подписанной ссылке сервера (/dl/…) — байтами, для «Скачать».
   Future<Uint8List> download(String url) async {

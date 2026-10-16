@@ -3,6 +3,7 @@
 // посещения, лекции с конспектами. Открывается нажатием на пару где угодно.
 import 'package:flutter/material.dart';
 
+import '../achievements/store.dart';
 import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
@@ -12,11 +13,14 @@ import 'files.dart';
 import 'search.dart';
 import 'study.dart';
 
-void openLesson(BuildContext context, Api api, Lesson l) => Navigator.of(context).push(
-  MaterialPageRoute(
-    builder: (_) => LessonScreen(api: api, lesson: l),
-  ),
-);
+void openLesson(BuildContext context, Api api, Lesson l) {
+  AchStore.unlock('lesson');
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => LessonScreen(api: api, lesson: l),
+    ),
+  );
+}
 
 /// Тот же предмет в журнале СДО и в файлах: без регистра и «ё».
 bool sameSubject(String a, String b) {

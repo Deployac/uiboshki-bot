@@ -12,6 +12,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../achievements/captions.dart';
+import '../achievements/store.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import 'common.dart';
@@ -81,6 +83,9 @@ const momentLines = {
 /// Пятое нажатие подряд.
 const tickleLine = 'Ну хватит щекотать';
 
+/// Случай для редких фраз и волны (ачивки); тесты подменяют.
+math.Random capyRandom = math.Random();
+
 /// Поза — силуэт-маска: цвет даёт тема (как CSS в WebApp), поэтому одна
 /// картинка годится и для «Глубины», и для «Тетради».
 class CapyImage extends StatelessWidget {
@@ -139,6 +144,9 @@ class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMix
   /// Следующая подпись: сначала случай, потом подписи позы по кругу (начиная
   /// со случайной); пятое нажатие подряд — «хватит щекотать».
   String _next(CapyPose pose) {
+    // редкие фразы — полночные ачивки (captions.dart)
+    if (capyRandom.nextInt(oneOfUsChance) == 0) return oneOfUsLine;
+    if (capyRandom.nextInt(secretChance) == 0) return secretLine;
     final t = DateTime.now();
     final last = _lastTap;
     _taps = last != null && t.difference(last) < const Duration(seconds: 12) ? _taps + 1 : 1;
@@ -158,12 +166,18 @@ class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMix
     // заметный «тык» (14.10): щелчок выбора на iPhone почти не чувствуется;
     // пятое касание подряд — щекотка, отклик сильнее. В вебе вибрации нет — тихо
     final line = _next(pose);
-    if (line == tickleLine) {
+    AchStore.capyTouched(now());
+    final turn = line == oneOfUsLine;
+    if (turn) {
+      HapticFeedback.heavyImpact();
+      AchStore.unlock('one_of_us');
+    } else if (line == tickleLine) {
       HapticFeedback.mediumImpact();
     } else {
       HapticFeedback.lightImpact();
     }
-    showCapy(context, pose, line);
+    if (line == secretLine) AchStore.unlock('secret');
+    showCapy(context, pose, line, turn: turn);
   }
 
   @override
@@ -198,7 +212,10 @@ class _CapyBadgeState extends State<CapyBadge> with SingleTickerProviderStateMix
 
 /// Капибара крупно по центру поверх размытого экрана, подпись печатается по
 /// буквам (владелец, 09.10, К5). Закрывается нажатием в любом месте.
-Future<void> showCapy(BuildContext context, CapyPose pose, String text) => showGeneralDialog(
+///
+/// [turn] — сверхредкая фраза (Никита 15.10): экран темнеет сильнее, капибара
+/// медленно поворачивается к тебе и чуть приближается, подпись — потом.
+Future<void> showCapy(BuildContext context, CapyPose pose, String text, {bool turn = false}) => showGeneralDialog(
   context: context,
   barrierDismissible: true,
   barrierLabel: 'Закрыть',
@@ -207,7 +224,7 @@ Future<void> showCapy(BuildContext context, CapyPose pose, String text) => showG
   // Material — иначе у текста в диалоге жёлтое подчёркивание «нет темы»
   pageBuilder: (context, appear, _) => Material(
     type: MaterialType.transparency,
-    child: CapyOverlay(pose: pose, text: text, appear: appear),
+    child: CapyOverlay(pose: pose, text: text, appear: appear, turn: turn),
   ),
 );
 
@@ -215,7 +232,8 @@ class CapyOverlay extends StatefulWidget {
   final CapyPose pose;
   final String text;
   final Animation<double> appear;
-  const CapyOverlay({super.key, required this.pose, required this.text, required this.appear});
+  final bool turn;
+  const CapyOverlay({super.key, required this.pose, required this.text, required this.appear, this.turn = false});
 
   @override
   State<CapyOverlay> createState() => _CapyOverlayState();
@@ -224,6 +242,8 @@ class CapyOverlay extends StatefulWidget {
 class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin {
   late final _bob = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
   late final _caret = AnimationController(vsync: this, duration: const Duration(milliseconds: 1000));
+  // поворот к тебе: пауза, разворот ребром, вторая половина — уже лицом
+  late final _turn = AnimationController(vsync: this, duration: const Duration(milliseconds: 2600));
   Timer? _typing;
   int _shown = 0;
 
@@ -233,13 +253,19 @@ class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin
     if (_typing != null || _shown > 0) return;
     if (MediaQuery.of(context).disableAnimations) {
       _shown = widget.text.length;
+      if (widget.turn) _turn.value = 1;
       return;
     }
-    _bob.repeat();
+    if (widget.turn) {
+      _turn.forward();
+    } else {
+      _bob.repeat();
+    }
     _caret.repeat();
-    // печатать начинает, когда капибара уже выпрыгнула
-    _typing = Timer.periodic(const Duration(milliseconds: 45), (t) {
-      if (t.tick < 6) return;
+    // печатать начинает, когда капибара уже выпрыгнула (или повернулась)
+    final wait = widget.turn ? 50 : 6;
+    _typing = Timer.periodic(Duration(milliseconds: widget.turn ? 70 : 45), (t) {
+      if (t.tick < wait) return;
       setState(() => _shown++);
       if (_shown >= widget.text.length) t.cancel();
     });
@@ -248,6 +274,7 @@ class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin
   @override
   void dispose() {
     _typing?.cancel();
+    _turn.dispose();
     _bob.dispose();
     _caret.dispose();
     super.dispose();
@@ -272,7 +299,9 @@ class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin
             final v = widget.appear.value;
             // в браузере без размытия (тормозит) — фон плотнее
             final shade = ColoredBox(
-              color: p.bg.withValues(alpha: (kIsWeb ? 0.85 : 0.45) * v),
+              color: widget.turn
+                  ? Colors.black.withValues(alpha: 0.82 * v)
+                  : p.bg.withValues(alpha: (kIsWeb ? 0.85 : 0.45) * v),
               child: child,
             );
             if (kIsWeb) return shade;
@@ -293,7 +322,9 @@ class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin
                       animation: _bob,
                       builder: (context, child) =>
                           Transform.translate(offset: Offset(0, -7 * math.sin(_bob.value * math.pi)), child: child),
-                      child: CapyImage(pose: widget.pose, size: size),
+                      child: widget.turn
+                          ? CapyTurn(turn: _turn, pose: widget.pose, size: size)
+                          : CapyImage(pose: widget.pose, size: size),
                     ),
                   ),
                   const SizedBox(height: Space.l),
@@ -327,7 +358,7 @@ class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin
                         ],
                       ),
                       textAlign: TextAlign.center,
-                      style: style,
+                      style: widget.turn ? style.copyWith(color: const Color(0xFFFFE9A8)) : style,
                     ),
                   ),
                 ],
@@ -338,6 +369,56 @@ class _CapyOverlayState extends State<CapyOverlay> with TickerProviderStateMixin
       ),
     );
   }
+}
+
+/// Капибара поворачивается к тебе (сверхредкая фраза): стоит боком, на
+/// первой половине уходит в ребро, на второй выходит уже другой стороной и
+/// ближе — как будто обернулась и шагнула; сзади разгорается свет.
+class CapyTurn extends StatelessWidget {
+  final Animation<double> turn;
+  final CapyPose pose;
+  final double size;
+  const CapyTurn({super.key, required this.turn, required this.pose, required this.size});
+
+  static const _glow = Color(0xFFFFE9A8);
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: turn,
+    builder: (context, _) {
+      final v = turn.value;
+      // 0–0.25 — смотрит в сторону, 0.25–0.85 — поворот, дальше — замерла
+      final k = Curves.easeInOutCubic.transform(((v - 0.25) / 0.6).clamp(0.0, 1.0));
+      final back = k > 0.5; // вторая половина: уже лицом, картинка отражена
+      final angle = back ? (k - 1) * math.pi : k * math.pi;
+      final near = 1 + 0.28 * k;
+      return Stack(
+        alignment: Alignment.center,
+        children: [
+          Opacity(
+            opacity: k,
+            child: Container(
+              width: size * 1.3,
+              height: size * 1.3,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(colors: [_glow.withValues(alpha: 0.35), _glow.withValues(alpha: 0)]),
+              ),
+            ),
+          ),
+          Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.identity()
+              ..setEntry(3, 2, 0.0018)
+              ..scaleByDouble(near, near, 1, 1)
+              ..rotateY(angle)
+              ..scaleByDouble(back ? -1 : 1, 1, 1, 1),
+            child: CapyImage(pose: pose, size: size, color: Color.lerp(Colors.white, _glow, k)),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 /// Радость: капибара подпрыгивает дважды, когда появилась (сдал работу, цель

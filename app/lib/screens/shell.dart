@@ -6,12 +6,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../achievements/store.dart';
+import '../achievements/ui.dart';
 import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
 import '../theme/look.dart';
 import '../theme/tokens.dart';
 import '../widgets/capsule_tabbar.dart';
+import '../widget_data.dart';
 import '../widgets/common.dart';
 import 'deadlines.dart';
 import 'group_pick.dart';
@@ -63,7 +66,7 @@ class Shell extends StatefulWidget {
   State<Shell> createState() => _ShellState();
 }
 
-class _ShellState extends State<Shell> {
+class _ShellState extends State<Shell> with WidgetsBindingObserver {
   late int _index = widget.initialTab;
 
   /// Сменилась группа — номер растёт, экраны строятся заново со своими данными.
@@ -143,10 +146,40 @@ class _ShellState extends State<Shell> {
   @override
   void initState() {
     super.initState();
+    // ачивки: ловят по ответам API, плашка — сверху, «Показать где» — вкладка
+    Api.onOk = (method, path, body, result) => AchStore.onApi(method, path, body, result, now());
+    AchStore.onUnlock = showUnlockBanner;
+    AchStore.openTab = _open;
+    WidgetsBinding.instance.addObserver(this);
+    _visit();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _ensureGroup();
       await _maybeTour();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    Api.onOk = null;
+    AchStore.onUnlock = null;
+    AchStore.openTab = null;
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _visit();
+  }
+
+  /// Заход: дни для ачивок; виджет на экране телефона — «На столе».
+  Future<void> _visit() async {
+    try {
+      await AchStore.load();
+      await AchStore.visit(now());
+      final sink = HomeWidgets.sink;
+      if (sink != null && await sink.installed() > 0) await AchStore.unlock('widget');
+    } catch (_) {}
   }
 
   /// Нет группы в профиле (новый человек) — сначала выбрать её.
@@ -158,6 +191,7 @@ class _ShellState extends State<Shell> {
       return; // нет сети или вход устарел — экраны сами скажут
     }
     if (me == null || !mounted) return;
+    achName = '${me['first_name'] ?? ''}'.trim();
     // 152-ФЗ: согласие на обработку персональных данных — до всего (legal.dart)
     if (me['consent_needed'] == true) {
       final blocked = me['consent_blocked'] == true;
