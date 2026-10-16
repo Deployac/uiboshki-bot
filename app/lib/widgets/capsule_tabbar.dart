@@ -4,6 +4,7 @@
 // ([hidden], решает shell.dart).
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -81,13 +82,15 @@ class CapsuleTabBar extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: Space.l),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(Radii.tabbar),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+          // В браузере (PWA) размытие под меню перерисовывается каждый кадр и
+          // тормозит (Никита 15.10: «ПВА стала лаганной») — там меню плотное,
+          // того же цвета, что размытое поверх фона.
+          child: _Blur(
             child: Container(
               height: 64,
               padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
-                color: p.tabbar,
+                color: kIsWeb ? Color.alphaBlend(p.tabbar, p.bg) : p.tabbar,
                 borderRadius: BorderRadius.circular(Radii.tabbar),
                 border: Border.all(color: p.line),
               ),
@@ -193,4 +196,13 @@ class _AnimatedFlexState extends AnimatedWidgetBaseState<AnimatedFlex> {
 
   @override
   Widget build(BuildContext context) => Expanded(flex: (_flex!.evaluate(animation) * 10).round(), child: widget.child);
+}
+
+class _Blur extends StatelessWidget {
+  final Widget child;
+  const _Blur({required this.child});
+
+  @override
+  Widget build(BuildContext context) =>
+      kIsWeb ? child : BackdropFilter(filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18), child: child);
 }

@@ -113,6 +113,9 @@ class Api {
   static const _cachePrefix = 'uib_cache:';
   static const timeout = Duration(seconds: 8);
 
+  /// Когда сервер в последний раз ответил (любым кодом) — см. [get].
+  DateTime? _lastOk;
+
   /// Внутри [fromCache] get берёт только запомненное и в сеть не ходит;
   /// значение зоны — [_CacheRead], куда get пишет время запомненного.
   static const _cacheOnly = #uibCacheOnly;
@@ -165,16 +168,25 @@ class Api {
       read.saw(cached.at);
       return cached.body;
     }
+    final started = DateTime.now();
     final http.Response r;
     try {
       r = await _client.get(_uri(path), headers: _headers).timeout(timeout);
     } catch (e) {
       final cached = await _cached(path).catchError((_) => null);
       if (cached == null) rethrow;
+      // Пока этот путь висел, сервер ответил на другие (16.10: висели только
+      // запросы к СДО) — это не «Сервер не отвечает»: запас отдаём молча,
+      // плашку не ставим.
+      final ok = _lastOk;
+      if (e is TimeoutException && ok != null && !ok.isBefore(started)) {
+        return cached.body;
+      }
       offlineSlow.value = e is TimeoutException;
       offlineSince.value = cached.at;
       return cached.body;
     }
+    _lastOk = DateTime.now();
     final body = _decode(r);
     offlineSince.value = null;
     onOk?.call('GET', path, null, body);

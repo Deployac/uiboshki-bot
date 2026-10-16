@@ -13,7 +13,7 @@ sdo_parser.sync_deadlines). Другой группе хватает одног�
 
 import logging
 
-import httpx
+import sdo_net
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 async def _calendar_items(cookie: str) -> list[dict]:
     import sdo_parser
     from config import SDO_BASE_URL  # noqa: F401 — тот же СДО, что у своей группы
-    async with httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=30) as client:
+    async with sdo_net.client(cookie) as client:
         events = await sdo_parser.fetch_calendar_events(client)
     if events is None:
         raise RuntimeError("календарь СДО по AJAX недоступен")

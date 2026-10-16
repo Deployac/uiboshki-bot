@@ -31,6 +31,7 @@ from urllib.parse import unquote, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+import sdo_net
 from config import SDO_BASE_URL
 from file_categories import detect_category
 from sdo_parser import SdoSessionExpired
@@ -63,7 +64,7 @@ class SdoCourse:
 
 
 def make_client(cookie: str) -> httpx.AsyncClient:
-    return httpx.AsyncClient(cookies={"MoodleSession": cookie}, follow_redirects=True, timeout=60)
+    return sdo_net.client(cookie, timeout=60)
 
 
 def _logged_out(resp: httpx.Response) -> bool:

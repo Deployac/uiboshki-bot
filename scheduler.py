@@ -337,7 +337,8 @@ async def sdo_keepalive(bot: Bot | None = None):
         import quiz_alerts
         changed.append(await quiz_alerts.peek(client, html))
     ok = await keepalive(peek=peek if bot else None)
-    await health.note("sdo_cookie", ok, "" if ok else "СДО не пустил — возможно, кука протухла")
+    await health.note("sdo_cookie", bool(ok), "" if ok else
+                      "СДО не ответил — про куку не знаю" if ok is None else "СДО не пустил — кука протухла")
     import sdo_parser
     if ok and sdo_parser.IDLE_TIMEOUT:
         from database import set_setting

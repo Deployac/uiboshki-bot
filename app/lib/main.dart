@@ -3,6 +3,7 @@
 // С 5.79 — экран «Оформление» (theme/look.dart), его сервер может выключить.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,7 @@ import 'screens/shell.dart';
 import 'theme/app_icon.dart';
 import 'theme/app_theme.dart';
 import 'theme/look.dart';
+import 'web_safe_area.dart';
 import 'widget_data.dart';
 import 'widgets/capy.dart';
 import 'widgets/common.dart';
@@ -161,6 +163,7 @@ class _UiboAppState extends State<UiboApp> {
         navigatorKey: appNavigator,
         debugShowCheckedModeBanner: false,
         theme: materialTheme(p),
+        builder: kIsWeb ? (context, child) => WebSafeArea(child: child!) : null,
         home: _loggedIn
             ? Shell(
                 api: widget.api,
