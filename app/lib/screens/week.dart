@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../achievements/store.dart';
 import '../api/api.dart';
 import '../api/models.dart';
 import '../theme/app_theme.dart';
@@ -136,6 +137,7 @@ class _WeekScreenState extends State<WeekScreen> {
 
   void _shiftBy(int k) {
     tick();
+    if (k > 0) AchStore.unlock('week_next');
     setState(() {
       _dir = k.sign;
       _shift += k;

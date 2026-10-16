@@ -6,6 +6,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../achievements/captions.dart';
+import '../achievements/store.dart';
 import '../theme/app_theme.dart';
 import 'capy.dart';
 import 'common.dart';
@@ -93,6 +95,8 @@ class _CapyRefreshState extends State<CapyRefresh> with TickerProviderStateMixin
 
   Future<void> _run() async {
     setState(() => _busy = true);
+    // редкая «идеальная волна» — полночная ачивка
+    if (_scene == CapyScene.surf && capyRandom.nextInt(waveChance) == 0) AchStore.unlock('wave');
     try {
       await widget.onRefresh();
     } finally {
@@ -199,6 +203,13 @@ class CapyLoading extends StatefulWidget {
 
 class _CapyLoadingState extends State<CapyLoading> {
   late final _scene = CapyScenes.next(widget.hour ?? now().hour);
+  late final _wave = _scene == CapyScene.surf && capyRandom.nextInt(waveChance) == 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_wave) AchStore.unlock('wave');
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -211,7 +222,7 @@ class _CapyLoadingState extends State<CapyLoading> {
           children: [
             SizedBox(width: 220, height: 110, child: CapySceneView(scene: _scene)),
             const SizedBox(height: 6),
-            Text(sceneText[_scene]!, style: s.body(13, color: s.p.muted)),
+            Text(_wave ? waveLine : sceneText[_scene]!, style: s.body(13, color: s.p.muted)),
           ],
         ),
       ),

@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'achievements/store.dart';
+import 'achievements/ui.dart' show appNavigator;
 import 'api/api.dart';
 import 'screens/login.dart';
 import 'screens/shell.dart';
@@ -108,12 +110,14 @@ class _UiboAppState extends State<UiboApp> {
   }
 
   Future<void> _setFont(FontChoice f) async {
+    AchStore.unlock('look');
     setState(() => _font = f);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('uib_font', f.name);
   }
 
   Future<void> _setLook(Look l) async {
+    AchStore.unlock('look');
     final icon = l.icon != _look.icon || l.iconDark != _look.iconDark;
     setState(() => _look = l);
     await l.save(await SharedPreferences.getInstance());
@@ -121,6 +125,7 @@ class _UiboAppState extends State<UiboApp> {
   }
 
   Future<void> _setTheme(ThemeChoice t) async {
+    AchStore.unlock('look');
     setState(() => _theme = t);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('uib_theme', t.name);
@@ -155,6 +160,7 @@ class _UiboAppState extends State<UiboApp> {
       design2: _design2,
       child: MaterialApp(
         title: 'Капибара',
+        navigatorKey: appNavigator,
         debugShowCheckedModeBanner: false,
         theme: materialTheme(p),
         builder: kIsWeb ? (context, child) => WebSafeArea(child: child!) : null,
