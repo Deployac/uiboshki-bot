@@ -115,7 +115,6 @@ class Api {
 
   /// Когда сервер в последний раз ответил (любым кодом) — см. [get].
   DateTime? _lastOk;
-  static const aliveWindow = Duration(seconds: 30);
 
   /// Внутри [fromCache] get берёт только запомненное и в сеть не ходит;
   /// значение зоны — [_CacheRead], куда get пишет время запомненного.
@@ -169,17 +168,18 @@ class Api {
       read.saw(cached.at);
       return cached.body;
     }
+    final started = DateTime.now();
     final http.Response r;
     try {
       r = await _client.get(_uri(path), headers: _headers).timeout(timeout);
     } catch (e) {
       final cached = await _cached(path).catchError((_) => null);
       if (cached == null) rethrow;
-      // Долгий ответ одного пути, а сервер только что отвечал на другие (16.10:
-      // висели только запросы к СДО) — это не «Сервер не отвечает»: запас
-      // отдаём молча, плашку не ставим.
+      // Пока этот путь висел, сервер ответил на другие (16.10: висели только
+      // запросы к СДО) — это не «Сервер не отвечает»: запас отдаём молча,
+      // плашку не ставим.
       final ok = _lastOk;
-      if (e is TimeoutException && ok != null && DateTime.now().difference(ok) < aliveWindow) {
+      if (e is TimeoutException && ok != null && !ok.isBefore(started)) {
         return cached.body;
       }
       offlineSlow.value = e is TimeoutException;

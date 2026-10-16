@@ -97,12 +97,14 @@ async def _time_remaining(client: httpx.AsyncClient, html: str) -> int | None:
         return None
 
 
-async def keepalive(peek=None) -> bool:
+async def keepalive(peek=None) -> bool | None:
     """Лёгкий запрос в СДО, чтобы сессия Moodle не истекла без обращений
     (сколько она живёт без них — не знаем; синк раз в 6 ч её не спас).
     True — сессия жива. peek(client, html) — заодно заглянуть в календарь
     той же сессией (quiz_alerts.peek: не открыли ли тест), его сбой сессию
-    живой не делает мёртвой."""
+    живой не делает мёртвой. None — СДО не ответил: про куку ничего не
+    знаем (16.10: /status писал «возможно, кука протухла», а СДО просто не
+    открывался с сервера)."""
     if not SDO_SESSION_COOKIE:
         return False
     global IDLE_TIMEOUT
@@ -116,9 +118,12 @@ async def keepalive(peek=None) -> bool:
                 except Exception as e:
                     logger.info(f"СДО keepalive: peek: {type(e).__name__}: {e}")
         return True
-    except Exception as e:
+    except SdoSessionExpired as e:
         logger.info(f"СДО keepalive: {e}")
         return False
+    except Exception as e:
+        logger.info(f"СДО keepalive: СДО не ответил: {type(e).__name__}: {e}")
+        return None
 
 
 async def fetch_upcoming_html() -> str:
@@ -389,7 +394,7 @@ async def _sync_deadlines() -> dict:
         return {"added": 0, "updated": 0, "skipped": 0, "expired": True,
                 "missing": not SDO_SESSION_COOKIE}
     except Exception as e:
-        logger.error(f"СДО sync: не удалось получить страницу: {e}")
+        logger.error(f"СДО sync: не удалось получить страницу: {type(e).__name__}: {e}")
         return {"added": 0, "updated": 0, "skipped": 0, "expired": False, "error": str(e)}
 
     res = await apply_items(items)
