@@ -228,7 +228,7 @@ void main() {
     expect(find.text('Поделиться'), findsOneWidget);
   });
 
-  testWidgets('новая ачивка — плашка сверху, «Посмотреть» открывает лист; «Показать где» — вкладка', (t) async {
+  testWidgets('новая ачивка — плашка снизу, «Посмотреть» открывает лист; «Показать где» — вкладка', (t) async {
     phone(t);
     achBanners = true;
     addTearDown(() => achBanners = false);
@@ -239,6 +239,9 @@ void main() {
     await t.runAsync(() => AchStore.unlock('ai'));
     await t.pump(const Duration(milliseconds: 500));
     expect(find.text('Новая ачивка · Рассвет'), findsOneWidget);
+    // снизу, над меню: сверху закрывала «назад» и стрелки недели (робот 16.10)
+    final h = t.view.physicalSize.height / t.view.devicePixelRatio;
+    expect(t.getRect(find.byKey(const Key('ach:banner'))).top, greaterThan(h / 2));
     await t.tap(find.byKey(const Key('ach:banner')));
     await settle(t);
     expect(find.byType(Polaroid), findsOneWidget);

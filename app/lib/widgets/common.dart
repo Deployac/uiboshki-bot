@@ -503,11 +503,20 @@ enum ToastKind { done, error, info }
 
 OverlayEntry? _toast;
 
+/// Видна ли плашка: плашка новой ачивки тогда встаёт над ней.
+final toastShown = ValueNotifier<bool>(false);
+
 void _hideToast() {
   final e = _toast;
   _toast = null;
+  toastShown.value = false;
   e?.remove();
 }
+
+/// Отступ снизу для плашек: над капсулой (64 + отступ снизу), а при
+/// клавиатуре — над ней.
+double aboveCapsule(MediaQueryData mq) =>
+    math.max(math.max(mq.viewPadding.bottom, Space.m) + 64 + Space.s, mq.viewInsets.bottom + Space.s);
 
 /// Плашка над меню-капсулой вместо белой системной (владелец, 09.10, 3.10):
 /// карточка цвета темы со значком, выезжает снизу и сама уходит.
@@ -533,6 +542,7 @@ void toastOn(OverlayState overlay, String text, {ToastKind kind = ToastKind.info
   );
   _toast = entry;
   overlay.insert(entry);
+  toastShown.value = true;
 }
 
 class AppToast extends StatefulWidget {
@@ -571,8 +581,7 @@ class _AppToastState extends State<AppToast> with SingleTickerProviderStateMixin
     final s = AppStyle.of(context);
     final p = s.p;
     final mq = MediaQuery.of(context);
-    // над капсулой (64 + отступ снизу), а при клавиатуре — над ней
-    final bottom = math.max(math.max(mq.viewPadding.bottom, Space.m) + 64 + Space.s, mq.viewInsets.bottom + Space.s);
+    final bottom = aboveCapsule(mq);
     final (icon, color) = switch (widget.kind) {
       ToastKind.done => (Icons.check_circle_rounded, p.ok),
       ToastKind.error => (Icons.error_outline_rounded, p.danger),
