@@ -2,6 +2,15 @@
 # Запуск бота в контейнере (Dockerfile). XRAY_CONFIG задан — сначала Xray,
 # и бот ходит за границу через него (OUT_PROXY, если не задан свой).
 set -e
+# На Amvera (AMVERA=1) живёт после пересборки только диск /data: база,
+# перенесённая из Railway с другим DATABASE_PATH, иначе пропала бы при деплое
+if [ "$AMVERA" = "1" ]; then
+    case "$DATABASE_PATH" in
+        /data/*) ;;
+        *) echo "DATABASE_PATH=$DATABASE_PATH не на диске /data — беру /data/mirea_bot.db"
+           export DATABASE_PATH=/data/mirea_bot.db ;;
+    esac
+fi
 mkdir -p "$(dirname "${DATABASE_PATH:-/data/mirea_bot.db}")"
 if [ -n "$XRAY_CONFIG" ] && python tools/xray_conf.py /tmp/xray.json; then
     xray run -c /tmp/xray.json &

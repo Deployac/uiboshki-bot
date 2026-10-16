@@ -195,7 +195,9 @@ OpenRouter; МИРЭА, СДО, VK, Яндекс — напрямую), `TG_PROX
 Свой сервер — Amvera (`amvera.yml`: Docker, диск `/data`, порт 8080; деплой
 вебхуком из форка): `Dockerfile` (бот + Xray), `XRAY_CONFIG` — ссылка `vless://` или
 JSON приложения VPN (секрет хостинга, в репозиторий и чат — никогда),
-`docker/start.sh` поднимает Xray и ставит `OUT_PROXY`. Бэкап в российское S3
+`docker/start.sh` поднимает Xray и ставит `OUT_PROXY`. На Amvera (`AMVERA=1`)
+база всегда на `/data` (`start.sh`); регион — Москва_1 (16.10), сначала
+без Xray: встроенный прокси Amvera для Telegram и Gemini. Бэкап в российское S3
 — `BACKUP_S3_BUCKET`, `BACKUP_S3_KEY_ID`, `BACKUP_S3_SECRET` (`s3_store.py`);
 заданы — база в Telegram не уходит.
 `CHANNEL_URL`, `CONTACT_URL` (необязательно: плитки «Канал бота» и «Написать нам»
